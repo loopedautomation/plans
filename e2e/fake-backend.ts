@@ -541,6 +541,13 @@ export function installFakeBackend(
 
     // The CLI script: absent until installed, and this build's once it is.
     cli_status: () => state.cli,
+
+    // What the shell says about the desktop it is on. The browser the suite
+    // runs in is neither a tiling compositor nor a package-managed install,
+    // and the unknown-command fallback answers "" — which is falsy, and would
+    // quietly switch off the update check and half the window buttons.
+    updates_possible: () => true,
+    window_buttons_useful: () => true,
     agent_list: () => [
       {
         id: "claude",
