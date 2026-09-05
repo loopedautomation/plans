@@ -9,7 +9,7 @@ repositories** — without opening the whole repo in an editor.
 
 <sub>
 
-**[Download for macOS](https://github.com/loopedautomation/plans/releases/latest)** · free and open source
+**[Download](https://github.com/loopedautomation/plans/releases/latest)** for macOS, Windows or Linux · free and open source
 
 </sub>
 
@@ -26,6 +26,30 @@ The files it shows are usually written by something else: Claude Code in a
 terminal, an agent, a script. So the app is built to be a good way to *live
 with* that output — read it, review the diff, adjust it, commit it — rather
 than a general-purpose markdown editor.
+
+## Installing on Linux
+
+**Arch, Omarchy included.** The `PKGBUILD` builds a normal pacman package out
+of the release's `.deb` payload, so pacman owns the files and removing it is
+`pacman -R looped-plans-bin`:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/loopedautomation/plans/main/packaging/aur/PKGBUILD
+makepkg -si
+```
+
+The same two lines are the update: the `PKGBUILD` on `main` names the current
+release, so re-running them after a new one installs it over the old. There is
+no AUR package yet, and the app does not update itself on Linux — a copy under
+`/usr/bin` is the package manager's to replace, and it knows not to ask.
+
+**Debian and Ubuntu.** Take the `.deb` from the release and install it:
+
+```sh
+sudo apt install ./Looped.Plans_*_amd64.deb
+```
+
+**Anything else.** The AppImage runs without installing: `chmod +x` it and go.
 
 ## What it does
 

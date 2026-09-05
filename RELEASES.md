@@ -263,27 +263,36 @@ when that folder is not on your PATH.
 
 ### Arch, and the AUR
 
-`packaging/aur/PKGBUILD` is a template for `looped-plans-bin`. It takes the
-payload out of the release's `.deb` — the binary, the icons and the desktop
-entry — and installs it where Arch expects, so `pacman -Syu` or an Omarchy
-update is the update path.
+`packaging/aur/PKGBUILD` takes the payload out of the release's `.deb` — the
+binary, the icons and the desktop entry — and installs it where Arch expects,
+so pacman owns the files. It is installed straight from this repository:
 
-It is deliberately not the AppImage. The AppImage bundles Ubuntu 22.04's
-WebKitGTK, GTK and glib, and that combination cannot create an EGL display
-against Arch's Mesa: the window opens and the webview never paints, with
-`Could not create default EGL display: EGL_BAD_PARAMETER` on stderr. None of
-the WebKitGTK variables above rescue it, because the fault is the bundled
-libraries rather than the renderer. The `.deb` carries the same binary without
-them, so it links against the system's own and works. Until the AppImage is
-fixed or dropped, Arch installs should come from the package.
+```sh
+curl -fsSLO https://raw.githubusercontent.com/loopedautomation/plans/main/packaging/aur/PKGBUILD
+makepkg -si
+```
 
-An installed copy cannot update itself: `/usr/bin/plans` is root-owned and the
-updater would have to rewrite it. Set Settings → Updates to "off" after
-installing and let the package manager do that job. It is a template
-rather than a package because publishing to the AUR needs an account and a
-maintainer, and that is a decision rather than a build step. To use it,
-bump `pkgver`, run `updpkgsums`, and `makepkg -si`; to publish it, push it to
-the AUR's git remote under a name you are prepared to answer email about.
+`pkgver` is bumped with each release, so those two lines are the update as
+well. That is the whole path for now — no AUR package, and so no `pacman -Syu`
+integration: someone updating has to run the two lines again. Publishing to the
+AUR would buy that integration and the discoverability, at the cost of an
+account and a maintainer who answers email; the file is already shaped for it
+(`updpkgsums`, `makepkg --printsrcinfo > .SRCINFO`, push to the AUR remote).
+
+It is the `.deb` payload rather than the AppImage, for two reasons. The lesser
+one is shape: a package puts the binary, the icons and the desktop entry where
+pacman can own them, and `pacman -R` takes them away again. The larger one is
+history — the AppImage carried the build host's `libwayland` and could not
+create an EGL display against Arch's Mesa, so the window opened and the webview
+never painted. That is fixed in the release now (see the repack above), but the
+`.deb` never had the problem: it bundles no libraries at all, so there is
+nothing in it to disagree with the machine it lands on.
+
+An installed copy cannot update itself — `/usr/bin/plans` is root-owned and the
+updater would have to rewrite it — and it does not try. `updates_possible` is
+false unless the app is running from an AppImage, which is the only shape
+Tauri's Linux updater can replace, so a packaged copy never asks. There is
+nothing to switch off by hand.
 
 ### The smoke checklist
 
