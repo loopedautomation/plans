@@ -1310,8 +1310,10 @@ export function Palette(props: Props) {
             {isCmd
               ? "Commands"
               : isText
-                ? // The count saturates rather than lying: a full quota means
-                  // the search stopped reading, not that it found this many.
+                ? // The count saturates rather than lying, but only when the
+                  // search itself says it stopped with matches still unread —
+                  // a repository whose hits come to exactly the quota found
+                  // this many, and "+" over that would be an invention.
                   hits.length
                   ? `Inside files · ${hits.length}${found.capped ? "+" : ""}`
                   : "Inside files"

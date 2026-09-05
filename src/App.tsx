@@ -4937,8 +4937,11 @@ export default function App() {
    * not an empty search. The merge keeps repository order and each repository's
    * own path/line sort, which is what lets the palette group in a single pass.
    *
-   * `capped` is the honest half: a repository that returns a full quota stopped
-   * reading files rather than ran out of matches, and the footer says so.
+   * `capped` is the honest half, and it comes from the command rather than from
+   * the length of what it returned: a repository whose matches happen to come
+   * to exactly the quota is fully represented, and counting alone would print
+   * "60+" over a search that withheld nothing. The footer says "+" only when a
+   * repository tells us it stopped with matches still out there.
    *
    * Timed, because the case for having no index rests on a measurement: the
    * walker is ripgrep's and plans repositories are small, but the fan-out
@@ -4962,14 +4965,14 @@ export default function App() {
                 !settings.showAllFiles,
                 SEARCH_LIMIT,
               )
-              .then((hits) => ({ repo: r, hits })),
+              .then((found) => ({ repo: r, ...found })),
           ),
         );
         const hits: SearchHit[] = [];
         let capped = false;
         for (const r of found) {
           if (r.status !== "fulfilled") continue;
-          if (r.value.hits.length >= SEARCH_LIMIT) capped = true;
+          if (r.value.capped) capped = true;
           for (const h of r.value.hits) {
             hits.push({ repoPath: r.value.repo.path, repoName: r.value.repo.name, ...h });
           }

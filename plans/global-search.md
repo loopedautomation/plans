@@ -117,8 +117,11 @@ reasoning is the part worth reading later.
 - **The caps.** Five per file under sixty per *repository* — per repository,
   not per search, so narrowing the scope does not also make each repository
   answer in less detail. Each file's heading carries its own "+n more"; the
-  footer's total gains a "+" when any repository returned a full quota, the way
-  the find bar's count saturates.
+  footer's total gains a "+" when a repository *says* it stopped with matches
+  still unread, the way the find bar's count saturates. Said, not inferred from
+  a full-looking result list: twelve files of five matches come to exactly sixty
+  and withhold nothing, so `search_plans` returns `{ hits, capped }` and only
+  sets `capped` when it meets a file it has no budget left to read.
 - **Is `*` still the right door?** It is, and it gained a second: ⌘⇧F is now in
   `DEFAULT_KEYS` (it was never in the VS Code pack — the plan mis-remembered
   that), alongside a "Search inside every file" command, both opening the
@@ -127,7 +130,8 @@ reasoning is the part worth reading later.
 ## Next
 
 - [x] `search_plans` grows a per-file cap under the global limit; "+n
-      more" count per file threaded back in the response
+      more" count per file, and a `capped` flag for the global one, threaded
+      back in the response
 - [x] Results grouped by file in the palette's `*` mode; Enter on hit
       opens at line (existing path), Enter on header opens seeded to first
       hit

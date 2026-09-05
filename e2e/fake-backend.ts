@@ -364,19 +364,28 @@ export function installFakeBackend(
       b.files[String(toRel)] = text;
       return toRel;
     },
-    // Two budgets and a sorted result, as the real command has: without the
-    // per-file cap and the "+n more" it reports, the fake would let a grouped
-    // list pass here that the real one could never produce.
+    // Two budgets, a reported cap and a sorted result, as the real command has:
+    // without the per-file cap and the "+n more" it reports, the fake would let
+    // a grouped list pass here that the real one could never produce — and a
+    // `capped` inferred from the length would hide the bug where a search whose
+    // matches come to exactly the limit calls itself truncated.
     search_plans: ({ repo: p, query, onlyMarkdown, limit, perFile }) => {
       const r = repo(p);
       const needle = String(query ?? "").trim().toLowerCase();
-      if (!r || !needle) return [];
+      if (!r || !needle) return { hits: [], capped: false };
       const cap = Number(limit ?? 60);
       const each = Number(perFile ?? 5);
       const out: { rel_path: string; line: number; text: string; more: number }[] = [];
+      let capped = false;
       for (const [rel, text] of Object.entries(r.files)) {
         if (onlyMarkdown !== false && !/\.(md|markdown)$/i.test(rel)) continue;
-        if (out.length >= cap) break;
+        if (!text.toLowerCase().includes(needle)) continue;
+        // A file with something to contribute and no budget left: that, not a
+        // full-looking list, is what makes a search capped.
+        if (out.length >= cap) {
+          capped = true;
+          break;
+        }
         const start = out.length;
         let kept = 0;
         let total = 0;
@@ -390,7 +399,7 @@ export function installFakeBackend(
         for (let i = start; i < out.length; i++) out[i].more = total - kept;
       }
       out.sort((a, b) => a.rel_path.localeCompare(b.rel_path) || a.line - b.line);
-      return out;
+      return { hits: out, capped };
     },
     write_asset: ({ repo: p, relPath, folder, stem, ext }) => {
       const r = repo(p);

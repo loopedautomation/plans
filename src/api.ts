@@ -208,21 +208,28 @@ export const api = {
     limit = 60,
     perFile = 5,
   ) =>
-    invoke<{ relPath: string; line: number; text: string; more: number }[]>("search_plans", {
+    invoke<{
+      hits: { relPath: string; line: number; text: string; more: number }[];
+      capped: boolean;
+    }>("search_plans", {
       repo,
       query,
       includeIgnored,
       onlyMarkdown,
       limit,
       perFile,
-    }).then((hits) =>
-      hits.map((h: any) => ({
+    }).then((found: any) => ({
+      hits: (found?.hits ?? []).map((h: any) => ({
         relPath: h.rel_path,
         line: h.line,
         text: h.text,
         more: h.more ?? 0,
       })),
-    ),
+      // The command reports its own truncation: a repository whose matches
+      // happen to come to exactly `limit` is complete, and only the search
+      // knows that the count cannot say it.
+      capped: found?.capped ?? false,
+    })),
 
   /** Development only: profiler output, to a file anyone can read. */
   perfLog: (line: string) => rawInvoke<void>("perf_log", { line }),

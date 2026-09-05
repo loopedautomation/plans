@@ -55,7 +55,24 @@ const REPOS: FakeRepo[] = [
   },
 ];
 
-async function boot(page: Page, settings: Record<string, unknown> = {}) {
+/**
+ * A repository of `n` files with five matching lines each — five being the
+ * per-file cap, so every file contributes exactly five hits and `n` decides
+ * whether the global cap of sixty is reached, exceeded, or met exactly.
+ */
+function packed(n: number): FakeRepo {
+  const files: Record<string, string> = {};
+  for (let i = 0; i < n; i++) {
+    files[`f${String(i).padStart(2, "0")}.md`] = "alpha\n".repeat(5);
+  }
+  return { path: "/repo/packed", name: "packed", branch: "main", files };
+}
+
+async function boot(
+  page: Page,
+  settings: Record<string, unknown> = {},
+  repos: FakeRepo[] = REPOS,
+) {
   await page.addInitScript(
     ([fn, list, prefs]) => {
       // eslint-disable-next-line no-new-func
@@ -67,7 +84,7 @@ async function boot(page: Page, settings: Record<string, unknown> = {}) {
       localStorage.setItem("plans.tabs.v1", "[]");
       localStorage.setItem("plans.settings.v1", JSON.stringify(prefs));
     },
-    [installFakeBackend.toString(), REPOS, settings] as const,
+    [installFakeBackend.toString(), repos, settings] as const,
   );
   await page.goto("/");
   await expect(page.locator(".files")).toBeVisible();
@@ -118,6 +135,29 @@ test("hits group under their file, and the per-file cap says what it kept back",
   // the missing three look like matches that were never there.
   await expect(heads.nth(0)).toContainText("5 shown · +3 more");
   await expect(page.locator(".palette-row.hit")).toHaveCount(7);
+});
+
+test("a search that exactly fills the budget does not claim there is more", async ({
+  page,
+}) => {
+  // Twelve files, five hits each: sixty results and nothing withheld. Read off
+  // the count alone this looks identical to a truncated search.
+  await boot(page, {}, [packed(12)]);
+  await search(page, "alpha");
+
+  await expect(page.locator(".palette-row.head")).toHaveCount(12);
+  await expect(page.locator(".palette-foot")).toContainText("Inside files · 60");
+  await expect(page.locator(".palette-foot")).not.toContainText("60+");
+});
+
+test("a search that runs out of budget says so", async ({ page }) => {
+  // One file more than the budget holds: the thirteenth is never read, and the
+  // footer owes the reader that.
+  await boot(page, {}, [packed(13)]);
+  await search(page, "alpha");
+
+  await expect(page.locator(".palette-row.head")).toHaveCount(12);
+  await expect(page.locator(".palette-foot")).toContainText("Inside files · 60+");
 });
 
 test("the scope chip narrows the fan-out to the active repository", async ({ page }) => {

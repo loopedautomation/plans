@@ -557,6 +557,18 @@ pub struct Hit {
     more: u32,
 }
 
+#[derive(Serialize)]
+pub struct Search {
+    hits: Vec<Hit>,
+    /// Whether the global cap ended the search with matches still out there.
+    ///
+    /// Reported rather than inferred from `hits.len() == limit`: a repository
+    /// whose matches come to exactly the limit is fully represented, and a
+    /// caller counting results would call that list truncated and print "60+"
+    /// over a complete search. Only the search itself knows the difference.
+    capped: bool,
+}
+
 /// Write an image into the repository and return its path, relative to the
 /// file that will link to it.
 ///
@@ -655,10 +667,13 @@ async fn search_plans(
     only_markdown: bool,
     limit: u32,
     per_file: Option<u32>,
-) -> R<Vec<Hit>> {
+) -> R<Search> {
     let needle = query.trim().to_lowercase();
     if needle.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Search {
+            hits: Vec::new(),
+            capped: false,
+        });
     }
     let root = PathBuf::from(&repo);
     let files = walk_files(&root, include_ignored, only_markdown);
@@ -682,18 +697,25 @@ fn search_in(
     needle: &str,
     cap: usize,
     per_file: usize,
-) -> Vec<Hit> {
+) -> Search {
     let mut hits: Vec<Hit> = Vec::new();
+    let mut capped = false;
     for f in files {
-        if hits.len() >= cap {
-            break;
-        }
         let Ok(text) = std::fs::read_to_string(root.join(&f.rel_path)) else {
             continue;
         };
         // Skip the whole file cheaply when it cannot contain the term.
         if !text.to_lowercase().contains(needle) {
             continue;
+        }
+        // The cap is spent, and here is a file that would have contributed:
+        // that, and not a full-looking result list, is what "capped" means. The
+        // walk carries on past a full budget only until it meets this file, so
+        // in the worst case the search costs what an uncapped one would have —
+        // and only when the extra reading found nothing to withhold.
+        if hits.len() >= cap {
+            capped = true;
+            break;
         }
         let start = hits.len();
         let mut kept = 0usize;
@@ -729,7 +751,7 @@ fn search_in(
         }
     }
     hits.sort_by(|a, b| (&a.rel_path, a.line).cmp(&(&b.rel_path, b.line)));
-    hits
+    Search { hits, capped }
 }
 
 /// Append a line of profiler output to a file.
@@ -2558,7 +2580,7 @@ mod tests {
         std::fs::write(dir.join("thin.md"), "nothing\nalpha here\n").unwrap();
 
         let files = [plan_file("dense.md"), plan_file("thin.md")];
-        let hits = search_in(&dir, &files, "alpha", 6, 5);
+        let hits = search_in(&dir, &files, "alpha", 6, 5).hits;
 
         // Five from the dense file, and the thin one still gets read.
         let paths: Vec<&str> = hits.iter().map(|h| h.rel_path.as_str()).collect();
@@ -2582,10 +2604,31 @@ mod tests {
             std::fs::write(dir.join(name), "alpha\nalpha\n").unwrap();
         }
         let files = [plan_file("a.md"), plan_file("b.md"), plan_file("c.md")];
-        // Room for two files' worth: the third is never opened.
-        let hits = search_in(&dir, &files, "alpha", 4, 5);
-        assert_eq!(hits.len(), 4);
-        assert!(hits.iter().all(|h| h.rel_path != "c.md"));
+        // Room for two files' worth: the third contributes nothing, and the
+        // search says so rather than leaving the caller to guess from the count.
+        let found = search_in(&dir, &files, "alpha", 4, 5);
+        assert_eq!(found.hits.len(), 4);
+        assert!(found.hits.iter().all(|h| h.rel_path != "c.md"));
+        assert!(found.capped);
+    }
+
+    #[test]
+    fn a_search_that_exactly_fills_the_cap_is_not_capped() {
+        let dir = scratch_dir("search-exact");
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["a.md", "b.md"] {
+            std::fs::write(dir.join(name), "alpha\nalpha\n").unwrap();
+        }
+        // A third file that will be walked past but holds nothing.
+        std::fs::write(dir.join("c.md"), "beta\n").unwrap();
+        let files = [plan_file("a.md"), plan_file("b.md"), plan_file("c.md")];
+
+        // Four matches, a cap of four, and nothing withheld: a footer reading
+        // the length alone would print "4+" over a complete search.
+        let found = search_in(&dir, &files, "alpha", 4, 5);
+        assert_eq!(found.hits.len(), 4);
+        assert!(!found.capped);
+        assert!(found.hits.iter().all(|h| h.more == 0));
     }
 
     #[test]
@@ -2593,8 +2636,8 @@ mod tests {
         let dir = scratch_dir("search-case");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.md"), "   ALPHA and more   \n").unwrap();
-        let hits = search_in(&dir, &[plan_file("a.md")], "alpha", 60, 5);
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].text, "ALPHA and more");
+        let found = search_in(&dir, &[plan_file("a.md")], "alpha", 60, 5);
+        assert_eq!(found.hits.len(), 1);
+        assert_eq!(found.hits[0].text, "ALPHA and more");
     }
 }
