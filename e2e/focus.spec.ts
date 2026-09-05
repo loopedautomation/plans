@@ -103,6 +103,42 @@ test("the tree is one tab stop, and arrows walk it", async ({ page }) => {
   expect(await cursor(page)).toBe("/repo/one::");
 });
 
+/*
+ * The widget that is not there yet.
+ *
+ * A first launch has no repositories, so the tree is a sentence rather than a
+ * tree, and the roving cursor has nothing to attach to. Whatever installs the
+ * arrows has to notice when the tree finally arrives — a hook that reads its
+ * ref once, at mount, would leave this app keyboard-dead until a reload.
+ */
+test("the tree answers arrows even when it arrives after the empty state", async ({ page }) => {
+  await page.addInitScript(
+    ([fn, list]) => {
+      // eslint-disable-next-line no-new-func
+      new Function(`return ${fn}`)()(list);
+      localStorage.setItem("plans.repos.v1", "[]");
+      localStorage.setItem("plans.tabs.v1", "[]");
+      localStorage.setItem("plans.split.v1", "null");
+      localStorage.setItem("plans.splitTabs.v1", "[]");
+    },
+    [installFakeBackend.toString(), REPOS] as const,
+  );
+  await page.goto("/");
+  await expect(page.locator(".files")).toContainText("Add a repository to begin.");
+
+  await page.evaluate(() => {
+    (window as unknown as { __fake: { pick: string } }).__fake.pick = "/repo/one";
+  });
+  await page.getByRole("button", { name: "Add a repository" }).first().click();
+  await expect(page.locator(".row.repo")).toHaveCount(1);
+
+  // The tree that grew into an empty state is still one tab stop with arrows.
+  await expect(page.locator('.tree [data-rove][tabindex="0"]')).toHaveCount(1);
+  await atTop(page);
+  await page.keyboard.press("ArrowDown");
+  expect(await cursor(page)).toBe("/repo/one::notes");
+});
+
 test("Enter on a focused row opens the file", async ({ page }) => {
   await boot(page);
   await atTop(page);

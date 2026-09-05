@@ -22,7 +22,7 @@
  * The trap owns Tab and nothing else; that split is the contract, so nobody
  * later centralises a ladder that was deliberately built rung by rung.
  */
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 /**
  * What Tab can land on. Deliberately a list of elements rather than a
@@ -43,6 +43,27 @@ function tabbable(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter(
     (el) => el.offsetParent !== null || el === document.activeElement,
   );
+}
+
+/**
+ * `ref.current` as something an effect can depend on.
+ *
+ * A ref is filled in after the render that mounts the element and re-runs
+ * nothing, so an effect that reads it once and finds `null` gives up for good.
+ * That is not a rare case here: the main tab strip renders only once a buffer
+ * is open, and the tree is an empty-state paragraph until the repositories
+ * load. Both widgets would have mounted with no arrows at all.
+ *
+ * The effect has no dependency list on purpose — it runs after every render,
+ * compares, and only sets state when the element actually arrives or goes, so
+ * the common case is one identity check and no extra render.
+ */
+function useNode(ref: RefObject<HTMLElement | null>) {
+  const [node, setNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setNode((prev) => (prev === ref.current ? prev : ref.current));
+  });
+  return node;
 }
 
 /**
@@ -134,11 +155,13 @@ export function useRovingFocus(ref: RefObject<HTMLElement | null>, opts: RovingO
   // listeners being torn down and rebound on every render.
   const onMove = useRef(opts.onMove);
   onMove.current = opts.onMove;
+  // Through `useNode` rather than `ref.current`, so a widget that mounts after
+  // its first render — the tab strip once a buffer opens, the tree once the
+  // repositories load — gets its handlers when it appears.
+  const box = useNode(ref);
 
   useEffect(() => {
-    if (!active) return;
-    const box = ref.current;
-    if (!box) return;
+    if (!active || !box) return;
 
     const items = () => Array.from(box.querySelectorAll<HTMLElement>(selector));
     const idOf = (el: HTMLElement, i: number) => el.dataset.rove ?? String(i);
@@ -201,5 +224,5 @@ export function useRovingFocus(ref: RefObject<HTMLElement | null>, opts: RovingO
       box.removeEventListener("focusin", onFocusIn);
       box.removeEventListener("keydown", onKey);
     };
-  }, [ref, selector, orientation, active]);
+  }, [box, selector, orientation, active]);
 }

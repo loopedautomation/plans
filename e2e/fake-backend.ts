@@ -58,6 +58,12 @@ export function installFakeBackend(
     /** Every question the app has put up, and the answer it will get. */
     asked: [] as string[],
     confirmAnswer: true,
+    /**
+     * What the native folder picker will return. Null is "cancelled", which is
+     * also the honest default: a test that wants a repository added says which
+     * one, and nothing else can wander into the app by accident.
+     */
+    pick: null as string | null,
     /** Set to a message to make the next chat_send reject with it. */
     failNextSend: null as string | null,
     /**
@@ -523,6 +529,10 @@ export function installFakeBackend(
       state.asked.push(String(message ?? ""));
       return state.confirmAnswer;
     },
+    // The folder picker behind "Add a repository". `open()` answers with the
+    // chosen path or null when it is dismissed, and that is the whole contract
+    // the app depends on.
+    "plugin:dialog|open": () => state.pick,
     // What `ask()` actually invokes in plugin-dialog v2 — the name is
     // "message" whichever of the three helpers you called.
     // `ask()` compares the response to its own ok label, so the answer is a
