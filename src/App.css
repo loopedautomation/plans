@@ -196,6 +196,12 @@ button, .rail, .bar, .tabs, .ctx {
 
 .app {
   display: grid;
+  /* The column is stated, and stated as `minmax(0, …)`, because an implicit
+     one is `auto` — which sizes to the widest row's min-content. The rail's
+     buttons do not wrap, so that was about 700px, and every window narrower
+     than that (a tiled half-screen, where the WM ignores `minWidth`) had the
+     whole app hanging off its right edge rather than laying out smaller. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--rail) minmax(0, 1fr) var(--bar);
   height: 100vh;
 }
@@ -257,10 +263,57 @@ button, .rail, .bar, .tabs, .ctx {
   display: flex;
   align-items: center;
   gap: 14px;
-  /* Left inset clears the traffic lights, which now sit over the rail. */
-  padding: 0 14px 0 82px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--rule);
   background: var(--paper);
+}
+
+/* Only a Mac has traffic lights sitting over the rail, so only a Mac pays for
+   the room they take. Linux and Windows draw their own buttons at the other
+   end (`WindowControls`) and start flush with the edge. */
+.app.mac .rail { padding-left: 82px; }
+
+/* The rail is the one row that never wraps, so it is what decides how narrow
+   the app can get. Its parts have to be able to give way — and the window
+   controls are the part that never can, since a window you cannot close is
+   worse than a repository name you cannot read in full. */
+.rail { min-width: 0; }
+/* The pickers shorten to an ellipsis rather than push the rail wider — but
+   not below the point where they still read as a name. Past that they are an
+   arrow with nothing beside it, which is worse than absent. */
+.rail .dd { min-width: 0; }
+.rail .dd-trigger {
+  min-width: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Out of the flow, so hiding it costs no space — this is about collision, not
+   width. Below this the view switch reaches the middle of the rail and prints
+   straight through the letters, which is the one thing absolute centring
+   cannot avoid. It is the only rail item whose whole job is decoration. */
+@media (max-width: 1000px) {
+  .wordmark { display: none; }
+}
+
+/* A tiled half-screen is the width the rail actually has to survive: the
+   window manager ignores the stated `minWidth`, so the rail is put where it
+   is put and has to fit. The gaps close up and the window buttons narrow
+   before anything is dropped, because everything left in the rail by this
+   point is a control rather than a decoration. */
+@media (max-width: 760px) {
+  .rail { gap: 8px; }
+  .win-btn { width: 34px; }
+}
+
+/* Half of a laptop screen, with a file open: the view switch and the panel
+   buttons no longer fit beside the pickers. The pickers are the ones that go,
+   because the repository and its branch are both written at the top of the
+   tree and the git panel switches branches; the view switch has only ⌘1/⌘2. */
+@media (max-width: 620px) {
+  .rail .dd { display: none; }
+  .rail > .rail-sep { display: none; }
 }
 
 /* Centered in the rail, out of the flow, so the buttons flank it evenly. */
@@ -328,6 +381,49 @@ button, .rail, .bar, .tabs, .ctx {
    where it is, and this count means something else entirely. */
 .rail-btn .count.live { color: var(--ink); }
 
+/* --- window controls, off the Mac ---------------------------------------- */
+
+/* Hard against the rail's right edge, past its padding, because that is where
+   every Linux and Windows desktop puts them and muscle memory is older than
+   this app. The negative margin is the rail's own 14px, given back. */
+.win-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  /* Never the thing that gives way when the rail runs out of room. */
+  flex: 0 0 auto;
+  margin-left: 10px;
+  margin-right: -14px;
+}
+
+/* Sized like the frame's own buttons rather than the rail's letterforms: these
+   are the one place in the chrome that has to be hit without reading. */
+.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink-3);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.win-btn svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  /* Crisp at 10px: the strokes land on the pixel grid rather than between. */
+  shape-rendering: crispEdges;
+}
+.win-btn:hover { color: var(--ink); background: var(--rule); }
+/* The one button whose mistake cannot be undone says so before it is pressed,
+   in the colour every other desktop uses for it. */
+.win-btn.close:hover { color: #fff; background: #c42b1c; }
+
 /* ===========================================================================
    Files — the tree
    ---------------------------------------------------------------------------
@@ -343,6 +439,11 @@ button, .rail, .bar, .tabs, .ctx {
   flex-direction: column;
   min-height: 0;
   background: var(--paper);
+  /* The drag edge anchors to this. It belongs here rather than beside
+     `.files-edge` further down, because a bare `.files` rule after the
+     narrow-window media query outranks it — same specificity, later wins —
+     and the tree silently stopped overlaying at narrow widths. */
+  position: relative;
 }
 
 /* Search sits at the very top — it is the way into a big tree. */
@@ -1404,8 +1505,10 @@ input[type="range"]::-webkit-slider-thumb {
 .app.zen { grid-template-rows: var(--rail) minmax(0, 1fr); }
 /* The rail thins to a bare drag strip; its one button appears on approach. */
 .app.zen .rail { border-bottom-color: transparent; background: var(--paper); }
-.app.zen .rail .rail-btn { opacity: 0; transition: opacity 140ms ease; }
-.app.zen .rail:hover .rail-btn { opacity: 1; }
+.app.zen .rail .rail-btn,
+.app.zen .rail .win-btn { opacity: 0; transition: opacity 140ms ease; }
+.app.zen .rail:hover .rail-btn,
+.app.zen .rail:hover .win-btn { opacity: 1; }
 
 /* Not an aside: an unfinished merge is the most important thing on screen. */
 .git-alarm {
@@ -1761,7 +1864,6 @@ diffs-container {
 
 /* --- dragging the sidebar's edge ---------------------------------------- */
 
-.files { position: relative; }
 .files-edge {
   position: absolute;
   top: 0;

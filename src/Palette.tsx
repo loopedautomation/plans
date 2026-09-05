@@ -13,7 +13,7 @@ import { FONTS, MONO_FONTS } from "./fonts";
 import { DEFAULTS, RANGES, type Settings } from "./settings";
 import type { ChatRef, Index as ChatIndex } from "./chats";
 import { THEMES } from "./theme";
-import { renderKeys, type KeymapEntry } from "./keys";
+import { EXTRA, renderKeys, type KeymapEntry } from "./keys";
 import { score } from "./score";
 import { commandName, track } from "./analytics";
 import type { Template } from "./templates";
@@ -437,7 +437,7 @@ function buildCommands(p: Props): Command[] {
     id: "perf",
     group: "Go",
     label: "Profiler",
-    hint: "⌘⌃P",
+    hint: renderKeys(`mod+${EXTRA}+p`),
     run: p.onPerf,
   });
   add({
@@ -670,7 +670,7 @@ function buildCommands(p: Props): Command[] {
   toggle("showFrontmatter", "Files", "Frontmatter block");
   toggle("sourceLineNumbers", "Source", "Line numbers");
   toggle("sourceWrap", "Source", "Wrap long lines");
-  toggle("showIndex", "Panels", "File tree", "⌘B", "sidebar files explorer");
+  toggle("showIndex", "Panels", "File tree", renderKeys("mod+b"), "sidebar files explorer");
   toggle("showGit", "Panels", "Git panel");
   toggle("showMux", "Panels", "Agent chat", undefined, "chat agent talk ask");
   toggle("showStatusBar", "Panels", "Status bar");

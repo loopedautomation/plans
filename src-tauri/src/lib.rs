@@ -1997,6 +1997,34 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
+    // GTK on Linux and the Win32 frame on Windows each draw a titlebar of
+    // their own above the rail, in the desktop's colours rather than the
+    // app's. macOS does not, because `titleBarStyle: "Overlay"` hides the bar
+    // and leaves the traffic lights over the rail — and that key is macOS-only,
+    // so the other two need the frame turned off outright. The rail already
+    // carries `data-tauri-drag-region`, so the window still moves by its
+    // chrome, and `WindowControls` draws the buttons the frame took with it.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    let builder = builder.setup(|app| {
+        use tauri::Manager;
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_decorations(false);
+
+            // A tiling window manager sizes the window and does not ask. GTK
+            // still holds the surface at the configured minimum, so the page
+            // was laid out 900px wide and the compositor squeezed that into
+            // whatever width it had actually been given — which is what the
+            // squashed text on a half-screen was. The minimum is a hint the
+            // desktop is free to ignore, so on the desktop that ignores it,
+            // drop it and let the layout do the narrowing honestly.
+            #[cfg(target_os = "linux")]
+            {
+                let _ = w.set_min_size(None::<tauri::LogicalSize<f64>>);
+            }
+        }
+        Ok(())
+    });
+
     builder
         .manage(agent::Agents::default())
         .manage(agent::scratch::Scratch::default())

@@ -152,7 +152,9 @@ same moment would each read the feed before the other wrote it.
 Before publishing, run the smoke checklist on a Windows machine, since
 nothing in CI exercises the Windows binary beyond building it:
 
-- Install from the `.exe`; the app opens with a native title bar.
+- Install from the `.exe`; the app opens with no system title bar — the rail
+  is the top of the window. Drag it to move the window, and check that
+  minimise, maximise and close at its right end all do what they say.
 - Add a repository, open a plan, edit it, watch the git status update
   without a console window flashing.
 - Start an agent turn with Claude Code installed through npm.
@@ -228,6 +230,23 @@ gnome-terminal, each started in the repository with its own
 working-directory flag. A `$TERMINAL` the app has not met is started with
 the directory inherited, which every terminal honours.
 
+**The compositor may be making the window see-through.** Omarchy tags every
+window for a default opacity — `windows.lua` sets `opacity = "0.985 0.96"`,
+so an unfocused window sits at 96% — and there is no Wayland protocol by
+which a client can refuse it. The page paints an opaque background; what you
+are seeing is above the app. The rule is per-application, so the fix is one
+line in Hyprland's config:
+
+```lua
+o.window("plans", { tag = "-default-opacity", opacity = "1 1" })
+```
+
+That is how Steam, qemu, DaVinci Resolve and RetroArch already opt out in
+`/usr/share/omarchy/default/hypr/apps/`, and a `plans.lua` upstream there
+would settle it for every Omarchy user without anyone editing a config. The
+class is lowercase `plans` for the Wayland build; the AppImage runs under
+XWayland, where it is `Plans`.
+
 The `plans` command line installs to `~/.local/bin/plans`, and Settings says
 when that folder is not on your PATH.
 
@@ -249,6 +268,11 @@ builds and nothing more:
 - `chmod +x` the AppImage and launch it; the window opens and draws. On a
   Wayland desktop with an NVIDIA card, stderr says the DMA-BUF renderer is
   off and the window is not black.
+- The window has no system title bar; the rail is the top of it. Drag the
+  rail to move the window, and check minimise, maximise and close.
+- Tile it to half a screen. A tiling WM ignores the window's stated
+  minimum width, so this is the layout that has to hold: nothing overlaps
+  in the rail and no line of the document is cut off at the right edge.
 - Add a repository, open a plan, edit it, watch the git status update.
 - Start an agent turn with Claude Code installed through npm.
 - Sign in to a workspace on a desktop without gnome-keyring; stderr says the

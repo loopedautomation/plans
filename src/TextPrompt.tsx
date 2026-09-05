@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { attachMentions } from "./mentions";
+import { renderKeys } from "./keys";
 
 type Props = {
   title: string;
@@ -99,7 +100,7 @@ export function TextPrompt({
         )}
         {note && <p className="name-path">{note}</p>}
         <div className="matter-foot">
-          <span>{multiline ? "⌘⏎ confirm" : "⏎ confirm"} · esc cancel</span>
+          <span>{multiline ? `${renderKeys("mod+enter")} confirm` : "⏎ confirm"} · esc cancel</span>
           <button className="act" onClick={submit} disabled={!value.trim() && !allowEmpty}>
             {confirm}
           </button>

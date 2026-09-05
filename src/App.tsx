@@ -52,6 +52,8 @@ import {
   mergeKeys,
   renderKeys,
 } from "./keys";
+import { IS_MAC } from "./platform";
+import { WindowControls } from "./WindowControls";
 import { KeyboardPage } from "./KeyboardPage";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { SplitPane } from "./SplitPane";
@@ -5697,7 +5699,7 @@ export default function App() {
     <div
       className={`app ${settings.showStatusBar && !zenOn ? "" : "no-bar"} ${
         zenOn ? "zen" : ""
-      }`}
+      } ${IS_MAC ? "mac" : ""}`}
     >
       {/* --- rail ---------------------------------------------------------- */}
       {/* WKWebView ignores -webkit-app-region, so dragging is opt-in per element. */}
@@ -5716,14 +5718,14 @@ export default function App() {
         <button
           className={`rail-btn ${treeOpen ? "on" : ""}`}
           onClick={() => set({ showIndex: !settings.showIndex })}
-          title="File tree (⌘B)"
+          title={`File tree (${renderKeys("mod+b")})`}
           aria-pressed={treeOpen}
         >
           Files
         </button>
         <span className="rail-sep" data-tauri-drag-region />
         <span className="wordmark" data-tauri-drag-region>
-          Looped Plans
+          Plans
         </span>
 
         {repos.length > 0 ? (
@@ -5820,7 +5822,7 @@ export default function App() {
           <button
             className={`rail-btn ${gitOpen ? "on" : ""}`}
             onClick={() => showPanel("showGit")}
-            title="Git panel (⌘G)"
+            title={`Git panel (${renderKeys("mod+g")})`}
             aria-pressed={gitOpen}
           >
             Git
@@ -5836,8 +5838,8 @@ export default function App() {
             onClick={() => showPanel("showMux")}
             title={
               runningCount
-                ? `Agent chat (⌘J) — ${runningCount} running`
-                : "Agent chat (⌘J)"
+                ? `Agent chat (${renderKeys("mod+j")}) — ${runningCount} running`
+                : `Agent chat (${renderKeys("mod+j")})`
             }
             aria-pressed={muxOpen}
           >
@@ -5855,13 +5857,18 @@ export default function App() {
             setKeyboardOpen(false);
             setSettingsOpen((o) => !o);
           }}
-          title="Settings (⌘,)"
+          title={`Settings (${renderKeys("mod+,")})`}
           aria-pressed={settingsOpen}
         >
           <span className="aa">Aa</span>
         </button>
           </>
         )}
+
+        {/* Outside the zen branch on purpose: zen empties the rail but the
+            window still has to be closable, exactly as the traffic lights
+            stay put on a Mac. */}
+        {!IS_MAC && <WindowControls />}
       </header>
 
       {/* --- body ---------------------------------------------------------- */}
@@ -6325,18 +6332,18 @@ export default function App() {
                   <dl className="blank-keys">
                     {(activeRepo
                       ? [
-                          ["⌘P", "Find a file"],
-                          ["⌘⇧P", "All commands"],
-                          ["⌘N", "New file"],
-                          ["⌘B", "Show or hide the tree"],
-                          ["⌘G", "Git panel"],
-                          ["⌘⇧L", "Zen"],
-                          ["⌘,", "Settings"],
+                          [renderKeys("mod+p"), "Find a file"],
+                          [renderKeys("mod+shift+p"), "All commands"],
+                          [renderKeys("mod+n"), "New file"],
+                          [renderKeys("mod+b"), "Show or hide the tree"],
+                          [renderKeys("mod+g"), "Git panel"],
+                          [renderKeys("mod+shift+l"), "Zen"],
+                          [renderKeys("mod+,"), "Settings"],
                         ]
                       : [
-                          ["⌘⇧O", "Add a repository"],
-                          ["⌘⇧P", "All commands"],
-                          ["⌘,", "Settings"],
+                          [renderKeys("mod+shift+o"), "Add a repository"],
+                          [renderKeys("mod+shift+p"), "All commands"],
+                          [renderKeys("mod+,"), "Settings"],
                         ]
                     ).map(([k, what]) => (
                       <div className="blank-key" key={k}>
@@ -6623,7 +6630,7 @@ export default function App() {
               <b>{changeCount}</b> uncommitted
             </span>
           )}
-          <span>⌘G git · ⌘, settings</span>
+          <span>{renderKeys("mod+g")} git · {renderKeys("mod+,")} settings</span>
         </footer>
       )}
 

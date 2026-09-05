@@ -4,6 +4,7 @@ import { THEMES } from "./theme";
 import { DEFAULTS, RANGES, type Settings } from "./settings";
 import type { AgentFound, CliStatus, RepoInfo } from "./api";
 import { IS_WINDOWS } from "./platform";
+import { EXTRA, renderKeys } from "./keys";
 import type { SkillState } from "./skill";
 
 type Props = {
@@ -263,9 +264,9 @@ export function SettingsPage({
             }
             hint={
               s.autosave === "manual"
-                ? "⌘S only. Switching files still writes what's pending."
+                ? `${renderKeys("mod+s")} only. Switching files still writes what's pending.`
                 : s.autosave === "onBlur"
-                  ? "Writes when the window loses focus, or on ⌘S."
+                  ? `Writes when the window loses focus, or on ${renderKeys("mod+s")}.`
                   : undefined
             }
           />
@@ -357,7 +358,7 @@ export function SettingsPage({
         </Group>
 
         {/* ---- source ---------------------------------------------------- */}
-        <Group name="Source" hint="The raw markdown, behind ⌘2.">
+        <Group name="Source" hint={`The raw markdown, behind ${renderKeys("mod+2")}.`}>
           <Toggle
             label="Line numbers"
             on={s.sourceLineNumbers}
@@ -528,23 +529,23 @@ export function SettingsPage({
         <Group name="Panels">
           <Row
             label="Zen"
-            hint="⌘⇧L hides everything but the page. Escape brings it back."
+            hint={`${renderKeys("mod+shift+l")} hides everything but the page. Escape brings it back.`}
           />
           <Toggle
             label="File tree"
-            hint="⌘B, or ⌘⌃B while writing. Every open repository's markdown, down the left."
+            hint={`${renderKeys("mod+b")}, or ${renderKeys(`mod+${EXTRA}+b`)} while writing. Every open repository's markdown, down the left.`}
             on={s.showIndex}
             onChange={(showIndex) => onChange({ showIndex })}
           />
           <Toggle
             label="Git panel"
-            hint="⌘G. The index marks changed plans whether it's open or not."
+            hint={`${renderKeys("mod+g")}. The index marks changed plans whether it's open or not.`}
             on={s.showGit}
             onChange={(showGit) => onChange({ showGit })}
           />
           <Toggle
             label="Agent chat"
-            hint="⌘J. A conversation about the open plan. Each plan keeps its own transcript, resumed when reopened."
+            hint={`${renderKeys("mod+j")}. A conversation about the open plan. Each plan keeps its own transcript, resumed when reopened.`}
             on={s.showMux}
             onChange={(showMux) => onChange({ showMux })}
           />
@@ -577,13 +578,13 @@ export function SettingsPage({
         {/* ---- keyboard ------------------------------------------------- */}
         <Group
           name="Keyboard"
-          hint="Every shortcut, on its own page: rebind, chords, preset packs. ⌘/ shows the quick reference."
+          hint={`Every shortcut, on its own page: rebind, chords, preset packs. ${renderKeys("mod+/")} shows the quick reference.`}
         >
           <div className="setting-row static">
             <span className="setting-label">
               Keyboard shortcuts
               <span className="setting-hint">
-                Rebind any command, build ⌘K chords, or choose a preset pack.
+                Rebind any command, build {renderKeys("mod+k")} chords, or choose a preset pack.
               </span>
             </span>
             <button className="act" onClick={onKeyboard}>

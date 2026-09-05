@@ -89,7 +89,7 @@ export function KeyboardPage({ settings: s, onChange, onBack }: Props) {
 
         <p className="keyboard-note" role="status">
           {note ??
-            "Click a binding, then press the new keys — two combos within a beat make a chord like ⌘K W. ⌫ unbinds, esc cancels."}
+            `Click a binding, then press the new keys — two combos within a beat make a chord like ${renderKeys("mod+k w")}. ⌫ unbinds, esc cancels.`}
         </p>
 
         {/* ---- preset packs -------------------------------------------- */}
