@@ -61,7 +61,11 @@ than a general-purpose markdown editor.
   leaving alone.
 - **Command palette.** `⌘P` for files across every open repo, `⌘⇧P` for commands
   — every setting, and git: branch, pull, push, fetch, commit, switch — and
-  `?` to search *inside* files, which is the question notes usually pose.
+  `*` (or `⌘⇧F`) to search *inside* files, which is the question notes usually
+  pose. That mode reaches every open repository, groups its hits under the file
+  they came from — saying how many more each is holding back — and previews the
+  highlighted hit in context beside the list, so you can judge one without
+  opening it.
 - **New files come from templates you own.** A template is a markdown file in
   `~/.plans/templates/`: its frontmatter says what it is called, what to call
   the file (`{slug}`, `{title}`, `{date:yyyy-MM-dd}`) and what frontmatter to
@@ -97,6 +101,7 @@ SSH keys, commit signing, and hooks all apply.
 | Key            | What                                                            |
 | -------------- | --------------------------------------------------------------- |
 | `⌘P` / `⌘⇧P`   | Find a file · all commands                                      |
+| `⌘F` / `⌘⇧F`   | Find in this file · search inside every file                    |
 | `⌘1` `⌘2` `⌘3` | Page · source · diff                                            |
 | `⌘N` / `⌘⇧O`   | New file · add a repository                                     |
 | `⌘S`           | Save now                                                        |

@@ -49,6 +49,10 @@ export const DEFAULT_KEYS: KeymapEntry[] = [
   // this table's admission test. Diff quietly declines it, and that decision
   // lives with the other view-dependent choices in App.
   { id: "find", group: "Plans", label: "Find in this file", keys: "mod+f" },
+  // ⌘⇧F is what every editor since Sublime has meant by "search everything",
+  // and the mode it opens no longer depends on what is on screen — with the
+  // fan-out it reaches every open repository, with nothing open at all.
+  { id: "search", group: "Plans", label: "Search inside every file", keys: "mod+shift+f" },
   { id: "rename", group: "Plans", label: "Rename this file", keys: "f2" },
   { id: "repo.add", group: "Repositories", label: "Add a repository", keys: "mod+shift+o" },
   { id: "v.write", group: "Go", label: "Write view", keys: "mod+1" },

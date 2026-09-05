@@ -1,5 +1,5 @@
 ---
-status: busy
+status: done
 ---
 # Global Search
 
@@ -101,45 +101,47 @@ stale repo's late results can't interleave into a newer query's list.
 
 ## Open questions
 
-- **Does the preview render markdown or source?** Source (raw text) is
-  honest about line numbers and trivially cheap; rendered markdown is what
-  the reader will actually see on opening. Leaning source — the hit line
-  came from the raw text, and a preview that reflows it can't underline the
-  match it is previewing.
-- **Where does the preview go on a narrow window?** `min(620px, 100vw -
-  64px)` already fights small screens; below some width the preview should
-  vanish rather than crush the list. Pick the width in review, like the
-  dropdown threshold was.
-- **Should `*` search respect `showAllFiles`?** It does today
-  (`App.tsx:6868` inverts it into `onlyMarkdown`), and the palette's
-  footer toggle flips it — but that couples "what the tree shows" to "what
-  search reads". Searching all files while the tree shows only markdown
-  seems right for a search whose name is *global*; decoupling means a
-  second toggle, which is a control the bar has to justify.
-- **Per-file cap value and total cap.** 5-per-file under a 60 total is a
-  guess; multi-repo fan-out multiplies the total. Does the cap become
-  per-repo too, and does the footer say "60+" the way the find bar's count
-  saturates (`FindBar.tsx:44-46`)?
-- **Is `*` still the right door?** With a preview pane the mode is much
-  heavier than its siblings. ⌘⇧F opening the palette pre-seeded into `*`
-  already exists via the preset pack; should it become a default binding
-  in `DEFAULT_KEYS` rather than pack-only, now that the mode earns it?
+Answered in the implementation; kept here with what was decided, because the
+reasoning is the part worth reading later.
+
+- **Markdown or source?** Source, as the plan leaned. The preview is a `<div>`
+  of raw lines with numbers down the left and the literal match wrapped in a
+  `<mark>` painted the same wash the find bar uses.
+- **Where does the preview go on a narrow window?** Below 1120px it is
+  `display: none` and the palette drops back to its 620px column — the same
+  instinct as the tree folding at 820px. Wide, it is 620 of list plus the rest:
+  the list keeps its width rather than sharing it.
+- **Does `*` respect `showAllFiles`?** Yes, unchanged. Decoupling would have
+  cost a second footer toggle to save an inconsistency nobody has reported, and
+  the chip that flips it is already right there in the mode.
+- **The caps.** Five per file under sixty per *repository* — per repository,
+  not per search, so narrowing the scope does not also make each repository
+  answer in less detail. Each file's heading carries its own "+n more"; the
+  footer's total gains a "+" when any repository returned a full quota, the way
+  the find bar's count saturates.
+- **Is `*` still the right door?** It is, and it gained a second: ⌘⇧F is now in
+  `DEFAULT_KEYS` (it was never in the VS Code pack — the plan mis-remembered
+  that), alongside a "Search inside every file" command, both opening the
+  palette pre-seeded with `*`.
 
 ## Next
 
-- [ ] `search_plans` grows a per-file cap under the global limit; "+n
+- [x] `search_plans` grows a per-file cap under the global limit; "+n
       more" count per file threaded back in the response
-- [ ] Results grouped by file in the palette's `*` mode; Enter on hit
+- [x] Results grouped by file in the palette's `*` mode; Enter on hit
       opens at line (existing path), Enter on header opens seeded to first
       hit
-- [ ] Fan out across open repos with the `live` guard; merge, group under
+- [x] Fan out across open repos with the `live` guard; merge, group under
       `repoName/relPath`; scope chip to narrow to the active repo
-- [ ] The preview pane: widened `*`-mode palette, `<pre>` window of ~20
-      lines around the highlighted row's hit, match marked, styled like
-      source view; follows arrow-key selection
-- [ ] Decide preview width cutoff and the cap numbers in review
-- [ ] Promote ⌘⇧F from the VS Code pack to `DEFAULT_KEYS` if the door
-      question resolves that way
+- [x] The preview pane: widened `*`-mode palette, a window of ~20 lines
+      around the highlighted row's hit, match marked, styled like source
+      view; follows arrow-key selection
+- [x] Decide preview width cutoff and the cap numbers in review
+- [x] Promote ⌘⇧F to `DEFAULT_KEYS` — it was never in the VS Code pack to
+      be promoted from, so it is a new binding plus a palette command
+- [x] e2e over `*` grouping, preview follow, multi-repo merge and the
+      ⌘⇧F door; Rust tests over the two caps and the "+n more" count
 - [ ] Measure fan-out latency on the largest real multi-repo setup with
-      the PerfHud before considering any index; e2e over `*` grouping,
-      preview follow, and multi-repo merge — run with the batched suite
+      the PerfHud before considering any index. The timer is in place —
+      `search:fan-out` — but the number has to come from a real machine
+      with several repositories open, which no test can stand in for.
