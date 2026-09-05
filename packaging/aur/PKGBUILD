@@ -20,7 +20,7 @@
 
 pkgname=looped-plans-bin
 _appname=looped-plans
-pkgver=0.11.0
+pkgver=0.12.0
 pkgrel=1
 pkgdesc="A desktop app for reading and editing the plans in your local git repositories"
 arch=('x86_64')
