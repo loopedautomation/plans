@@ -4,6 +4,16 @@
 
 ### Minor Changes
 
+- The Linux AppImage works on rolling distributions. It carried the build
+  host's `libwayland`, which an up-to-date Mesa will not accept: the window
+  opened and the webview never painted, with
+  `Could not create default EGL display: EGL_BAD_PARAMETER` on stderr, and none
+  of the documented WebKitGTK variables made any difference because the fault
+  was the bundled library rather than the renderer. The release now strips it
+  and signs the result, so the app links the system's own — which is what every
+  other GTK application on the machine already does. The Arch package template
+  installs the `.deb` payload for the same reason.
+
 - 5968dc9: Linux and Windows lose the desktop's titlebar. macOS has drawn its own chrome
   from the start — `titleBarStyle: "Overlay"` hides the bar and leaves the traffic
   lights sitting over the rail — while GTK and Win32 each stacked a second

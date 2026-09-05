@@ -184,6 +184,17 @@ the feed. `verify-linux` checks the three files exist and that the feed
 gained its entry, and says nothing about running the binary, because
 nothing in CI does.
 
+The AppImage is repacked before it is uploaded. linuxdeploy copies the build
+host's `libwayland-*` into the bundle, and Ubuntu 22.04's is older than the one
+a rolling distribution's Mesa expects; the mismatch shows up on Arch as
+`Could not create default EGL display: EGL_BAD_PARAMETER` and a window that
+opens and never paints. `build-linux` extracts the image, deletes those
+libraries so the app resolves the host's, packs it again, signs the result and
+puts it back over what `tauri-action` uploaded — including the signature inside
+`latest.json`, which would otherwise describe the file before the repack.
+`libepoxy` stays bundled: removing that as well takes `WebKitWebProcess` down
+with a SIGABRT. `verify-linux` fails the release if `libwayland` is back.
+
 We build on 22.04 on purpose. An AppImage links against the system's
 WebKitGTK rather than bundling it, and the build host's version is the
 oldest the result will run on. 22.04 is the oldest image with the 4.1 API

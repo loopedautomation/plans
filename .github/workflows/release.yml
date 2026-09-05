@@ -374,6 +374,87 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+      # linuxdeploy copies the build host's libwayland into the bundle, and
+      # Ubuntu 22.04's is older than the one a rolling distribution's Mesa
+      # expects. On Arch the mismatch surfaced as
+      # `Could not create default EGL display: EGL_BAD_PARAMETER` and a window
+      # that opened and never painted — the AppImage was unusable there, and
+      # none of the WebKitGTK variables in RELEASES.md rescued it, because the
+      # fault was the bundled library rather than the renderer.
+      #
+      # Dropping them makes the app resolve the host's, which is what every
+      # other GTK application on that machine already does. libepoxy stays
+      # bundled: removing that as well takes WebKitWebProcess down with a
+      # SIGABRT. Both halves of that were measured on an Arch desktop.
+      #
+      # It happens after the bundle is built rather than before, because
+      # tauri-action owns the whole build-and-upload, so the repacked image has
+      # to be signed again and put back over what it uploaded.
+      - name: Unbundle libwayland from the AppImage
+        id: appimage
+        run: |
+          set -euo pipefail
+          dir="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          img="$(find "$dir" -maxdepth 1 -name '*.AppImage' -type f | head -1)"
+          if [ -z "$img" ]; then
+            echo "::error title=No AppImage::nothing to repack in $dir"
+            exit 1
+          fi
+          img="$(readlink -f "$img")"
+
+          work="$(mktemp -d)"
+          ( cd "$work" && "$img" --appimage-extract >/dev/null )
+
+          found="$(find "$work/squashfs-root/usr/lib" -maxdepth 1 -name 'libwayland-*' -type f | wc -l)"
+          if [ "$found" -eq 0 ]; then
+            echo "No bundled libwayland — the bundler stopped copying it, so this step can go."
+          else
+            find "$work/squashfs-root/usr/lib" -maxdepth 1 -name 'libwayland-*' -type f -print -delete
+          fi
+
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -O "$work/appimagetool"
+          chmod +x "$work/appimagetool"
+          APPIMAGE_EXTRACT_AND_RUN=1 "$work/appimagetool" "$work/squashfs-root" "$img"
+
+          echo "path=$img" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$img")" >> "$GITHUB_OUTPUT"
+
+      # The repack invalidates what tauri-action signed, and the updater checks
+      # the signature before it will install anything.
+      - name: Sign the repacked AppImage
+        id: sig
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          img="${{ steps.appimage.outputs.path }}"
+          rm -f "$img.sig"
+          pnpm exec tauri signer sign "$img" > /dev/null
+          [ -s "$img.sig" ]
+          echo "value=$(cat "$img.sig")" >> "$GITHUB_OUTPUT"
+
+      # tauri-action already uploaded the unrepacked image and its old
+      # signature, and latest.json carries that signature too. Put all three
+      # right, or an installed copy downloads a file whose signature no longer
+      # matches and refuses it.
+      - name: Replace the uploaded AppImage, its signature and the feed
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          img="${{ steps.appimage.outputs.path }}"
+          gh release upload "${{ github.ref_name }}" "$img" "$img.sig" --clobber
+
+          gh release download "${{ github.ref_name }}" --pattern latest.json --dir feed
+          jq --arg sig "${{ steps.sig.outputs.value }}" \
+            '.platforms["linux-x86_64"].signature = $sig' feed/latest.json > feed/latest.new.json
+          mv feed/latest.new.json feed/latest.json
+          gh release upload "${{ github.ref_name }}" feed/latest.json --clobber
+
       - name: Upload bundles
         if: always()
         uses: actions/upload-artifact@v4
@@ -544,6 +625,24 @@ jobs:
             fi
           done
           [ "$missing" = false ]
+
+      # The bug this guards: an AppImage carrying the build host's libwayland
+      # cannot create an EGL display on a rolling distribution, and opens a
+      # window that never paints. CI cannot see that — the Ubuntu runner it was
+      # built on is exactly the host it agrees with — so check the cause rather
+      # than the symptom.
+      - name: Check the AppImage does not bundle libwayland
+        run: |
+          set -euo pipefail
+          img="$(find dist -name '*.AppImage' -type f | head -1)"
+          chmod +x "$img"
+          work="$(mktemp -d)"
+          ( cd "$work" && "$(readlink -f "$img")" --appimage-extract >/dev/null )
+          if find "$work/squashfs-root/usr/lib" -maxdepth 1 -name 'libwayland-*' -type f | grep -q .; then
+            echo "::error title=libwayland is bundled::The AppImage carries the build host's libwayland and will not paint on a rolling distribution. The repack step in build-linux did not run or did not take."
+            exit 1
+          fi
+          echo "No bundled libwayland."
 
       - name: Check latest.json carries linux-x86_64
         env:
