@@ -224,6 +224,8 @@ function QuestionCard({
                   return (
                     <button
                       key={o.value}
+                      role="option"
+                      aria-selected={on}
                       className={`chat-q-opt ${on ? "on" : ""}`}
                       onClick={() => {
                         if (lone && !typed[lone.customKey ?? ""]?.trim()) {
@@ -1239,10 +1241,14 @@ export function ChatPanel({
 
       <div className="chat-input">
         {suggestions.length > 0 && (
-          <div className="chat-slash" role="listbox">
+          <div className="chat-slash" id="chat-slash" role="listbox" aria-label="Slash commands">
             {suggestions.map((c, i) => (
               <button
                 key={c.name}
+                id={`chat-slash-${i}`}
+                role="option"
+                aria-selected={i === pick}
+                tabIndex={-1}
                 className={`chat-slash-item ${i === pick ? "on" : ""}`}
                 onMouseMove={() => setPick(i)}
                 onClick={() => complete(c.name)}
@@ -1258,6 +1264,13 @@ export function ChatPanel({
           rows={3}
           value={input}
           placeholder="Ask the agent…"
+          // The list the arrows are walking, said out loud. Only while it is
+          // showing: a box that claims a listbox it has not drawn is worse
+          // than one that claims nothing.
+          aria-controls={suggestions.length ? "chat-slash" : undefined}
+          aria-activedescendant={
+            suggestions.length && pick >= 0 ? `chat-slash-${pick}` : undefined
+          }
           onChange={(e) => {
             // Typing is leaving history: whatever is in the box is a draft now.
             hist.current.at = null;

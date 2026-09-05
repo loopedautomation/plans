@@ -376,7 +376,8 @@ test("the read endpoint lists the tree and answers a path, for a member or the w
 
   // A repository's file dropped on the workspace becomes a shared copy: in
   // the tree, open on the page, and answered by the read endpoint at once.
-  const folder = alice.getByRole("button", { name: "plans/" });
+  // A tree row is a treeitem now, not a bare button: the tree is one widget.
+  const folder = alice.getByRole("treeitem", { name: "plans/" });
   if (await folder.count()) await folder.click();
   await alice.locator(".row.file", { hasText: "existing" }).first().dragTo(heading(alice, "Reading"));
   await expect(alice.locator(".page-path")).toHaveText("Reading · existing.md");
@@ -419,7 +420,8 @@ test("a plan in a repository is shared as a page, follows its saves, and stops",
   const alice = await boot(browser, "alice");
 
   // The file lives in a folder the tree opens closed.
-  const folder = alice.getByRole("button", { name: "plans/" });
+  // A tree row is a treeitem now, not a bare button: the tree is one widget.
+  const folder = alice.getByRole("treeitem", { name: "plans/" });
   if (await folder.count()) await folder.click();
   await alice.locator(".row.file", { hasText: "existing" }).first().click();
   await expect(editor(alice).locator("h1")).toHaveText("Existing");

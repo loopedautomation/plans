@@ -7,6 +7,7 @@
  */
 import { useEffect, useRef } from "react";
 import { confirmed } from "./confirm";
+import { useFocusTrap } from "./focus";
 
 type Props = {
   /** Null when the file has no frontmatter; the sheet is then not shown. */
@@ -17,6 +18,9 @@ type Props = {
 
 export function FrontmatterSheet({ matter, onChange, onClose }: Props) {
   const box = useRef<HTMLTextAreaElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  // Nothing is drawn without a block to edit, so the trap waits for one.
+  useFocusTrap(sheet, matter !== null);
 
   useEffect(() => {
     box.current?.focus();
@@ -26,7 +30,14 @@ export function FrontmatterSheet({ matter, onChange, onClose }: Props) {
 
   return (
     <div className="matter-scrim" onMouseDown={onClose}>
-      <div className="matter-sheet" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="matter-sheet"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Frontmatter"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="matter-head">
           <span className="tag">Frontmatter</span>
           <button

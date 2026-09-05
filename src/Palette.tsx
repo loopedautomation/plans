@@ -15,6 +15,7 @@ import type { ChatRef, Index as ChatIndex } from "./chats";
 import { THEMES } from "./theme";
 import { EXTRA, renderKeys, type KeymapEntry } from "./keys";
 import { score } from "./score";
+import { useFocusTrap } from "./focus";
 import { commandName, track } from "./analytics";
 import type { Template } from "./templates";
 
@@ -806,6 +807,9 @@ export function Palette(props: Props) {
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Mounted always, drawn only when open — so the trap is told when to work.
+  useFocusTrap(boxRef, open);
 
   // Each opening starts clean, in whichever mode the shortcut asked for.
   useEffect(() => {
@@ -1031,17 +1035,33 @@ export function Palette(props: Props) {
 
   return (
     <div className="palette-scrim" onMouseDown={onClose}>
-      <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="palette"
+        ref={boxRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Palette"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* The list has always been driven by the keyboard and silent to it.
+            The box is the combobox, the rows are its options, and
+            aria-activedescendant is what says which one is current while the
+            caret stays in the field. */}
         <input
           ref={inputRef}
           className="palette-input"
           value={q}
           spellCheck={false}
           placeholder="Find a file · > commands · * search inside · # chats"
+          role="combobox"
+          aria-expanded={rows.length > 0}
+          aria-controls="palette-list"
+          aria-activedescendant={rows[sel] ? `palette-row-${sel}` : undefined}
+          aria-autocomplete="list"
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={onKey}
         />
-        <div className="palette-list" ref={listRef}>
+        <div className="palette-list" id="palette-list" role="listbox" ref={listRef}>
           {rows.length === 0 && (
             <div className="palette-empty">
               {isText && term.length < 2
@@ -1054,6 +1074,10 @@ export function Palette(props: Props) {
           {rows.map((r, i) => (
             <button
               key={r.key}
+              id={`palette-row-${i}`}
+              role="option"
+              aria-selected={i === sel}
+              tabIndex={-1}
               className={`palette-row ${i === sel ? "on" : ""}`}
               data-on={i === sel ? "1" : "0"}
               onMouseMove={() => setSel(i)}

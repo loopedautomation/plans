@@ -1,5 +1,5 @@
 ---
-status: busy
+status: done
 ---
 # Improve Keyboard Access
 
@@ -104,36 +104,39 @@ one, but it is a change users will feel, and the changelog should say so.
 
 ## Implementation guide
 
-- [ ] `src/focus.ts` - new file: `useFocusTrap` (remember/trap/restore, Tab
+- [x] `src/focus.ts` - new file: `useFocusTrap` (remember/trap/restore, Tab
       only, Escape untouched) and `useRovingFocus` (arrows/Home/End,
       orientation option, one tab stop)
-- [ ] Sheets - trap + `role="dialog"` + `aria-modal` + restore on every
+- [x] Sheets - trap + `role="dialog"` + `aria-modal` + restore on every
       scrim sheet (NameSheet, TextPrompt, MoveSheet, Frontmatter,
       ShareSheet, SignInSheet), the palette and the shortcut sheet; decide
       the `editing`-restore question in the diff
-- [ ] `src/FileTree.tsx` - `role="tree"`/`treeitem` with the existing
+- [x] `src/FileTree.tsx` - `role="tree"`/`treeitem` with the existing
       `aria-expanded` kept (`:678`), roving focus, ←/→ collapse and expand,
       ↑/↓ move, Enter opens
-- [ ] Tablists honour their role - ←/→ move selection in both strips
+- [x] Tablists honour their role - ←/→ move selection in both strips
       (`App.tsx:6060-6122`, `SplitPane.tsx:341-370`); ⌘-arrows reorder a
       focused tab. This overlaps ⌃Tab (`keys.ts:59-60`) and that is fine:
       ⌃Tab is "next buffer" as a command, arrows are how a tablist behaves
       once you are standing in it
-- [ ] Context menus - ContextMenu key / Shift+F10 on a focused row opens
+- [x] Context menus - ContextMenu key / Shift+F10 on a focused row opens
       the same menu `onContextMenu` opens (`FileTree.tsx:667`, `:700`,
       `:1097`; tab menu `App.tsx:6096`); focus moves into it;
       `role="menu"` + the roving hook; Escape returns focus to the row
-- [ ] ARIA patch-up - `aria-activedescendant` + option roles on the
+- [x] ARIA patch-up - `aria-activedescendant` + option roles on the
       palette (`Palette.tsx:1055-1069`), slash and ask listboxes
       (`ChatPanel.tsx:210`, `:1242`); arrow keys move the separators
       (`App.tsx:5984-5986`, `:6447-6449`)
-- [ ] A route *to* the widgets - decide between ⌘B-focuses-the-tree and
+- [x] A route *to* the widgets - decide between ⌘B-focuses-the-tree and
       registry focus-cycle commands (see open questions), then bind it
-- [ ] `e2e/focus.spec.ts` - new spec: trap containment, restore-on-close,
+- [x] `e2e/focus.spec.ts` - new spec: trap containment, restore-on-close,
       tree arrow walk, tablist arrows, menu-key entry. No test today
       asserts Tab order, trapping or restore; a dedicated spec keeps the
       discipline visible. Run with the rest of the suite at the end
-- [ ] `CHANGELOG.md` - note the tree's new one-Tab-stop behaviour
+- [x] `CHANGELOG.md` - note the tree's new one-Tab-stop behaviour. Written as
+      a changeset rather than by hand: `CHANGELOG.md` is generated from
+      `.changeset/` by `pnpm version`, so a hand-written entry would be
+      overwritten at the next release. The changeset leads with the Tab change
 
 ## Out of scope
 
@@ -162,21 +165,41 @@ one, but it is a change users will feel, and the changelog should say so.
   `MoveSheet.tsx:26-41`). Leaning: the trap owns Tab only and leaves
   Escape where it is, and that split is stated in the hook's contract so
   nobody "helpfully" centralises it.
-  - Answer:
+  - Answer: as leaned. `useFocusTrap` listens for `Tab` and nothing else,
+    and the module header says so in as many words. It does listen in the
+    *capture* phase, which raised the one real collision: the rebind capture
+    (`capture.ts:55`) also listens in capture, but on `window`, which is
+    outside `document` — so it fires first and stops the event, and pressing
+    Tab while rebinding still records Tab rather than walking the sheet.
+    Every sheet's own Escape is untouched, and so is the ladder.
 - Focus restore vs. `editing`. If a sheet was opened while the caret was
   in the document, restoring focus re-enters the editor and flips the
   `editing` guard (`App.tsx:5157-5167`), muting app shortcuts again.
   Leaning yes, that is correct - you were writing, you resume writing -
   but it is a behaviour change worth deciding on purpose, and it interacts
   with [`esc-unfocuses-the-editor.md`](esc-unfocuses-the-editor.md).
-  - Answer:
+  - Answer: yes, restore into the editor. You were writing; you resume
+    writing, and `editing` going back to true is the honest report of where
+    the caret is. One guard came out of building it, though: the restore is
+    skipped when something else has *already* claimed focus on the way out.
+    A sheet frequently closes by opening the next thing — the new-file sheet
+    hands the caret to a fresh document — and dragging focus back to where
+    the last sheet started would undo that. So: restore if the remembered
+    element still exists *and* focus is loose (on `<body>`, or still inside
+    the closing box).
 - Is the tree's roving focus one composite including repo headers and
   workspace rows, or per-repo? Repo rows (`FileTree.tsx:1083-1097`) are
   peers of the dirs beneath them in the DOM; the tree pattern says one
   widget, but the workspace affordances hanging off repos may want to stay
   ordinary tab stops. Leaning one widget, with the workspace buttons left
   outside it.
-  - Answer:
+  - Answer: one widget, as leaned. Every repository heading, workspace
+    heading, folder and file in the shelf is a `treeitem` carrying
+    `data-rove`, and the whole `.tree` is one tab stop; ← on a leaf climbs by
+    `data-level` rather than by DOM nesting, so the squashed folder rows
+    behave. The workspace affordances that are not rows — the filter box, the
+    "New workspace" button, the sign-in footer — are outside `.tree` and stay
+    ordinary tab stops, which is exactly the split that was wanted.
 - Where does "focus the tree" / "focus the tabs" live? Roving focus helps
   once you are *in* a widget; getting there still needs a route. ⌘B opens
   the tree but does not focus it (`App.tsx:5195-5205`). Leaning: ⌘B also
@@ -184,4 +207,14 @@ one, but it is a change users will feel, and the changelog should say so.
   commands in the registry (they are unconditional, so they are registry
   material, unlike the arrows). Not blocking - the guide's "route to the
   widgets" step picks one in the diff.
-  - Answer:
+  - Answer: both, but ⌘B took the smaller half of the leaning. ⌘B on a
+    hidden tree now opens it *and* goes there — a key that reveals a panel
+    and leaves you where you were is half a route. ⌘B on a visible tree
+    still closes it, from inside or out: making it mean "focus" from outside
+    and "close" from inside would take away the one thing everybody already
+    knows it does, and a keystroke whose meaning depends on where focus
+    happens to be is the surprise this plan is trying to remove. The way
+    *in* to an already-open tree is its own registry command instead —
+    `focus.tree` on ⌘K ⌘E, and `focus.tabs` on ⌘K ⌘T for the strip of
+    whichever pane has focus. Both are unconditional, so they are registry
+    material; the arrows inside the widgets are not, and stay local.

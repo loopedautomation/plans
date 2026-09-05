@@ -90,6 +90,13 @@ export const DEFAULT_KEYS: KeymapEntry[] = [
   { id: "reload", group: "Plans", label: "Reload everything from disk", keys: "mod+k r" },
   { id: "chat.new", group: "Panels", label: "New chat", keys: "mod+k n" },
   { id: "split.swap", group: "Go", label: "Swap the panes", keys: "mod+k s" },
+  /*
+   * The route into the widgets that manage their own focus. The arrows *in*
+   * a tree or a tab strip are the most contextual keys there are and stay
+   * widget-local; "put me in the tree" is unconditional, so it belongs here.
+   */
+  { id: "focus.tree", group: "Go", label: "Focus the file tree", keys: "mod+k mod+e" },
+  { id: "focus.tabs", group: "Go", label: "Focus the tab strip", keys: "mod+k mod+t" },
 ];
 
 // A Mac writes its modifiers as glyphs and runs them together; everywhere
@@ -160,10 +167,15 @@ export const CONTEXTUAL_KEYS: { keys: string; label: string; note: string }[] = 
   {
     keys: "mod+b",
     label: "File tree",
-    note: `bold while writing; ${renderKeys(`mod+${EXTRA}+b`)} always toggles the tree`,
+    note: `opens it and goes there; bold while writing; ${renderKeys(`mod+${EXTRA}+b`)} always toggles the tree`,
   },
   { keys: "mod+backspace", label: "Delete file", note: "only from the tree" },
   { keys: "escape", label: "Back out", note: "leaves the editor, then zen or settings" },
+  // The widget-local keys: arrows inside a thing that has focus. Not in the
+  // table for the same reason Escape is not — their meaning is the widget's.
+  { keys: "arrowup", label: "Move in the tree, the strip, a menu", note: "↓ ← → too; ← and → also close and open a folder" },
+  { keys: "shift+f10", label: "Menu for the focused row or tab", note: "or the menu key" },
+  { keys: "mod+arrowleft", label: "Move a focused tab along its strip", note: "→ the other way" },
 ];
 
 /**
