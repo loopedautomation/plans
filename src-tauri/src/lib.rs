@@ -1995,6 +1995,23 @@ fn tiling_desktop(current: Option<&str>, hyprland: bool, sway: bool, niri: bool)
     })
 }
 
+/// Whether this copy is able to replace itself.
+///
+/// Tauri's updater on Linux knows how to replace an AppImage and nothing else,
+/// and it finds the file it is running from through `APPIMAGE`, which only the
+/// AppImage runtime sets. Installed from the `.deb` or the AUR package the
+/// binary sits in `/usr/bin`, owned by root and managed by pacman or dpkg;
+/// from `cargo run` there is no bundle at all. In every one of those cases the
+/// check ends in a failure the reader can do nothing about, so it is better
+/// not to ask. macOS and Windows replace themselves either way.
+#[tauri::command]
+fn updates_possible() -> bool {
+    if !cfg!(target_os = "linux") {
+        return true;
+    }
+    std::env::var_os("APPIMAGE").is_some()
+}
+
 /// Does this desktop act on a minimise or a maximise? Only Linux can answer
 /// no; macOS never draws these buttons and Windows always honours them.
 #[tauri::command]
@@ -2083,6 +2100,7 @@ pub fn run() {
             cli_open_path,
             install_cli,
             window_buttons_useful,
+            updates_possible,
             cli_status,
             list_plans,
             list_dirs,

@@ -1014,6 +1014,16 @@ export default function App() {
   const lookForUpdate = useCallback(
     async (asked: boolean) => {
       try {
+        // A copy that cannot replace itself has nothing to gain from asking:
+        // on Linux the updater only knows how to rewrite an AppImage, and a
+        // package-managed install is pacman's or dpkg's to update. Said out
+        // loud only when the reader pressed the button, since a silent button
+        // reads as a broken one.
+        if (!(await api.updatesPossible())) {
+          if (asked)
+            notify("This copy is managed by your package manager — update it from there");
+          return;
+        }
         const found = await checkForUpdate();
         if (found) setUpdate(found);
         else if (asked)

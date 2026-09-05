@@ -55,3 +55,11 @@ covers the app with the two numbers and what they need to be. It covers rather
 than replaces, so nothing unmounts and no edit is lost on the way past the
 threshold, and it keeps the drag region and the close button — on a frameless
 window, a too-small screen without them is a trap.
+
+The app stops asking for updates it cannot take. Tauri's updater on Linux
+knows how to replace an AppImage and nothing else, and it finds the file
+through `APPIMAGE`, which only the AppImage runtime sets — so a copy installed
+from the `.deb` or the AUR package was checking a feed it could never act on,
+and would have failed against a root-owned `/usr/bin/plans` if it had tried.
+Those installs skip the check, and say why when the reader presses the button
+rather than going quiet.

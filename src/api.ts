@@ -158,6 +158,12 @@ export const api = {
    */
   windowButtonsUseful: () => invoke<boolean>("window_buttons_useful"),
 
+  /**
+   * Whether this copy can replace itself. False for a Linux install that is
+   * managed by a package manager rather than the AppImage runtime.
+   */
+  updatesPossible: () => invoke<boolean>("updates_possible"),
+
   /** Which of the agents the app knows about can be started here. */
   agentList: () => invoke<AgentFound[]>("agent_list"),
 
