@@ -54,6 +54,7 @@ import {
 } from "./keys";
 import { IS_MAC } from "./platform";
 import { WindowControls } from "./WindowControls";
+import { MIN_H, MIN_W, TooSmall } from "./TooSmall";
 import { KeyboardPage } from "./KeyboardPage";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { SplitPane } from "./SplitPane";
@@ -582,6 +583,20 @@ export default function App() {
   const [pageMenu, setPageMenu] = useState<null | { x: number; y: number; selection: string }>(
     null,
   );
+  /**
+   * The window's own size, watched so the app can say when it has been made
+   * too small to draw. Only the two numbers are kept: `TooSmall` is the only
+   * reader, and re-rendering the page on every resize frame to feed it would
+   * cost more than the panel it draws.
+   */
+  const [winSize, setWinSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  useEffect(() => {
+    const onResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   useEffect(() => {
     if (!pageMenu) return;
     const close = () => setPageMenu(null);
@@ -5870,6 +5885,10 @@ export default function App() {
             stay put on a Mac. */}
         {!IS_MAC && <WindowControls />}
       </header>
+
+      {(winSize.w < MIN_W || winSize.h < MIN_H) && (
+        <TooSmall w={winSize.w} h={winSize.h} />
+      )}
 
       {/* --- body ---------------------------------------------------------- */}
       <div

@@ -252,9 +252,23 @@ when that folder is not on your PATH.
 
 ### Arch, and the AUR
 
-`packaging/aur/PKGBUILD` is a template for `looped-plans-bin`: it fetches the
-release's AppImage, puts it under `/opt/looped-plans`, links `plans` into
-`/usr/bin`, and installs a desktop entry and the icon. It is a template
+`packaging/aur/PKGBUILD` is a template for `looped-plans-bin`. It takes the
+payload out of the release's `.deb` — the binary, the icons and the desktop
+entry — and installs it where Arch expects, so `pacman -Syu` or an Omarchy
+update is the update path.
+
+It is deliberately not the AppImage. The AppImage bundles Ubuntu 22.04's
+WebKitGTK, GTK and glib, and that combination cannot create an EGL display
+against Arch's Mesa: the window opens and the webview never paints, with
+`Could not create default EGL display: EGL_BAD_PARAMETER` on stderr. None of
+the WebKitGTK variables above rescue it, because the fault is the bundled
+libraries rather than the renderer. The `.deb` carries the same binary without
+them, so it links against the system's own and works. Until the AppImage is
+fixed or dropped, Arch installs should come from the package.
+
+An installed copy cannot update itself: `/usr/bin/plans` is root-owned and the
+updater would have to rewrite it. Set Settings → Updates to "off" after
+installing and let the package manager do that job. It is a template
 rather than a package because publishing to the AUR needs an account and a
 maintainer, and that is a decision rather than a build step. To use it,
 bump `pkgver`, run `updpkgsums`, and `makepkg -si`; to publish it, push it to
@@ -285,7 +299,7 @@ builds and nothing more:
 - Install the previous release, then take the update to this one. The
   AppImage replaces itself and relaunches.
 - `makepkg -si` from the PKGBUILD template on an Arch machine; the launcher
-  shows the app with its icon.
+  shows the app with its icon, and `plans` runs from a terminal.
 
 Not in v1: Flatpak and Snap, which have their own updater stories; ARM
 Linux; a maintained AUR package; Wayland-native window decorations, which

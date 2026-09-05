@@ -1,63 +1,59 @@
 # Maintainer: (unclaimed - see RELEASES.md, "Linux")
 #
-# A template for the AUR package `looped-plans-bin`. It fetches the AppImage
-# from a GitHub release, drops it under /opt, and installs a desktop entry
-# and an icon so the launcher finds it. The AppImage keeps its own updater,
-# so a copy installed this way will offer to update itself; whether that is
-# wanted from a pacman-managed file is a question for whoever maintains the
-# package, and the usual answer is to run `plans` with the updater left on
-# and let pacman catch up at the next bump.
+# A template for the AUR package `looped-plans-bin`. It takes the payload out
+# of the release's `.deb` — the binary, the icons and the desktop entry — and
+# installs it the way Arch expects, so `pacman -Syu` (or an Omarchy update) is
+# the update path. There is no auto-update from a pacman-managed file: the
+# binary lives under /usr/bin and the app cannot rewrite it without root, so
+# set Settings -> Updates to "off" after installing and let the package
+# manager do the work it is there to do.
 #
-# Publishing this needs an AUR account and a maintainer; the repository
-# holds the template so a release can fill it in. Update pkgver and the
-# sha256sums (`updpkgsums` does both) and push to the AUR's git remote.
+# Not the AppImage, deliberately. The AppImage carries Ubuntu 22.04's
+# WebKitGTK, GTK and glib, and that combination fails to create an EGL display
+# against Arch's Mesa: the window opens and the webview never paints. The
+# `.deb` payload is the same binary without the bundled libraries, so it links
+# against the system's own and works. RELEASES.md has the detail.
+#
+# Publishing this needs an AUR account and a maintainer; the repository holds
+# the template so a release can fill it in. Update pkgver and the sha256sums
+# (`updpkgsums` does both) and push to the AUR's git remote.
 
 pkgname=looped-plans-bin
 _appname=looped-plans
-pkgver=0.10.0
+pkgver=0.11.0
 pkgrel=1
 pkgdesc="A desktop app for reading and editing the plans in your local git repositories"
 arch=('x86_64')
 url="https://plans.ratulmaharaj.com"
 # The repository has no LICENSE file yet; name the licence here when it does.
 license=('custom')
-depends=('fuse2' 'webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
+# What the binary actually links against, less the AppImage's fuse2.
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
 optdepends=(
+  'git: reading and committing the repositories the app opens'
   'ghostty: a terminal for "Open in terminal"'
   'alacritty: a terminal for "Open in terminal"'
   'gnome-keyring: keep the workspace sign-in in the keychain rather than a file'
 )
 provides=('looped-plans')
 conflicts=('looped-plans')
-options=(!strip)
+options=(!strip !debug)
 _release="https://github.com/loopedautomation/plans/releases/download/v${pkgver}"
-_raw="https://raw.githubusercontent.com/loopedautomation/plans/v${pkgver}"
-source=(
-  "${_appname}-${pkgver}.AppImage::${_release}/Looped.Plans_${pkgver}_amd64.AppImage"
-  "${_appname}-${pkgver}.png::${_raw}/src-tauri/icons/128x128.png"
-)
-noextract=("${_appname}-${pkgver}.AppImage")
-sha256sums=('SKIP' 'SKIP')
+source=("${_appname}-${pkgver}.deb::${_release}/Looped.Plans_${pkgver}_amd64.deb")
+noextract=("${_appname}-${pkgver}.deb")
+sha256sums=('SKIP')
 
 package() {
-  install -Dm755 "${srcdir}/${_appname}-${pkgver}.AppImage" \
-    "${pkgdir}/opt/${_appname}/${_appname}.AppImage"
-  install -d "${pkgdir}/usr/bin"
-  ln -s "/opt/${_appname}/${_appname}.AppImage" "${pkgdir}/usr/bin/plans"
+  # `bsdtar` is in base-devel through libarchive, and reads both the outer `ar`
+  # archive and the compressed payload inside it.
+  bsdtar -xOf "${srcdir}/${_appname}-${pkgver}.deb" data.tar.gz \
+    | bsdtar -xzf - -C "${pkgdir}"
 
-  install -Dm644 "${srcdir}/${_appname}-${pkgver}.png" \
-    "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${_appname}.png"
-  install -d "${pkgdir}/usr/share/applications"
-  cat > "${pkgdir}/usr/share/applications/${_appname}.desktop" <<DESKTOP
-[Desktop Entry]
-Type=Application
-Name=Looped Plans
-Comment=${pkgdesc}
-Exec=/opt/${_appname}/${_appname}.AppImage %F
-Icon=${_appname}
-Terminal=false
-Categories=Development;TextEditor;
-MimeType=text/markdown;inode/directory;
-StartupWMClass=Looped Plans
-DESKTOP
+  # The .deb ships the desktop entry as "Looped Plans.desktop". A space in the
+  # filename is legal and works, but every other entry on the system is
+  # lowercase and unspaced, so rename it rather than leave the odd one out.
+  if [ -f "${pkgdir}/usr/share/applications/Looped Plans.desktop" ]; then
+    mv "${pkgdir}/usr/share/applications/Looped Plans.desktop" \
+       "${pkgdir}/usr/share/applications/${_appname}.desktop"
+  fi
 }

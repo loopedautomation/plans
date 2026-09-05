@@ -1965,6 +1965,51 @@ fn linux_webkit_env() {
     }
 }
 
+/// The compositors that place and size windows themselves, matched against
+/// `XDG_CURRENT_DESKTOP`. Lowercase; the variable is compared case-folded
+/// because desktops disagree about capitalisation ("Hyprland", "sway").
+// Compiled on every host so the tests below run on a Mac; only Linux calls it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const TILING_DESKTOPS: [&str; 9] = [
+    "hyprland", "sway", "river", "niri", "i3", "bspwm", "awesome", "qtile", "xmonad",
+];
+
+/// Whether minimise and maximise mean anything on this desktop.
+///
+/// A tiling compositor owns the geometry: Hyprland has no concept of a
+/// minimised window, and a maximise request is ignored while the window is
+/// tiled. Both requests succeed and nothing happens, which is worse than not
+/// offering them — so the page asks, and draws only close where the answer is
+/// no. Pure, so the table can be tested anywhere.
+// Compiled on every host so the tests below run on a Mac; only Linux calls it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn tiling_desktop(current: Option<&str>, hyprland: bool, sway: bool, niri: bool) -> bool {
+    if hyprland || sway || niri {
+        return true;
+    }
+    // `XDG_CURRENT_DESKTOP` is colon-separated when a session sets more than
+    // one name, and any of them naming a tiling compositor is enough.
+    current.is_some_and(|v| {
+        v.split(':')
+            .any(|part| TILING_DESKTOPS.contains(&part.trim().to_ascii_lowercase().as_str()))
+    })
+}
+
+/// Does this desktop act on a minimise or a maximise? Only Linux can answer
+/// no; macOS never draws these buttons and Windows always honours them.
+#[tauri::command]
+fn window_buttons_useful() -> bool {
+    if !cfg!(target_os = "linux") {
+        return true;
+    }
+    !tiling_desktop(
+        std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
+        std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some(),
+        std::env::var_os("SWAYSOCK").is_some(),
+        std::env::var_os("NIRI_SOCKET").is_some(),
+    )
+}
+
 pub fn run() {
     #[cfg(target_os = "linux")]
     linux_webkit_env();
@@ -2037,6 +2082,7 @@ pub fn run() {
             open_repo,
             cli_open_path,
             install_cli,
+            window_buttons_useful,
             cli_status,
             list_plans,
             list_dirs,

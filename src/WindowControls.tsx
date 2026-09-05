@@ -14,6 +14,7 @@
  */
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { api } from "./api";
 
 /** The current window, or null in a browser, where these buttons do nothing. */
 function currentWindow() {
@@ -29,6 +30,21 @@ export function WindowControls() {
   // "restore" once a window is maximised, and the difference is the only
   // feedback the button has.
   const [maximized, setMaximized] = useState(false);
+
+  /**
+   * Whether to draw minimise and maximise at all. A tiling compositor places
+   * windows itself and answers both requests by doing nothing, so on those
+   * desktops the only honest button is close. Assumed true until the shell
+   * says otherwise: the buttons appearing a frame late is less jarring than
+   * three buttons collapsing to one.
+   */
+  const [useful, setUseful] = useState(true);
+  useEffect(() => {
+    api
+      .windowButtonsUseful()
+      .then(setUseful)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const w = currentWindow();
@@ -54,32 +70,36 @@ export function WindowControls() {
 
   return (
     <span className="win-controls">
-      <button
-        className="win-btn"
-        onClick={() => currentWindow()?.minimize()}
-        title="Minimise"
-        aria-label="Minimise"
-      >
-        <svg viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M0 5h10" />
-        </svg>
-      </button>
-      <button
-        className="win-btn"
-        onClick={() => currentWindow()?.toggleMaximize()}
-        title={maximized ? "Restore" : "Maximise"}
-        aria-label={maximized ? "Restore" : "Maximise"}
-      >
-        {maximized ? (
-          <svg viewBox="0 0 10 10" aria-hidden="true">
-            <path d="M2.5 0.5h7v7M0.5 2.5h7v7h-7z" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 10 10" aria-hidden="true">
-            <path d="M0.5 0.5h9v9h-9z" />
-          </svg>
-        )}
-      </button>
+      {useful && (
+        <>
+          <button
+            className="win-btn"
+            onClick={() => currentWindow()?.minimize()}
+            title="Minimise"
+            aria-label="Minimise"
+          >
+            <svg viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M0 5h10" />
+            </svg>
+          </button>
+          <button
+            className="win-btn"
+            onClick={() => currentWindow()?.toggleMaximize()}
+            title={maximized ? "Restore" : "Maximise"}
+            aria-label={maximized ? "Restore" : "Maximise"}
+          >
+            {maximized ? (
+              <svg viewBox="0 0 10 10" aria-hidden="true">
+                <path d="M2.5 0.5h7v7M0.5 2.5h7v7h-7z" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 10 10" aria-hidden="true">
+                <path d="M0.5 0.5h9v9h-9z" />
+              </svg>
+            )}
+          </button>
+        </>
+      )}
       <button
         className="win-btn close"
         onClick={() => currentWindow()?.close()}

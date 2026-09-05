@@ -3316,3 +3316,59 @@ body.tree-drag .tabs.drop-hot {
 
 /* Faces beside the open file's name. */
 .page-head > .presence { margin-left: 10px; }
+
+/* --- the window made too small ------------------------------------------- */
+
+/* Over the app, not instead of it: see `TooSmall`. Fixed rather than absolute
+   so it covers the rail and the status bar too — at this size neither of them
+   is drawing anything worth looking at. */
+.too-small {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+  font-family: var(--mono);
+  text-align: center;
+  user-select: none;
+}
+
+/* The one thing that must stay reachable when the window has no frame and no
+   room for the rail: a way to close it. */
+.too-small-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+}
+
+.too-small-body { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+
+.too-small-title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* The measurement, set larger than the words: it is the thing that changes as
+   the window is dragged, so it is the thing to watch. */
+.too-small-size {
+  margin: 0;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+/* Which of the two numbers is the one still too small. */
+.too-small-size .short { color: var(--ink); }
+
+.too-small-need {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}

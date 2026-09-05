@@ -39,3 +39,19 @@ sheet. The empty page, the status bar, the settings hints, the palette and the
 tooltips all had ⌘ written into them by hand, so Linux and Windows were told to
 press a key their keyboards do not have. They render through the keymap now, and
 `Enter` has a glyph so ⌘⏎ still reads as ⌘⏎ on a Mac.
+
+Minimise and maximise are only drawn where they do something. A tiling
+compositor places windows itself — Hyprland has no concept of a minimised
+window, and answers a maximise request by ignoring it — so both buttons
+succeeded and nothing happened. The shell is asked which desktop this is, and
+where the answer is a tiling one the rail draws close alone. Floating desktops
+keep all three, which matters more now that there is no system titlebar to fall
+back on.
+
+And a window dragged too small says so rather than drawing a broken page. The
+rail is the narrowest thing in the app that cannot wrap and it gives out around
+520px; below that, or below a height with too little page left to read, a panel
+covers the app with the two numbers and what they need to be. It covers rather
+than replaces, so nothing unmounts and no edit is lost on the way past the
+threshold, and it keeps the drag region and the close button — on a frameless
+window, a too-small screen without them is a trap.

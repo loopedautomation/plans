@@ -152,6 +152,12 @@ export const api = {
   /** Where the `plans` script is, if it is there at all. */
   cliStatus: () => invoke<CliStatus | null>("cli_status"),
 
+  /**
+   * Whether minimise and maximise do anything on this desktop. False under a
+   * tiling compositor, which owns the geometry and ignores both.
+   */
+  windowButtonsUseful: () => invoke<boolean>("window_buttons_useful"),
+
   /** Which of the agents the app knows about can be started here. */
   agentList: () => invoke<AgentFound[]>("agent_list"),
 
