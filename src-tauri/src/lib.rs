@@ -547,6 +547,26 @@ pub struct Hit {
     line: u32,
     /// The line itself, trimmed and clipped: enough to recognise, not to read.
     text: String,
+    /// How many further matches this file holds that are not in the list.
+    ///
+    /// The same number on every hit of a file, so a caller that groups them
+    /// can read it off whichever hit it happens to hold. Zero means the file
+    /// is fully represented — which is the honest thing a capped search owes
+    /// its reader, since a list that silently stops looks like a list that
+    /// found everything.
+    more: u32,
+}
+
+#[derive(Serialize)]
+pub struct Search {
+    hits: Vec<Hit>,
+    /// Whether the global cap ended the search with matches still out there.
+    ///
+    /// Reported rather than inferred from `hits.len() == limit`: a repository
+    /// whose matches come to exactly the limit is fully represented, and a
+    /// caller counting results would call that list truncated and print "60+"
+    /// over a complete search. Only the search itself knows the difference.
+    capped: bool,
 }
 
 /// Write an image into the repository and return its path, relative to the
@@ -628,6 +648,17 @@ fn link_from(doc: &str, target: &str) -> String {
 /// answers the other question — "where did I write about X" — which for notes
 /// is the one asked more often. Plain substring, case-insensitive: a regular
 /// expression is a different feature, and most searches are neither.
+///
+/// Two budgets, not one. `limit` is the whole search's; `per_file` is what any
+/// single file may take of it. With only the global cap, one hit-dense file ate
+/// the entire budget and every later file went unread — sixty lines from one
+/// file dressed up as a search of the repository. The per-file cap spreads the
+/// budget instead, and `Hit::more` says out loud what it withheld.
+///
+/// Results come back sorted by path, then line: the walker is parallel, so
+/// without this the same query could return the same hits in a different order
+/// twice running, and a caller grouping by file would see a file's hits split
+/// into several groups.
 #[tauri::command]
 async fn search_plans(
     repo: String,
@@ -635,32 +666,69 @@ async fn search_plans(
     include_ignored: bool,
     only_markdown: bool,
     limit: u32,
-) -> R<Vec<Hit>> {
+    per_file: Option<u32>,
+) -> R<Search> {
     let needle = query.trim().to_lowercase();
     if needle.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Search {
+            hits: Vec::new(),
+            capped: false,
+        });
     }
     let root = PathBuf::from(&repo);
     let files = walk_files(&root, include_ignored, only_markdown);
-    let cap = limit.max(1) as usize;
+    Ok(search_in(
+        &root,
+        &files,
+        &needle,
+        limit.max(1) as usize,
+        per_file.unwrap_or(5).max(1) as usize,
+    ))
+}
 
-    let mut hits = Vec::new();
+/// The reading half of `search_plans`, apart from the walk that feeds it.
+///
+/// Separate so the two caps and the `more` count can be tested against a
+/// directory of known files without standing up a Tauri app or an async
+/// runtime — the same reason `safe_join` is its own function.
+fn search_in(
+    root: &Path,
+    files: &[PlanFile],
+    needle: &str,
+    cap: usize,
+    per_file: usize,
+) -> Search {
+    let mut hits: Vec<Hit> = Vec::new();
+    let mut capped = false;
     for f in files {
-        if hits.len() >= cap {
-            break;
-        }
         let Ok(text) = std::fs::read_to_string(root.join(&f.rel_path)) else {
             continue;
         };
         // Skip the whole file cheaply when it cannot contain the term.
-        if !text.to_lowercase().contains(&needle) {
+        if !text.to_lowercase().contains(needle) {
             continue;
         }
+        // The cap is spent, and here is a file that would have contributed:
+        // that, and not a full-looking result list, is what "capped" means. The
+        // walk carries on past a full budget only until it meets this file, so
+        // in the worst case the search costs what an uncapped one would have —
+        // and only when the extra reading found nothing to withhold.
+        if hits.len() >= cap {
+            capped = true;
+            break;
+        }
+        let start = hits.len();
+        let mut kept = 0usize;
+        let mut total = 0u32;
         for (i, line) in text.lines().enumerate() {
-            if hits.len() >= cap {
-                break;
+            if !line.to_lowercase().contains(needle) {
+                continue;
             }
-            if !line.to_lowercase().contains(&needle) {
+            // Counting continues past both caps: "+n more" is only worth
+            // printing if the n is the true one, and the file is already read
+            // and lowercased by here.
+            total += 1;
+            if kept >= per_file || hits.len() >= cap {
                 continue;
             }
             let trimmed = line.trim();
@@ -673,10 +741,17 @@ async fn search_plans(
                 rel_path: f.rel_path.clone(),
                 line: i as u32 + 1,
                 text,
+                more: 0,
             });
+            kept += 1;
+        }
+        let more = total - kept as u32;
+        for h in &mut hits[start..] {
+            h.more = more;
         }
     }
-    Ok(hits)
+    hits.sort_by(|a, b| (&a.rel_path, a.line).cmp(&(&b.rel_path, b.line)));
+    Search { hits, capped }
 }
 
 /// Append a line of profiler output to a file.
@@ -2480,5 +2555,89 @@ mod tests {
         for dir in ["node_modules", "target", ".git", "dist"] {
             assert!(SKIP_DIRS.contains(&dir), "{dir} should be skipped");
         }
+    }
+
+    // --- searching inside files: two budgets, and an honest remainder -------
+
+    fn plan_file(rel: &str) -> PlanFile {
+        PlanFile {
+            rel_path: rel.to_string(),
+            name: rel.rsplit('/').next().unwrap_or(rel).to_string(),
+            dir: String::new(),
+            modified: 0,
+            status: None,
+        }
+    }
+
+    #[test]
+    fn a_dense_file_cannot_eat_the_whole_search() {
+        let dir = scratch_dir("search");
+        std::fs::create_dir_all(&dir).unwrap();
+        // Eight matches in the first file, one in the second. Under a single
+        // global cap of six the second file was never read at all.
+        let dense = "alpha\nfiller\n".repeat(8);
+        std::fs::write(dir.join("dense.md"), dense).unwrap();
+        std::fs::write(dir.join("thin.md"), "nothing\nalpha here\n").unwrap();
+
+        let files = [plan_file("dense.md"), plan_file("thin.md")];
+        let hits = search_in(&dir, &files, "alpha", 6, 5).hits;
+
+        // Five from the dense file, and the thin one still gets read.
+        let paths: Vec<&str> = hits.iter().map(|h| h.rel_path.as_str()).collect();
+        assert_eq!(paths.iter().filter(|p| **p == "dense.md").count(), 5);
+        assert_eq!(paths.last(), Some(&"thin.md"));
+        // Sorted by path then line, so a caller can group in one pass.
+        let lines: Vec<u32> = hits.iter().map(|h| h.line).collect();
+        assert_eq!(lines, [1, 3, 5, 7, 9, 2]);
+        // And it owns up to the three it did not return.
+        for h in hits.iter().filter(|h| h.rel_path == "dense.md") {
+            assert_eq!(h.more, 3);
+        }
+        assert_eq!(hits.last().unwrap().more, 0, "nothing held back");
+    }
+
+    #[test]
+    fn the_global_cap_still_holds_over_the_per_file_one() {
+        let dir = scratch_dir("search-cap");
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["a.md", "b.md", "c.md"] {
+            std::fs::write(dir.join(name), "alpha\nalpha\n").unwrap();
+        }
+        let files = [plan_file("a.md"), plan_file("b.md"), plan_file("c.md")];
+        // Room for two files' worth: the third contributes nothing, and the
+        // search says so rather than leaving the caller to guess from the count.
+        let found = search_in(&dir, &files, "alpha", 4, 5);
+        assert_eq!(found.hits.len(), 4);
+        assert!(found.hits.iter().all(|h| h.rel_path != "c.md"));
+        assert!(found.capped);
+    }
+
+    #[test]
+    fn a_search_that_exactly_fills_the_cap_is_not_capped() {
+        let dir = scratch_dir("search-exact");
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["a.md", "b.md"] {
+            std::fs::write(dir.join(name), "alpha\nalpha\n").unwrap();
+        }
+        // A third file that will be walked past but holds nothing.
+        std::fs::write(dir.join("c.md"), "beta\n").unwrap();
+        let files = [plan_file("a.md"), plan_file("b.md"), plan_file("c.md")];
+
+        // Four matches, a cap of four, and nothing withheld: a footer reading
+        // the length alone would print "4+" over a complete search.
+        let found = search_in(&dir, &files, "alpha", 4, 5);
+        assert_eq!(found.hits.len(), 4);
+        assert!(!found.capped);
+        assert!(found.hits.iter().all(|h| h.more == 0));
+    }
+
+    #[test]
+    fn matching_is_case_insensitive_and_the_line_is_trimmed() {
+        let dir = scratch_dir("search-case");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.md"), "   ALPHA and more   \n").unwrap();
+        let found = search_in(&dir, &[plan_file("a.md")], "alpha", 60, 5);
+        assert_eq!(found.hits.len(), 1);
+        assert_eq!(found.hits[0].text, "ALPHA and more");
     }
 }

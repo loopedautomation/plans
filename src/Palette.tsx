@@ -5,7 +5,7 @@
  * query opens with ">". Everything in Settings is reachable here, so the
  * palette is a second face on the same state rather than a separate feature.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { AgentFound, PlanFile, RepoInfo } from "./api";
 import type { HandoffKind } from "./agent";
 import { displayName } from "./FileTree";
@@ -17,6 +17,55 @@ import { EXTRA, renderKeys, type KeymapEntry } from "./keys";
 import { score } from "./score";
 import { commandName, track } from "./analytics";
 import type { Template } from "./templates";
+
+/** One line of one file, from the "*" mode's search, wherever it lives. */
+export type SearchHit = {
+  repoPath: string;
+  repoName: string;
+  relPath: string;
+  /** 1-based, as the editor counts. */
+  line: number;
+  text: string;
+  /** Further matches in this file that the per-file cap kept back. */
+  more: number;
+};
+
+/**
+ * A whole search: the merged hits, and whether any repository handed back a
+ * full quota — which means it stopped reading files, not that it ran out of
+ * matches. The find bar saturates its count the same way, for the same reason.
+ */
+export type SearchResult = { hits: SearchHit[]; capped: boolean };
+
+/** How many lines of context the preview pane shows around a hit. */
+const PREVIEW_LINES = 21;
+
+/**
+ * The matched text of a previewed line, marked where it matched.
+ *
+ * Literal and case-insensitive, because that is exactly what the search was —
+ * a preview that underlined something the search would not have found would
+ * be lying about which feature you are using.
+ */
+function mark(line: string, term: string) {
+  if (!term) return line;
+  const hay = line.toLowerCase();
+  const needle = term.toLowerCase();
+  const out: (string | ReactElement)[] = [];
+  let from = 0;
+  for (let i = hay.indexOf(needle, from); i !== -1; i = hay.indexOf(needle, from)) {
+    if (i > from) out.push(line.slice(from, i));
+    out.push(
+      <mark key={i} className="pv-mark">
+        {line.slice(i, i + needle.length)}
+      </mark>,
+    );
+    from = i + needle.length;
+  }
+  if (!out.length) return line;
+  if (from < line.length) out.push(line.slice(from));
+  return out;
+}
 
 export type Command = {
   id: string;
@@ -39,6 +88,8 @@ type Props = {
   open: boolean;
   /** True when opened straight into command mode (⌘⇧P). */
   commandMode: boolean;
+  /** True when opened straight into search-inside-files mode (⌘⇧F). */
+  textMode: boolean;
   onClose: () => void;
   /** Every open repo's markdown, so the palette reaches across all of them. */
   files: { repoPath: string; repoName: string; file: PlanFile }[];
@@ -64,13 +115,24 @@ type Props = {
   zen: boolean;
   onZen: () => void;
   onReload: () => void;
-  /** Search inside files, for the "*" mode. */
-  onSearch: (query: string) => Promise<{ relPath: string; line: number; text: string }[]>;
+  /**
+   * Search inside files, for the "*" mode.
+   *
+   * The fan-out across repositories happens on the other side of this: one
+   * call per open repository, merged, so a slow or broken repository costs its
+   * own results and nobody else's. The palette sees one promise, which is what
+   * lets the debounce's `live` guard cover the whole fan-out — a stale query's
+   * late repositories can never interleave into a newer query's list.
+   */
+  onSearch: (query: string) => Promise<SearchResult>;
+  /** The text of a file, for the preview pane. */
+  onReadFile: (repoPath: string, relPath: string) => Promise<string>;
   /** Open a hit with the find bar seeded: the query, and the line it was on. */
   onOpenAt: (repoPath: string, relPath: string, line: number, query: string) => void;
   /** ⌘F, as a command — a binding nobody can find is a binding nobody uses. */
   onFind: () => void;
-  searchRepo: string | null;
+  /** Reopen the palette in "*" mode, for the command and ⌘⇧F both. */
+  onSearchAll: () => void;
   onPerf: () => void;
   onCheckUpdates: () => void;
   onReleaseNotes: () => void;
@@ -198,6 +260,15 @@ function buildCommands(p: Props): Command[] {
       run: p.onFind,
     });
   }
+  // Its sibling across files. Unconditional where "find" is not: there is
+  // always something to search, even with nothing open.
+  add({
+    id: "search",
+    group: "Plans",
+    label: "Search inside every file",
+    terms: "global search grep contents across repositories telescope",
+    run: p.onSearchAll,
+  });
   add({
     id: "reload",
     group: "Plans",
@@ -729,6 +800,16 @@ function buildCommands(p: Props): Command[] {
     run: () => set({ chatScope: s.chatScope === "all" ? "repo" : "all" }),
   });
 
+  // Its counterpart for "*". Same shape, opposite default: see `searchScope`.
+  add({
+    id: "searchScope",
+    group: "Plans",
+    label: "File search scope",
+    value: s.searchScope === "all" ? "every repository" : "this repository",
+    terms: "palette star contents scope everywhere across repositories global",
+    run: () => set({ searchScope: s.searchScope === "all" ? "repo" : "all" }),
+  });
+
   add({
     id: "split",
     group: "Go",
@@ -801,7 +882,7 @@ function buildCommands(p: Props): Command[] {
 }
 
 export function Palette(props: Props) {
-  const { open, commandMode, onClose } = props;
+  const { open, commandMode, textMode, onClose } = props;
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -810,10 +891,10 @@ export function Palette(props: Props) {
   // Each opening starts clean, in whichever mode the shortcut asked for.
   useEffect(() => {
     if (open) {
-      setQ(commandMode ? ">" : "");
+      setQ(commandMode ? ">" : textMode ? "*" : "");
       setSel(0);
     }
-  }, [open, commandMode]);
+  }, [open, commandMode, textMode]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -848,11 +929,12 @@ export function Palette(props: Props) {
   /**
    * Text search runs in Rust, so it is debounced rather than run per keystroke.
    */
-  const [hits, setHits] = useState<{ relPath: string; line: number; text: string }[]>([]);
+  const [found, setFound] = useState<SearchResult>({ hits: [], capped: false });
+  const hits = found.hits;
   const [searching, setSearching] = useState(false);
   useEffect(() => {
     if (!isText || term.length < 2) {
-      setHits([]);
+      setFound({ hits: [], capped: false });
       return;
     }
     let live = true;
@@ -860,8 +942,8 @@ export function Palette(props: Props) {
     const t = setTimeout(() => {
       void props
         .onSearch(term)
-        .then((found) => live && setHits(found))
-        .catch(() => live && setHits([]))
+        .then((r) => live && setFound(r))
+        .catch(() => live && setFound({ hits: [], capped: false }))
         .finally(() => live && setSearching(false));
     }, 160);
     return () => {
@@ -869,11 +951,26 @@ export function Palette(props: Props) {
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isText, term, props.settings.showAllFiles]);
+  }, [isText, term, props.settings.showAllFiles, props.settings.searchScope]);
 
+  /**
+   * A hit row carries where it points, so the preview can follow the selection
+   * without a second lookup into the hit list.
+   */
+  type At = { repoPath: string; relPath: string; line: number };
   type Row =
     | { kind: "file"; key: string; label: string; sub: string; run: () => void }
-    | { kind: "cmd"; key: string; label: string; sub: string; value?: string; run: () => void };
+    | { kind: "cmd"; key: string; label: string; sub: string; value?: string; run: () => void }
+    | {
+        /** A file's heading in "*" mode; "hit" is one line under it. */
+        kind: "head" | "hit";
+        key: string;
+        label: string;
+        sub: string;
+        value?: string;
+        at: At;
+        run: () => void;
+      };
 
   const rows = useMemo<Row[]>(() => {
     if (isChat) {
@@ -930,13 +1027,51 @@ export function Palette(props: Props) {
         }));
     }
     if (isText) {
-      return hits.map((h, i) => ({
-        kind: "file" as const,
-        key: `${h.relPath}:${h.line}:${i}`,
-        label: h.text,
-        sub: `${h.relPath}:${h.line}`,
-        run: () => props.searchRepo && props.onOpenAt(props.searchRepo, h.relPath, h.line, term),
-      }));
+      /*
+       * Grouped under the file they came from, the way the tree teaches paths
+       * — a flat list of lines makes ten hits in one file look like ten
+       * findings, and hides that they were all the same paragraph. Grouping
+       * also settles what Enter means without a second rule: on a line, open
+       * there; on a heading, open at the file's first hit.
+       *
+       * The hits arrive sorted by path within each repository and merged in
+       * repository order, so a single pass groups them.
+       */
+      const out: Row[] = [];
+      const shown = new Map<string, number>();
+      for (const h of hits) {
+        const where = `${h.repoPath}::${h.relPath}`;
+        shown.set(where, (shown.get(where) ?? 0) + 1);
+      }
+      let group = "";
+      for (const h of hits) {
+        const where = `${h.repoPath}::${h.relPath}`;
+        const at = { repoPath: h.repoPath, relPath: h.relPath, line: h.line };
+        if (where !== group) {
+          group = where;
+          const inFile = shown.get(where) ?? 1;
+          out.push({
+            kind: "head",
+            key: `head.${where}`,
+            // Repositories are named on the heading whenever more than one is
+            // open, exactly as file mode labels them — an unlabelled path is
+            // ambiguous the moment two repositories both have a README.
+            label: props.repos.length > 1 ? `${h.repoName}/${h.relPath}` : h.relPath,
+            sub: h.more > 0 ? `${inFile} shown · +${h.more} more` : `${inFile}`,
+            at,
+            run: () => props.onOpenAt(h.repoPath, h.relPath, h.line, term),
+          });
+        }
+        out.push({
+          kind: "hit",
+          key: `hit.${where}:${h.line}`,
+          label: h.text,
+          sub: `${h.line}`,
+          at,
+          run: () => props.onOpenAt(h.repoPath, h.relPath, h.line, term),
+        });
+      }
+      return out;
     }
     if (isCmd) {
       return commands
@@ -985,9 +1120,80 @@ export function Palette(props: Props) {
     props.settings.chatScope,
     props.running,
     props.activeRepoPath,
+    props.repos.length,
   ]);
 
   useEffect(() => setSel(0), [q]);
+
+  /*
+   * The preview pane.
+   *
+   * A trimmed 160-character line tells you a match happened, not whether it
+   * was the one you meant — that is the trip to the file the preview saves.
+   * It is deliberately not an editor: the raw lines around the hit, in a
+   * <pre>, so line numbers say what the hit said and the matched text can be
+   * marked exactly where it is. Mounting Milkdown or CodeMirror per
+   * arrow-keystroke would cost orders of magnitude more for a picture the
+   * reader looks at for half a second.
+   *
+   * Files are cached for the life of one palette opening, so arrowing through
+   * a file's hits reads it once, and the fetch is debounced so holding ↓ does
+   * not queue a read per row passed through.
+   */
+  const cache = useRef(new Map<string, string>());
+  useEffect(() => {
+    if (!open) cache.current.clear();
+  }, [open]);
+
+  const selected = rows[sel];
+  const at: At | undefined =
+    selected && (selected.kind === "head" || selected.kind === "hit") ? selected.at : undefined;
+  const [preview, setPreview] = useState<{ key: string; text: string } | null>(null);
+  const previewKey = at ? `${at.repoPath}::${at.relPath}` : "";
+  useEffect(() => {
+    if (!previewKey) {
+      setPreview(null);
+      return;
+    }
+    const cached = cache.current.get(previewKey);
+    if (cached !== undefined) {
+      setPreview({ key: previewKey, text: cached });
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      const [repoPath, relPath] = previewKey.split("::");
+      void props
+        .onReadFile(repoPath, relPath)
+        .then((text) => {
+          cache.current.set(previewKey, text);
+          if (live) setPreview({ key: previewKey, text });
+        })
+        // A file that cannot be read previews as nothing, never as an error
+        // sheet: the list behind it is still a perfectly good answer.
+        .catch(() => live && setPreview(null));
+    }, 90);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey]);
+
+  /** The window of lines around the hit, and where inside it the hit sits. */
+  const frame = useMemo(() => {
+    if (!at || !preview || preview.key !== previewKey) return null;
+    const lines = preview.text.split("\n");
+    const half = Math.floor(PREVIEW_LINES / 2);
+    // Clamped at both ends, so a hit near the top of a file still shows a full
+    // window rather than a half-empty one.
+    const start = Math.max(0, Math.min(at.line - 1 - half, lines.length - PREVIEW_LINES));
+    return {
+      first: Math.max(0, start) + 1,
+      lines: lines.slice(Math.max(0, start), Math.max(0, start) + PREVIEW_LINES),
+      hit: at.line,
+    };
+  }, [at, preview, previewKey]);
 
   // Keep the highlighted row in view when arrowing past the fold.
   useEffect(() => {
@@ -1031,7 +1237,12 @@ export function Palette(props: Props) {
 
   return (
     <div className="palette-scrim" onMouseDown={onClose}>
-      <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
+      {/* The second column is only worth its width once there is something to
+          preview: an empty "*" mode stays the box it always was. */}
+      <div
+        className={`palette ${isText && rows.length > 0 ? "wide" : ""}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <input
           ref={inputRef}
           className="palette-input"
@@ -1041,40 +1252,71 @@ export function Palette(props: Props) {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={onKey}
         />
-        <div className="palette-list" ref={listRef}>
-          {rows.length === 0 && (
-            <div className="palette-empty">
-              {isText && term.length < 2
-                ? "Type at least two characters."
-                : searching
-                  ? "Searching…"
-                  : "Nothing matches."}
+        {/* One row in "*" mode — results and preview side by side — and one
+            column everywhere else, where the wrapper is a no-op. */}
+        <div className="palette-body">
+          <div className="palette-list" ref={listRef}>
+            {rows.length === 0 && (
+              <div className="palette-empty">
+                {isText && term.length < 2
+                  ? "Type at least two characters."
+                  : searching
+                    ? "Searching…"
+                    : "Nothing matches."}
+              </div>
+            )}
+            {rows.map((r, i) => (
+              <button
+                key={r.key}
+                className={`palette-row ${r.kind === "head" ? "head" : ""} ${
+                  r.kind === "hit" ? "hit" : ""
+                } ${i === sel ? "on" : ""}`}
+                data-on={i === sel ? "1" : "0"}
+                onMouseMove={() => setSel(i)}
+                onClick={() => commit(i)}
+              >
+                <span className="palette-label">{r.label}</span>
+                <span className="palette-group">{r.sub}</span>
+                {"value" in r && r.value && <span className="palette-value">{r.value}</span>}
+                {r.kind === "file" &&
+                  r.key === `${props.activeRepoPath}::${props.activePath}` && (
+                    <span className="palette-value">open</span>
+                  )}
+              </button>
+            ))}
+          </div>
+          {isText && rows.length > 0 && (
+            <div className="palette-preview">
+              {frame ? (
+                <div className="pv">
+                  {frame.lines.map((line, i) => {
+                    const n = frame.first + i;
+                    return (
+                      <div key={n} className={`pv-line ${n === frame.hit ? "on" : ""}`}>
+                        <span className="pv-n">{n}</span>
+                        <span className="pv-t">{mark(line, term)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="palette-empty">Reading…</div>
+              )}
             </div>
           )}
-          {rows.map((r, i) => (
-            <button
-              key={r.key}
-              className={`palette-row ${i === sel ? "on" : ""}`}
-              data-on={i === sel ? "1" : "0"}
-              onMouseMove={() => setSel(i)}
-              onClick={() => commit(i)}
-            >
-              <span className="palette-label">{r.label}</span>
-              <span className="palette-group">{r.sub}</span>
-              {"value" in r && r.value && <span className="palette-value">{r.value}</span>}
-              {r.kind === "file" &&
-                r.key === `${props.activeRepoPath}::${props.activePath}` && (
-                  <span className="palette-value">open</span>
-                )}
-            </button>
-          ))}
         </div>
         <div className="palette-foot">
           <span>
             {isCmd
               ? "Commands"
               : isText
-                ? "Inside files"
+                ? // The count saturates rather than lying, but only when the
+                  // search itself says it stopped with matches still unread —
+                  // a repository whose hits come to exactly the quota found
+                  // this many, and "+" over that would be an invention.
+                  hits.length
+                  ? `Inside files · ${hits.length}${found.capped ? "+" : ""}`
+                  : "Inside files"
                 : isChat
                   ? props.settings.chatScope === "all"
                     ? "Chats · all repositories"
@@ -1096,6 +1338,27 @@ export function Palette(props: Props) {
                 }
               >
                 {props.settings.showAllFiles ? "all files" : "markdown"}
+              </button>
+            )}
+            {/* Which repositories "*" reaches. Only worth a chip when there is
+                more than one open — a switch between "all" and "the only one"
+                is a control that does nothing. */}
+            {isText && props.repos.length > 1 && (
+              <button
+                className="palette-scope"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() =>
+                  props.set({
+                    searchScope: props.settings.searchScope === "all" ? "repo" : "all",
+                  })
+                }
+                title={
+                  props.settings.searchScope === "all"
+                    ? "Searching every open repository — click for this one only"
+                    : "Searching this repository — click for every open one"
+                }
+              >
+                {props.settings.searchScope === "all" ? "all repos" : "this repo"}
               </button>
             )}
           </span>

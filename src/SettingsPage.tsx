@@ -503,6 +503,16 @@ export function SettingsPage({
             ]}
             onChange={(v) => onChange({ chatScope: v as "repo" | "all" })}
           />
+          <Choice
+            label="Palette search"
+            hint="How far * in the command palette reads. Across every repository, a hit is labelled with the one it belongs to; the palette's own chip switches this without coming here."
+            value={s.searchScope}
+            options={[
+              { value: "repo", label: "This repository" },
+              { value: "all", label: "Every repository" },
+            ]}
+            onChange={(v) => onChange({ searchScope: v as "repo" | "all" })}
+          />
           {s.chatPlace === "side" ? (
             <Slider
               label="Chat width"

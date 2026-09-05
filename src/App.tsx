@@ -58,7 +58,7 @@ import { MIN_H, MIN_W, TooSmall } from "./TooSmall";
 import { KeyboardPage } from "./KeyboardPage";
 import { ShortcutSheet } from "./ShortcutSheet";
 import { SplitPane } from "./SplitPane";
-import { Palette } from "./Palette";
+import { Palette, type SearchHit } from "./Palette";
 import { Dropdown } from "./Dropdown";
 import { FileTree, displayName, MARK_WORD, type Mark } from "./FileTree";
 import { FrontmatterSheet } from "./Frontmatter";
@@ -107,7 +107,7 @@ import { UpdateBanner } from "./UpdateBanner";
 import { RELEASE_SECTIONS, RELEASE_VERSION } from "./release-notes";
 import { checkForUpdate, installUpdate, isNewer, runningVersion, type Available } from "./update";
 import { PerfHud } from "./PerfHud";
-import { start, tick, trace } from "./perf";
+import { start, tick, timed, trace } from "./perf";
 import { confirmed } from "./confirm";
 import { authorSlug, htmlBridge, type HtmlEdit } from "./html-view";
 import {
@@ -140,6 +140,16 @@ import {
   track,
 } from "./analytics";
 import "./App.css";
+
+/**
+ * How many lines one repository may contribute to a "*" search.
+ *
+ * Per repository, not per search: the fan-out multiplies it, which is the
+ * right way round — narrowing the scope should not also make each repository
+ * answer in less detail. The per-file cap inside the command does the work of
+ * keeping any one file from eating the quota.
+ */
+const SEARCH_LIMIT = 60;
 
 const KEY = {
   repos: "plans.repos.v1",
@@ -398,7 +408,7 @@ export default function App() {
   /** The Keyboard page, which lives beside Settings and shows in its place. */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [epoch, setEpoch] = useState(0);
-  const [palette, setPalette] = useState<null | { commands: boolean }>(null);
+  const [palette, setPalette] = useState<null | { commands: boolean; text?: boolean }>(null);
   /** So the open path can call itself once after refreshing a stale tree. */
   const openFileRef = useRef<
     ((repo: string, path: string, retrying?: boolean) => Promise<void>) | null
@@ -4918,6 +4928,60 @@ export default function App() {
     }));
   }, [findEngine]);
 
+  /**
+   * The palette's "*" mode, fanned out across the repositories it is scoped to.
+   *
+   * One call per repository rather than one command that walks several: a repo
+   * on a slow disk, or one that has been unmounted underneath us, then costs
+   * only its own results — `allSettled`, so its failure is an absent group and
+   * not an empty search. The merge keeps repository order and each repository's
+   * own path/line sort, which is what lets the palette group in a single pass.
+   *
+   * `capped` is the honest half, and it comes from the command rather than from
+   * the length of what it returned: a repository whose matches happen to come
+   * to exactly the quota is fully represented, and counting alone would print
+   * "60+" over a search that withheld nothing. The footer says "+" only when a
+   * repository tells us it stopped with matches still out there.
+   *
+   * Timed, because the case for having no index rests on a measurement: the
+   * walker is ripgrep's and plans repositories are small, but the fan-out
+   * multiplies the work by the number of repositories open. `search:fan-out`
+   * in the profiler is what says whether that is still true on a real setup.
+   */
+  const searchFiles = useCallback(
+    (query: string) =>
+      timed("search:fan-out", async () => {
+        const scope =
+          settings.searchScope === "all" || !activeRepoPath
+            ? shownRepos
+            : shownRepos.filter((r) => r.path === activeRepoPath);
+        const found = await Promise.allSettled(
+          scope.map((r) =>
+            api
+              .searchPlans(
+                r.path,
+                query,
+                settings.showIgnored,
+                !settings.showAllFiles,
+                SEARCH_LIMIT,
+              )
+              .then((found) => ({ repo: r, ...found })),
+          ),
+        );
+        const hits: SearchHit[] = [];
+        let capped = false;
+        for (const r of found) {
+          if (r.status !== "fulfilled") continue;
+          if (r.value.capped) capped = true;
+          for (const h of r.value.hits) {
+            hits.push({ repoPath: r.value.repo.path, repoName: r.value.repo.name, ...h });
+          }
+        }
+        return { hits, capped };
+      }),
+    [shownRepos, activeRepoPath, settings.searchScope, settings.showIgnored, settings.showAllFiles],
+  );
+
   /** Runs the pending engine update now — Enter must not chase a stale query. */
   const flushFind = useRef<() => void>(() => {});
   useEffect(() => {
@@ -5062,6 +5126,7 @@ export default function App() {
         },
         new: newPlan,
         find: openFind,
+        search: () => setPalette({ commands: false, text: true }),
         // The convention every app that comments uses.
         comment: () => {
           if (view === "write" && activePath) newComment();
@@ -6847,6 +6912,7 @@ export default function App() {
       <Palette
         open={!!palette}
         commandMode={!!palette?.commands}
+        textMode={!!palette?.text}
         onClose={() => setPalette(null)}
         files={allFiles}
         activePath={activePath}
@@ -6898,12 +6964,8 @@ export default function App() {
           })
         }
         onReload={() => void reloadAll()}
-        searchRepo={activeRepoPath}
-        onSearch={(query) =>
-          activeRepoPath
-            ? api.searchPlans(activeRepoPath, query, settings.showIgnored, !settings.showAllFiles)
-            : Promise.resolve([])
-        }
+        onSearch={searchFiles}
+        onReadFile={(repo, rel) => api.readPlan(repo, rel).then((r) => r.content)}
         onOpenAt={(r, f, line, q) =>
           void openFile(r, f).then(() => {
             // In-file find is the missing half of cross-file search: the hit
@@ -6915,6 +6977,7 @@ export default function App() {
           })
         }
         onFind={openFind}
+        onSearchAll={() => setPalette({ commands: false, text: true })}
         onPerf={() => setPerf(true)}
         onCheckUpdates={() => void lookForUpdate(true)}
         onReleaseNotes={() => void showNotes()}
