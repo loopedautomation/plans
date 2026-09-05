@@ -75,7 +75,7 @@ export function installFakeBackend(
     /** The options the fake agent advertises; `agent_set_config` mutates it. */
     options: [] as Record<string, unknown>[],
     /** The installed `plans` script, null until one is installed. */
-    cli: null as { path: string; current: boolean } | null,
+    cli: null as { path: string; current: boolean; onPath: boolean } | null,
     /**
      * settings.json in the config directory, as a fake filesystem holds it.
      *
@@ -575,7 +575,10 @@ export function installFakeBackend(
       },
     ],
     install_cli: () => {
-      state.cli = { path: "/opt/homebrew/bin/plans", current: true };
+      // `onPath` is part of `CliStatus` and the page reads it: without it the
+      // row says "installed but unreachable" instead of "Installed". Homebrew's
+      // bin is the directory this path models, and that one is on PATH.
+      state.cli = { path: "/opt/homebrew/bin/plans", current: true, onPath: true };
       return state.cli.path;
     },
     cli_open_path: () => null,
