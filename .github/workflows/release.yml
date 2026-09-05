@@ -634,10 +634,18 @@ jobs:
       - name: Check the AppImage does not bundle libwayland
         run: |
           set -euo pipefail
+          # Absolute before the subshell cds away: resolving a relative path
+          # from inside $work finds nothing, and the empty result was run as a
+          # command.
           img="$(find dist -name '*.AppImage' -type f | head -1)"
+          if [ -z "$img" ]; then
+            echo "::error title=No AppImage::nothing to check under dist/"
+            exit 1
+          fi
+          img="$(readlink -f "$img")"
           chmod +x "$img"
           work="$(mktemp -d)"
-          ( cd "$work" && "$(readlink -f "$img")" --appimage-extract >/dev/null )
+          ( cd "$work" && "$img" --appimage-extract >/dev/null )
           if find "$work/squashfs-root/usr/lib" -maxdepth 1 -name 'libwayland-*' -type f | grep -q .; then
             echo "::error title=libwayland is bundled::The AppImage carries the build host's libwayland and will not paint on a rolling distribution. The repack step in build-linux did not run or did not take."
             exit 1
