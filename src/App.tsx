@@ -53,6 +53,7 @@ import {
   renderKeys,
 } from "./keys";
 import { IS_MAC } from "./platform";
+import { useFocusTrap, useRovingFocus } from "./focus";
 import { WindowControls } from "./WindowControls";
 import { MIN_H, MIN_W, TooSmall } from "./TooSmall";
 import { KeyboardPage } from "./KeyboardPage";
@@ -612,6 +613,9 @@ export default function App() {
       window.removeEventListener("keydown", key);
     };
   }, [pageMenu]);
+  const pageMenuRef = useRef<HTMLDivElement>(null);
+  useRovingFocus(pageMenuRef, { selector: ".ctx-item", active: !!pageMenu });
+  useFocusTrap(pageMenuRef, !!pageMenu);
   /** A file being moved, which is a different question from being renamed. */
   const [moving, setMoving] = useState<null | { repo: string; path: string }>(null);
   /**
@@ -4018,6 +4022,75 @@ export default function App() {
   const splitTabsRef = useRef(splitTabs);
   splitTabsRef.current = splitTabs;
 
+  /**
+   * The drag, one step at a time.
+   *
+   * Reordering was pointer-only outright: a tab could be dragged along its
+   * strip and there was no key that did the same thing. ⌘← / ⌘→ on a focused
+   * tab is that gesture without the steady hand — the same move the tree's
+   * "Move up" already offers a repository. The tab keeps focus because React
+   * keys the strip by path, so the DOM node travels with the reorder.
+   */
+  const moveTab = useCallback((strip: "main" | "split", repo: string, path: string, by: number) => {
+    const shift = (prev: { repo: string; path: string }[]) => {
+      const i = prev.findIndex((t) => t.repo === repo && t.path === path);
+      const to = i + by;
+      if (i === -1 || to < 0 || to >= prev.length) return prev;
+      const next = prev.slice();
+      const [it] = next.splice(i, 1);
+      next.splice(to, 0, it);
+      return next;
+    };
+    if (strip === "main") setTabs(shift);
+    else setSplitTabs(shift);
+  }, []);
+
+  /*
+   * The main strip honours the role it declares.
+   *
+   * `role="tablist"` was already on the div, and arrows did nothing — a
+   * contract announced to assistive tech and then not kept. ←/→ now move
+   * along the strip and select as they go, which is what a tablist does once
+   * you are standing in it. This overlaps ⌃Tab on purpose: ⌃Tab is "next
+   * buffer" as a command from anywhere, the arrows are the widget's own.
+   */
+  const mainStrip = useRef<HTMLDivElement>(null);
+  useRovingFocus(mainStrip, {
+    orientation: "horizontal",
+    selector: ".tab-name",
+    onMove: (el) => {
+      const { repo, path } = el.dataset;
+      if (repo && path !== undefined) void reopenTab(repo, path);
+    },
+  });
+
+  /**
+   * What a focused tab answers to beyond the arrows: ⌘←/⌘→ reorders it, and
+   * the menu key raises the same menu right-click does, at the tab's own
+   * corner rather than at a pointer that is not there.
+   */
+  const stripKey = useCallback(
+    (strip: "main" | "split") => (e: React.KeyboardEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(".tab-name");
+      const repo = el?.dataset.repo;
+      const path = el?.dataset.path;
+      if (!el || !repo || path === undefined) return;
+      if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+        if (repo === MEMORY) return;
+        e.preventDefault();
+        const r = el.getBoundingClientRect();
+        setTabMenu({ x: r.left, y: r.bottom, strip, repo, path });
+        return;
+      }
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const by = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!by) return;
+      e.preventDefault();
+      moveTab(strip, repo, path, by);
+    },
+    [moveTab],
+  );
+
   /** Called from both strips' tabs; the strip name says which set it is. */
   const pressTab = useCallback(
     (strip: "main" | "split", repo: string, path: string, e: React.PointerEvent) => {
@@ -4053,6 +4126,15 @@ export default function App() {
       window.removeEventListener("keydown", key);
     };
   }, [tabMenu]);
+
+  /*
+   * The two menus the page raises, given the keyboard's version of a menu:
+   * focus moves in, arrows walk the items, and closing hands focus back to
+   * whatever raised it. Same pair of behaviours as the tree's own menu.
+   */
+  const tabMenuRef = useRef<HTMLDivElement>(null);
+  useRovingFocus(tabMenuRef, { selector: ".ctx-item", active: !!tabMenu });
+  useFocusTrap(tabMenuRef, !!tabMenu);
 
   /** Swallow the click that follows a completed drag, in either strip. */
   const swallowTabClick = useCallback((e: React.MouseEvent) => {
@@ -5007,6 +5089,33 @@ export default function App() {
     };
   }, []);
 
+  /**
+   * The route *to* a widget.
+   *
+   * Roving focus helps once you are standing in the tree or the strip;
+   * getting there still needs a key. Both look for the widget's one tab stop
+   * and fall back to its first item — the same element the hook would have
+   * chosen — after a frame, so a tree that had to be opened first has been
+   * drawn by the time focus goes looking for a row.
+   */
+  const focusTree = useCallback(() => {
+    if (!settings.showIndex) set({ showIndex: true });
+    requestAnimationFrame(() => {
+      const at =
+        document.querySelector<HTMLElement>('.tree [data-rove][tabindex="0"]') ??
+        document.querySelector<HTMLElement>(".tree [data-rove]");
+      at?.focus();
+    });
+  }, [settings.showIndex, set]);
+
+  const focusTabs = useCallback(() => {
+    const strip = `.tabs[data-strip="${paneFocus === "split" && split ? "split" : "main"}"]`;
+    const at =
+      document.querySelector<HTMLElement>(`${strip} .tab-name[tabindex="0"]`) ??
+      document.querySelector<HTMLElement>(`${strip} .tab-name`);
+    at?.focus();
+  }, [paneFocus, split]);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       // While the palette is up it owns its own keys — don't also act on them.
@@ -5134,6 +5243,10 @@ export default function App() {
           setSettingsOpen(true);
           setKeyboardOpen(true);
         },
+        // Unconditional, so registry material — unlike the arrows inside the
+        // widgets these land in, whose meaning is the widget's.
+        "focus.tree": focusTree,
+        "focus.tabs": focusTabs,
       };
       /*
        * A chord is half-typed: the next combo either completes one, or the
@@ -5187,7 +5300,15 @@ export default function App() {
          */
         if (editing && !extra) return;
         e.preventDefault();
-        set({ showIndex: !settings.showIndex });
+        /*
+         * Still a toggle, but opening now goes there too: a key that reveals
+         * a panel and leaves you where you were is half a route. Closing is
+         * untouched — making ⌘B stop closing a visible tree from outside it
+         * would be a bigger surprise than it is worth, and the way *in* to an
+         * already-open tree is its own command (`focus.tree`).
+         */
+        if (settings.showIndex) set({ showIndex: false });
+        else focusTree();
       } else if (mod && (e.key === "Backspace" || e.key === "Delete")) {
         /*
          * The Finder gesture, and it belongs to the tree.
@@ -5254,6 +5375,8 @@ export default function App() {
     toggleSplit,
     closeSplitTab,
     openFind,
+    focusTree,
+    focusTabs,
   ]);
 
   /**
@@ -6012,7 +6135,9 @@ export default function App() {
             </div>
           )}
 
-          {/* Double-click restores the default width. */}
+          {/* Double-click restores the default width. Arrows do what the drag
+              does — a separator that announces itself and then cannot be
+              moved from the keyboard is a promise made and not kept. */}
           <div
             className="files-edge"
             onPointerDown={startResize}
@@ -6020,6 +6145,27 @@ export default function App() {
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize the file tree"
+            tabIndex={0}
+            aria-valuenow={settings.treeWidth}
+            aria-valuemin={RANGES.treeWidth.min}
+            aria-valuemax={RANGES.treeWidth.max}
+            onKeyDown={(e) => {
+              const r = RANGES.treeWidth;
+              const step = 16;
+              const at =
+                e.key === "ArrowLeft"
+                  ? settings.treeWidth - step
+                  : e.key === "ArrowRight"
+                    ? settings.treeWidth + step
+                    : e.key === "Home"
+                      ? r.min
+                      : e.key === "End"
+                        ? r.max
+                        : null;
+              if (at === null) return;
+              e.preventDefault();
+              set({ treeWidth: Math.min(r.max, Math.max(r.min, at)) });
+            }}
           />
         </section>
 
@@ -6097,6 +6243,9 @@ export default function App() {
                   className="tabs"
                   data-strip="main"
                   role="tablist"
+                  aria-label="Open buffers"
+                  ref={mainStrip}
+                  onKeyDown={stripKey("main")}
                   onClickCapture={swallowTabClick}
                 >
                   {tabs.map((t) => {
@@ -6123,6 +6272,9 @@ export default function App() {
                           className="tab-name"
                           role="tab"
                           aria-selected={on}
+                          data-rove={`${t.repo}::${t.path}`}
+                          data-repo={t.repo}
+                          data-path={t.path}
                           title={moved ? `${t.path} — changed on disk` : where}
                           onClick={() => void reopenTab(t.repo, t.path)}
                           onAuxClick={(e) => {
@@ -6484,6 +6636,30 @@ export default function App() {
                     aria-orientation={splitDir === "row" ? "vertical" : "horizontal"}
                     aria-label="Resize the split"
                     title="Drag to resize · double-click to even out"
+                    tabIndex={0}
+                    aria-valuenow={Math.round(splitRatio * 100)}
+                    aria-valuemin={15}
+                    aria-valuemax={85}
+                    onKeyDown={(e) => {
+                      // Whichever pair of arrows lies along the divider: the
+                      // vertical one moves left and right, the horizontal one
+                      // up and down.
+                      const less = splitDir === "row" ? "ArrowLeft" : "ArrowUp";
+                      const more = splitDir === "row" ? "ArrowRight" : "ArrowDown";
+                      const at =
+                        e.key === less
+                          ? splitRatio - 0.05
+                          : e.key === more
+                            ? splitRatio + 0.05
+                            : e.key === "Home"
+                              ? 0.15
+                              : e.key === "End"
+                                ? 0.85
+                                : null;
+                      if (at === null) return;
+                      e.preventDefault();
+                      setSplitRatio(Math.min(0.85, Math.max(0.15, at)));
+                    }}
                     onDoubleClick={() => setSplitRatio(0.5)}
                     onPointerDown={(e) => {
                       e.preventDefault();
@@ -6538,6 +6714,7 @@ export default function App() {
                         });
                       }}
                       onStripClickCapture={swallowTabClick}
+                      onStripKey={stripKey("split")}
                       focused={paneFocus === "split"}
                       onFocus={() => setPaneFocus("split")}
                       onClose={() => setSplit(null)}
@@ -6666,11 +6843,15 @@ export default function App() {
       {pageMenu && (
         <div
           className="ctx"
+          ref={pageMenuRef}
+          role="menu"
+          aria-label="Document"
           style={{ left: pageMenu.x, top: pageMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <button
             className="ctx-item"
+            role="menuitem"
             onClick={() => {
               setPageMenu(null);
               newComment();
@@ -6684,6 +6865,7 @@ export default function App() {
           {pageMenu.selection.trim() !== "" && chat !== false && activeRepoPath !== MEMORY && (
             <button
               className="ctx-item"
+              role="menuitem"
               onClick={() => {
                 const selection = pageMenu.selection;
                 setPageMenu(null);
@@ -6973,12 +7155,16 @@ export default function App() {
       {tabMenu && (
         <div
           className="ctx"
+          ref={tabMenuRef}
+          role="menu"
+          aria-label={tabMenu.path}
           style={{ left: tabMenu.x, top: tabMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <p className="ctx-path">{tabMenu.path}</p>
           <button
             className="ctx-item"
+            role="menuitem"
             onClick={() => {
               const m = tabMenu;
               setTabMenu(null);
@@ -6995,6 +7181,7 @@ export default function App() {
           </button>
           <button
             className="ctx-item"
+            role="menuitem"
             onClick={() => {
               const m = tabMenu;
               setTabMenu(null);

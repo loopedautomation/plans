@@ -102,11 +102,18 @@ SSH keys, commit signing, and hooks all apply.
 | `⌘S`           | Save now                                                        |
 | `⌘W`           | Close the buffer                                                |
 | `⌘⌥←` `⌘⌥→`    | Previous · next buffer                                          |
-| `⌘B`           | Show or hide the tree (`⌘⌃B` while writing, where `⌘B` is bold) |
+| `⌘B`           | Open the tree and go there, or hide it (`⌘⌃B` while writing)     |
+| `⌘K ⌘E` `⌘K ⌘T`| Focus the file tree · the tab strip                             |
 | `⌘G`           | Git panel                                                       |
 | `⌘⇧L`          | Zen — the page alone                                            |
 | `⌘+` `⌘−`      | Text size, or tree size when the tree has focus                 |
 | `⌘,`           | Settings                                                        |
+
+Inside a widget the arrows belong to it: the tree and both tab strips are one
+Tab stop each, `↑↓` or `←→` move within them, `←`/`→` also close and open a
+folder, `⇧F10` (or the menu key) raises the row's or tab's menu, and `⌘←`/`⌘→`
+moves a focused tab along its strip. Every sheet keeps Tab inside itself and
+hands focus back to wherever you were when it closes.
 
 ## Tests
 
@@ -171,6 +178,7 @@ pnpm app:build   # produces a bundled .app / installer under src-tauri/target/re
 | `src/DiffView.tsx`                        | The editable diff against `HEAD`                                   |
 | `src/GitPanel.tsx`                        | Status, staging, undo, commit, push/pull                           |
 | `src/Palette.tsx`                         | Files and commands behind `⌘P`                                     |
+| `src/focus.ts`                            | The focus trap and the roving cursor every widget borrows          |
 | `src/html-view.ts`                        | Rendering and editing the HTML inside markdown                     |
 | `src/mermaid-view.ts`                     | Diagrams drawn under their source                                  |
 | `src/code-theme.ts`                       | Syntax highlighting, in the current paper's ink                    |

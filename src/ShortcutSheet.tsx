@@ -14,8 +14,9 @@
  * The sheet is the quick reference (⌘/); Settings → Keyboard is where
  * bindings are managed at length.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useKeyCapture } from "./capture";
+import { useFocusTrap } from "./focus";
 import {
   bindingConflict,
   CONTEXTUAL_KEYS,
@@ -36,6 +37,13 @@ export function ShortcutSheet({ overrides, preset, onOverrides, onClose }: Props
   /** The command id waiting for its new keys, if any. */
   const [capturing, setCapturing] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  /*
+   * The trap and the capture do not fight: the capture's listener is on the
+   * window in the capture phase and stops the event there, so a rebind that
+   * presses Tab still records Tab rather than being walked out of the sheet.
+   */
+  useFocusTrap(sheet);
   const merged = mergeKeys(overrides, preset);
   /** What the command falls back to without an override: defaults plus pack. */
   const base = mergeKeys({}, preset);
@@ -85,7 +93,14 @@ export function ShortcutSheet({ overrides, preset, onOverrides, onClose }: Props
 
   return (
     <div className="matter-scrim" onMouseDown={onClose}>
-      <div className="matter-sheet shortcut-sheet" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="matter-sheet shortcut-sheet"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard shortcuts"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="matter-head">
           <span className="tag">Keyboard shortcuts</span>
         </div>

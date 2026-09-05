@@ -10,6 +10,7 @@ import { track } from "./analytics";
 import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { workspace, type Account, type DeviceStart } from "./workspace";
+import { useFocusTrap } from "./focus";
 
 type Props = {
   onDone: (account: Account) => void;
@@ -23,6 +24,8 @@ export function SignInSheet({ onDone, onCancel }: Props) {
   // Through a ref: the flow starts once, whatever the parent re-renders with.
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
+  const sheet = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheet);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +78,15 @@ export function SignInSheet({ onDone, onCancel }: Props) {
 
   return (
     <div className="matter-scrim" onMouseDown={onCancel}>
-      <div className="matter-sheet signin" onMouseDown={(e) => e.stopPropagation()} data-testid="signin">
+      <div
+        className="matter-sheet signin"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sign in"
+        onMouseDown={(e) => e.stopPropagation()}
+        data-testid="signin"
+      >
         <div className="matter-head">
           <span className="tag">Sign in</span>
         </div>
