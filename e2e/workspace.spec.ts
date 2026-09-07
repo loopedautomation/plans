@@ -520,11 +520,24 @@ test("a plan in a repository is shared as a page, follows its saves, and stops",
   const reader = await readerFor(browser, idOf(url));
   await expect(reader.locator(".milkdown h1")).toHaveText("Existing");
 
-  // A reader picks their paper, and the choice is kept in their browser.
+  // A reader picks their paper and type behind Aa, and the choices are kept
+  // in their browser.
+  const size = () => reader.evaluate(() => document.documentElement.style.getPropertyValue("--doc-size"));
+  const before = await size();
+  await reader.getByTestId("look").click();
   await reader.getByTestId("theme-night").click();
   await expect(reader.locator("html")).toHaveAttribute("data-theme", "night");
+  await reader.getByTestId("size-up").click();
+  await reader.getByTestId("size-up").click();
+  await expect(reader.getByTestId("size-value")).toHaveText("20");
+  expect(parseFloat(await size())).toBeGreaterThan(parseFloat(before));
+  await reader.keyboard.press("Escape");
+  await expect(reader.getByTestId("look-sheet")).toHaveCount(0);
   await reader.reload();
   await expect(reader.locator("html")).toHaveAttribute("data-theme", "night");
+  await reader.getByTestId("look").click();
+  await expect(reader.getByTestId("size-value")).toHaveText("20");
+  await reader.keyboard.press("Escape");
   await expect(reader.locator(".milkdown h1")).toHaveText("Existing");
   await expect(reader.locator(".milkdown")).toContainText("Anyone with the address can read this.");
 

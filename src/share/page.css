@@ -14,10 +14,66 @@
   background: var(--paper);
 }
 
-/* The head is the app's, one line shorter: a name, its status, how fresh. */
+/* The head is the app's, one line shorter: Aa, a name, its status, how fresh. */
 .share-page .page-head {
   border-bottom: 1px solid var(--rule);
+  gap: 8px;
 }
+
+/* The Aa control and the small sheet under it. */
+.share-look { position: relative; flex-shrink: 0; }
+.share-look-sheet {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 70;
+  display: grid;
+  gap: 10px;
+  min-width: 300px;
+  padding: 12px 14px;
+  background: var(--raised);
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+}
+.look-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.look-name {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.look-value {
+  min-width: 3.2em;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-align: center;
+  color: var(--ink-2);
+}
+.look-faces {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.look-face {
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.look-face:hover { border-color: var(--rule); color: var(--ink); }
+.look-face.on { border-color: var(--rule-strong); color: var(--ink); }
 
 .share-when {
   font-family: var(--mono);
