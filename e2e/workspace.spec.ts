@@ -28,7 +28,9 @@ let server: ChildProcess;
 let base: string;
 
 test.beforeAll(async ({}, info) => {
-  const port = 1431 + info.workerIndex;
+  // Overridable, so two checkouts can run this spec at once without one
+  // answering the other's health check.
+  const port = Number(process.env.PLANS_WS_TEST_PORT ?? 1431) + info.workerIndex;
   base = `http://127.0.0.1:${port}`;
   const entry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../server/src/index.js");
   server = spawn(process.execPath, [entry], {
@@ -514,6 +516,15 @@ test("a plan in a repository is shared as a page, follows its saves, and stops",
   await alice.getByTestId("publish").click();
   const url = await alice.getByTestId("share-link").inputValue();
   expect(url).toContain(base);
+  // An id that can be read aloud: lowercase, no look-alikes, no punctuation.
+  expect(idOf(url)).toMatch(/^[a-km-z2-9]{26}$/);
+  // The same page as markdown, at the address beside it, for an agent.
+  const raw = await alice.getByTestId("share-raw-link").inputValue();
+  expect(raw).toBe(`${url}.md`);
+  const fetched = await fetch(raw);
+  expect(fetched.headers.get("content-type")).toContain("text/markdown");
+  // What was on disk when it was published; the typed line follows the save.
+  expect(await fetched.text()).toContain("# Existing");
   await alice.keyboard.press("Escape");
 
   // The page is the app's own renderer: the same heading, the same prose.
@@ -566,6 +577,8 @@ test("a workspace document's page follows the room, and an old share link still 
 
   const reader = await readerFor(browser, idOf(url));
   await expect(reader.locator(".milkdown h1")).toHaveText("Sharing");
+  // A live page's markdown address reads the room too.
+  await expect.poll(async () => (await fetch(`${url}.md`)).text()).toContain("Argued in a room, read in a browser.");
   await expect(reader.locator(".milkdown")).toContainText("Argued in a room, read in a browser.", {
     timeout: 20_000,
   });
@@ -593,6 +606,8 @@ test("a workspace document's page follows the room, and an old share link still 
     })
   ).json();
   expect(resolved.id).toBe(idOf(url));
+  // The workspace's own id is in the same pleasant alphabet.
+  expect(list[0].id).toMatch(/^[a-km-z2-9]{15}$/);
 
   expect((alice as any).__faults).toEqual([]);
 });

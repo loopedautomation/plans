@@ -58,9 +58,34 @@ export function newToken() {
   return randomBytes(32).toString("base64url");
 }
 
+/**
+ * Ids people see: in a page's address, a workspace's, a document's.
+ *
+ * Lowercase letters and digits with the look-alikes taken out — no 0/o, no
+ * 1/l — so an id can be read aloud, typed from a screenshot, and pasted into
+ * a chat without a `-` or `_` being taken for punctuation. Thirty-two symbols
+ * is five bits each: fifteen give a workspace or document ~75 bits, and
+ * twenty-six give a page 130 — the page's address is the whole of its
+ * secret. Every symbol is a whole byte's low five bits, so the draw is
+ * uniform. Older base64url ids stay valid everywhere an id is matched.
+ */
+const ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
+
+function pleasantId(length) {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (const b of bytes) out += ALPHABET[b & 31];
+  return out;
+}
+
 /** Short, URL-safe, and not guessable in bulk. */
 export function newId() {
-  return randomBytes(9).toString("base64url");
+  return pleasantId(15);
+}
+
+/** A page's id, long enough to be the whole of the page's security. */
+export function newPageId() {
+  return pleasantId(26);
 }
 
 /** A migrated `query(sql, params) -> rows` over whichever Postgres is available. */
@@ -325,7 +350,7 @@ export async function openDb(url = process.env.DATABASE_URL ?? "") {
         [repo, path, login],
       );
       if (mine) return this.republishPage(mine.id, markdown, name);
-      const id = randomBytes(24).toString("base64url");
+      const id = newPageId();
       const at = now();
       await c.query(
         `INSERT INTO pages (id, repo, path, markdown, name, published_by, published_at)
@@ -344,7 +369,7 @@ export async function openDb(url = process.env.DATABASE_URL ?? "") {
     async publishWorkspacePage(workspaceId, path, name, login) {
       const live = await this.workspacePage(workspaceId, path);
       if (live) return live;
-      const id = randomBytes(24).toString("base64url");
+      const id = newPageId();
       // The partial unique index on live workspace pages is the arbiter: a
       // second publisher racing this one loses the insert and is handed the
       // page the winner made, so both share the same URL.

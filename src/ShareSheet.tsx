@@ -16,6 +16,8 @@ type Props = {
   name: string;
   /** Whether the page is live, and where — null when nothing is shared yet. */
   url: string | null;
+  /** The page as markdown, at an address of its own: for an agent, not a browser. */
+  raw: string | null;
   /**
    * A workspace document's page reads the room, so it is live without anyone
    * saving anything; a file's page follows its saves. The sheet says which,
@@ -25,10 +27,11 @@ type Props = {
   onPublish: () => Promise<void> | void;
   onStop: () => Promise<void> | void;
   onCopy: () => Promise<void> | void;
+  onCopyRaw: () => Promise<void> | void;
   onClose: () => void;
 };
 
-export function ShareSheet({ name, url, live, onPublish, onStop, onCopy, onClose }: Props) {
+export function ShareSheet({ name, url, raw, live, onPublish, onStop, onCopy, onCopyRaw, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const field = useRef<HTMLInputElement | null>(null);
   const sheet = useRef<HTMLDivElement | null>(null);
@@ -93,12 +96,30 @@ export function ShareSheet({ name, url, live, onPublish, onStop, onCopy, onClose
             onFocus={(e) => e.currentTarget.select()}
           />
         )}
+        {url && raw && (
+          <>
+            <p className="name-path share-raw-note">
+              The same plan as markdown, for an agent: it fetches this address and reads the file, not the page.
+            </p>
+            <input
+              className="name-field share-link"
+              data-testid="share-raw-link"
+              value={raw}
+              readOnly
+              spellCheck={false}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </>
+        )}
         <div className="matter-foot">
           <span>esc close</span>
           {url ? (
             <>
               <button className="rail-btn" onClick={() => void run(onStop)} disabled={busy} data-testid="stop-sharing">
                 Stop sharing
+              </button>
+              <button className="rail-btn" onClick={() => void run(onCopyRaw)} disabled={busy} data-testid="copy-raw">
+                Copy for an agent
               </button>
               <button className="act" onClick={() => void run(onCopy)} disabled={busy}>
                 Copy link

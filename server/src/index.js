@@ -154,6 +154,9 @@ export function startServer({
       res.end(viewerPage());
       return;
     }
+    // `/{id}.md` is the page's markdown: the address a reader has, with the
+    // extension a shell expects. The shell itself is `/{id}`.
+    if (req.method === "GET" && RAW_PATH.test(path)) return api(req, res, `/pages${path}`);
     if (req.method === "GET") return reader(res, path);
     throw httpError(404, "not found");
   }
@@ -322,6 +325,13 @@ export function startServer({
     // and stopping do take a session. See plans/public-plan-pages.md.
     if ((seg = m(/^\/pages\/([\w-]+)$/)) && req.method === "GET") {
       return json(res, 200, await readPage(seg[1]));
+    }
+    // The same page as text, for an agent with curl rather than a browser.
+    if ((seg = m(/^\/pages\/([\w-]+)\.md$/)) && req.method === "GET") {
+      const p = await readPage(seg[1]);
+      res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(p.markdown);
+      return;
     }
     if (req.method === "POST" && path === "/pages") {
       const login = await who(req);
@@ -507,6 +517,7 @@ function viewerPage() {
  */
 const PUBLIC = fileURLToPath(new URL("../public/", import.meta.url));
 const ID_PATH = /^\/[A-Za-z0-9_-]{1,64}$/;
+const RAW_PATH = /^\/[A-Za-z0-9_-]{1,64}\.md$/;
 const TYPES = {
   html: "text/html; charset=utf-8",
   js: "text/javascript; charset=utf-8",
