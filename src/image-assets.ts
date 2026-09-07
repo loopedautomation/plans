@@ -28,11 +28,27 @@
  * Mutation records rather than a document-wide sweep on every change: the file
  * this was reported from holds ~640 images, and re-scanning all of them on each
  * keystroke is the kind of fix that trades a broken picture for a slow one.
+ *
+ * Where the paths are read from is passed in by the editor that installs the
+ * plugin, rather than taken from a module-global: two panes hold two files, and
+ * an image in one must not be read out of the other's repository.
  */
 import { $prose } from "@milkdown/utils";
 import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
-import { ABSOLUTE_SRC, assetPath, assetUrl, cachedAsset, htmlContext } from "./html-view";
+import { ABSOLUTE_SRC, assetPath, assetUrl, cachedAsset } from "./html-view";
+
+/**
+ * Which repository, and which file within it, an editor's relative paths are
+ * relative to.
+ *
+ * Read through a function rather than taken once: an editor keeps its instance
+ * across a file swap, so the plugin outlives any single document. And it is
+ * the editor's own — not the module-global `htmlContext` — because two panes
+ * can hold two files at once, and the second to open must not decide where the
+ * first one's pictures are read from.
+ */
+export type AssetContext = () => { repo: string; relPath: string };
 
 /**
  * A 1×1 transparent GIF, worn while the real bytes are being read.
@@ -61,7 +77,7 @@ function resolved(img: HTMLImageElement, url: string) {
   img.setAttribute("src", url);
 }
 
-function resolveImage(img: HTMLImageElement) {
+function resolveImage(img: HTMLImageElement, context: AssetContext) {
   // The HTML view resolves the images inside its own fragments, and a
   // <picture> widget resolves the source it chose. Both would be undone here.
   if (img.closest(".md-html")) return;
@@ -71,7 +87,7 @@ function resolveImage(img: HTMLImageElement) {
   const raw = img.getAttribute("src");
   if (!raw || ABSOLUTE_SRC.test(raw)) return;
 
-  const { repo, relPath } = htmlContext;
+  const { repo, relPath } = context();
   const rel = assetPath(relPath, raw);
 
   const hit = cachedAsset(repo, rel);
@@ -95,39 +111,42 @@ function resolveImage(img: HTMLImageElement) {
 }
 
 /** Every image in a subtree, the node itself included. */
-function resolveIn(node: Node) {
-  if (node instanceof HTMLImageElement) return resolveImage(node);
-  if (node instanceof HTMLElement) node.querySelectorAll("img").forEach(resolveImage);
+function resolveIn(node: Node, context: AssetContext) {
+  if (node instanceof HTMLImageElement) return resolveImage(node, context);
+  if (node instanceof HTMLElement)
+    node.querySelectorAll("img").forEach((img) => resolveImage(img, context));
 }
 
-export const imageAssets = $prose(
-  () =>
-    new Plugin({
-      key: new PluginKey("plans-image-assets"),
-      view: (view: EditorView) => {
-        const observer = new MutationObserver((records) => {
-          for (const r of records) {
-            if (r.type === "attributes") resolveIn(r.target);
-            else r.addedNodes.forEach(resolveIn);
-          }
-        });
-        /**
-         * Synchronous, in the observer's own callback, rather than deferred to
-         * a frame: a mutation callback runs as a microtask, before the browser
-         * has had a task in which to fail the relative request. Deferred, the
-         * error lands first and a component that watches for one has already
-         * drawn its broken state by the time the bytes arrive.
-         */
-        observer.observe(view.dom, {
-          subtree: true,
-          childList: true,
-          attributes: true,
-          attributeFilter: ["src"],
-        });
-        // Whatever is already on the page: the first document is mounted
-        // before this plugin's view is built.
-        resolveIn(view.dom);
-        return { destroy: () => observer.disconnect() };
-      },
-    }),
-);
+export const imageAssets = (context: AssetContext) =>
+  $prose(
+    () =>
+      new Plugin({
+        key: new PluginKey("plans-image-assets"),
+        view: (view: EditorView) => {
+          const observer = new MutationObserver((records) => {
+            for (const r of records) {
+              if (r.type === "attributes") resolveIn(r.target, context);
+              else r.addedNodes.forEach((n) => resolveIn(n, context));
+            }
+          });
+          /**
+           * Synchronous, in the observer's own callback, rather than deferred
+           * to a frame: a mutation callback runs as a microtask, before the
+           * browser has had a task in which to fail the relative request.
+           * Deferred, the error lands first and a component that watches for
+           * one has already drawn its broken state by the time the bytes
+           * arrive.
+           */
+          observer.observe(view.dom, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ["src"],
+          });
+          // Whatever is already on the page: the first document is mounted
+          // before this plugin's view is built.
+          resolveIn(view.dom, context);
+          return { destroy: () => observer.disconnect() };
+        },
+      }),
+  );

@@ -72,6 +72,12 @@ component redraws and puts the raw path back.
 - An image that cannot be read says which path it tried and why, as the HTML
   side already did: `md-asset-missing` on the frame, the reason as its alt text
   and title, styled in `editor-theme.css` to match `.md-html-missing`.
+- The repository and file a path is relative to are handed to the plugin by the
+  editor that installs it — `imageAssets(() => assetContextRef.current)` — and
+  read afresh on each image rather than captured once, since one editor keeps
+  its instance across a file swap. Not the module-global `htmlContext`: two
+  panes hold two files at once, and the one opened second would otherwise
+  decide where the first one's pictures are read from.
 - `Editor.tsx` uses the plugin; `README.md` and `BUGS.md` say so; a changeset
   describes the fix for the release notes.
 
