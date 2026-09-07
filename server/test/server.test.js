@@ -469,8 +469,9 @@ test("a repository file published is a page, republished by its author, and stop
   });
   assert.equal(made.status, 201);
   const { id } = made.value;
-  // Long enough that the address is the whole of the security.
-  assert.ok(id.length >= 32);
+  // Long enough that the address is the whole of the security, and spelt so
+  // it can be read aloud: no look-alikes, no `-` or `_`.
+  assert.match(id, /^[a-km-z2-9]{26}$/);
 
   // No session, no token, no membership: the URL is the credential.
   const read = await call(`/api/pages/${id}`);
@@ -492,6 +493,11 @@ test("a repository file published is a page, republished by its author, and stop
   assert.equal(again.status, 200);
   assert.equal(again.value.id, id);
   assert.match((await call(`/api/pages/${id}`)).value.markdown, /Soon\./);
+  // The page as text, at the page's address with `.md` on it — for an agent.
+  const raw = await fetch(`${base}/${id}.md`);
+  assert.equal(raw.status, 200);
+  assert.match(raw.headers.get("content-type"), /text\/markdown/);
+  assert.equal(await raw.text(), "# Ship\n\nSoon.\n");
 
   // Nobody else's to republish or to stop, and saying so as a 404 rather than
   // a 403 — which would confirm the id exists.

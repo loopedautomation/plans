@@ -242,6 +242,8 @@ export const workspace = {
   },
   /** Where a published plan lives. The id is the whole of the secret. */
   pageUrl: (id: string) => `${serverUrl()}/${id}`,
+  /** The same page as markdown — what an agent fetches, unrendered. */
+  rawPageUrl: (id: string) => `${serverUrl()}/${id}.md`,
 
 };
 

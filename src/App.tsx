@@ -2567,6 +2567,15 @@ export default function App() {
     );
   }, [sharedPageId, notify]);
 
+  /** The page's markdown address: what to hand an agent, which reads files. */
+  const copyRawPageLink = useCallback(async () => {
+    if (!sharedPageId) return;
+    await navigator.clipboard.writeText(workspace.rawPageUrl(sharedPageId)).then(
+      () => notify("Markdown address copied — an agent can fetch it as a file"),
+      () => notify("Could not write to the clipboard", "error"),
+    );
+  }, [sharedPageId, notify]);
+
   /**
    * Rewrite the selected passage, by asking the agent to.
    *
@@ -7965,10 +7974,12 @@ export default function App() {
         <ShareSheet
           name={shareTarget.name}
           url={sharedPageId ? workspace.pageUrl(sharedPageId) : null}
+          raw={sharedPageId ? workspace.rawPageUrl(sharedPageId) : null}
           live={shareTarget.kind === "workspace"}
           onPublish={publish}
           onStop={stopSharing}
           onCopy={copyPageLink}
+          onCopyRaw={copyRawPageLink}
           onClose={() => setSharing(false)}
         />
       )}
