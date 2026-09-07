@@ -35,6 +35,50 @@ export function Markdown({ text }: { text: string }) {
   const lines = text.split("\n");
   let list: string[] | null = null;
   let fence: string[] | null = null;
+  let lang = "";
+
+  /**
+   * A fence as a block. A `diff` or `patch` fence is drawn as rows — added,
+   * removed, hunk header, context — with the sign in a gutter and the row
+   * tinted, the way a review tool shows it; anything else is the code as
+   * written. Agents quote partial patches as often as whole ones, so this
+   * reads the lines rather than parsing a unified diff.
+   */
+  const code = (lines: string[], key: string) => {
+    if (lang !== "diff" && lang !== "patch") {
+      return (
+        <pre key={key} className="chat-md-code">
+          {lines.join("\n")}
+        </pre>
+      );
+    }
+    return (
+      <pre key={key} className="chat-md-code chat-md-diff">
+        {lines.map((l, i) => {
+          const kind = /^\+\+\+ |^--- /.test(l)
+            ? "meta"
+            : l.startsWith("+")
+              ? "add"
+              : l.startsWith("-")
+                ? "del"
+                : l.startsWith("@@")
+                  ? "hunk"
+                  : "ctx";
+          const sign = kind === "add" || kind === "del" ? l[0] : " ";
+          const text = kind === "add" || kind === "del" ? l.slice(1) : l;
+          return (
+            <span key={i} className={`diff-row ${kind}`}>
+              <span className="diff-sign" aria-hidden>
+                {sign}
+              </span>
+              {text}
+              {"\n"}
+            </span>
+          );
+        })}
+      </pre>
+    );
+  };
 
   const flushList = () => {
     if (!list) return;
@@ -51,15 +95,12 @@ export function Markdown({ text }: { text: string }) {
   for (const line of lines) {
     if (line.trimStart().startsWith("```")) {
       if (fence) {
-        blocks.push(
-          <pre key={`f${blocks.length}`} className="chat-md-code">
-            {fence.join("\n")}
-          </pre>,
-        );
+        blocks.push(code(fence, `f${blocks.length}`));
         fence = null;
       } else {
         flushList();
         fence = [];
+        lang = line.trim().slice(3).trim().split(/\s/)[0].toLowerCase();
       }
       continue;
     }
@@ -83,12 +124,6 @@ export function Markdown({ text }: { text: string }) {
   }
   flushList();
   // An unterminated fence is still code; the answer was cut off, not malformed.
-  if (fence?.length) {
-    blocks.push(
-      <pre key={`f${blocks.length}`} className="chat-md-code">
-        {fence.join("\n")}
-      </pre>,
-    );
-  }
+  if (fence?.length) blocks.push(code(fence, `f${blocks.length}`));
   return <>{blocks}</>;
 }

@@ -44,6 +44,18 @@
   --diff-del: #a8322c;
   /* Code sits on its own ground, a step off the paper rather than on it. */
   --code-bg: #f4f4f0;
+  --alert-note: #3d5ba9;
+  --alert-tip: #4b7a3f;
+  --alert-important: #8a3a62;
+  --alert-warning: #9a6b12;
+  --alert-caution: #a8322c;
+  /* Chart series, in the order mermaid draws them: blue, green, plum, amber, red, slate. */
+  --chart-1: #3d5ba9;
+  --chart-2: #4b7a3f;
+  --chart-3: #8a3a62;
+  --chart-4: #9a6b12;
+  --chart-5: #a8322c;
+  --chart-6: #5c6470;
 }
 
 :root[data-theme="sepia"] {
@@ -73,6 +85,17 @@
   --diff-add: #46662f;
   --diff-del: #94322a;
   --code-bg: #e0d6c1;
+  --alert-note: #4a5288;
+  --alert-tip: #4e6e33;
+  --alert-important: #7b3b57;
+  --alert-warning: #8c5a0f;
+  --alert-caution: #94322a;
+  --chart-1: #4a5288;
+  --chart-2: #4e6e33;
+  --chart-3: #7b3b57;
+  --chart-4: #8c5a0f;
+  --chart-5: #94322a;
+  --chart-6: #6b5f4d;
 }
 
 :root[data-theme="night"] {
@@ -106,6 +129,17 @@
   --diff-add: #8fc47c;
   --diff-del: #e8776e;
   --code-bg: #191a1f;
+  --alert-note: #93a8e4;
+  --alert-tip: #8fb877;
+  --alert-important: #d492b5;
+  --alert-warning: #d8ab52;
+  --alert-caution: #e8776e;
+  --chart-1: #93a8e4;
+  --chart-2: #8fb877;
+  --chart-3: #d492b5;
+  --chart-4: #d8ab52;
+  --chart-5: #e8776e;
+  --chart-6: #9aa0ab;
 }
 
 :root {
@@ -2624,7 +2658,17 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
   color: var(--ink-2);
 }
 .chat-pick .dd-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-pick .dd-menu { max-width: min(360px, 80vw); width: max-content; }
+/*
+ * The chat panel sits against the window's trailing edge, so a menu hung from
+ * the button's start runs off the screen. Hung from its end it grows back
+ * over the panel, where the room is.
+ */
+.chat-pick .dd-menu {
+  left: auto;
+  right: var(--dd-right);
+  max-width: min(360px, 80vw);
+  width: max-content;
+}
 
 .chat-where {
   font-family: var(--mono);
@@ -2762,7 +2806,7 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
 .chat-steps[open] > .chat-thought { margin-left: 10px; }
 
 /* A message taken but not yet sent: it is where it will go, and says so. */
-.chat-msg.user.queued { opacity: 0.7; border-style: dashed; }
+.chat-msg.user.queued { opacity: 0.55; }
 .chat-queued {
   display: block;
   margin-top: 4px;
@@ -3014,6 +3058,17 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
   line-height: 1.5;
   white-space: pre;
 }
+/* A diff fence: rows tinted by what happened to them, the sign in a gutter
+   so the text lines up with the context around it. */
+.chat-md-diff { padding: 4px 0; }
+.chat-md-diff .diff-row { display: block; padding: 0 8px 0 4px; }
+.chat-md-diff .diff-sign { display: inline-block; width: 1.2em; color: var(--ink-3); user-select: none; }
+.chat-md-diff .diff-row.add { background: color-mix(in srgb, var(--diff-add) 14%, transparent); }
+.chat-md-diff .diff-row.add .diff-sign { color: var(--diff-add); }
+.chat-md-diff .diff-row.del { background: color-mix(in srgb, var(--diff-del) 14%, transparent); }
+.chat-md-diff .diff-row.del .diff-sign { color: var(--diff-del); }
+.chat-md-diff .diff-row.hunk { color: var(--ink-3); background: var(--shade); }
+.chat-md-diff .diff-row.meta { color: var(--ink-3); }
 
 .chat-todo li::before { content: "○ "; }
 .chat-todo li.in_progress { color: var(--ink-2); }

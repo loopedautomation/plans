@@ -117,6 +117,8 @@ export function installFakeBackend(
      * of the room. Handed over once, as the real one reports each change once.
      */
     scratchOutside: {} as Record<string, { path: string; text: string }[]>,
+    /** What the app writes into a scratch folder itself, by folder: the conventions. */
+    scratchDisk: {} as Record<string, Record<string, string>>,
     /** Answers to the agent's reads and writes of workspace files. */
     fsReplies: [] as { requestId: string; content: string | null }[],
     /** URLs handed to the platform to open in a browser. */
@@ -188,6 +190,11 @@ export function installFakeBackend(
         }));
     },
     read_plan: ({ repo: p, relPath }) => {
+      if (typeof p === "string" && p.startsWith("/scratch/")) {
+        const content = state.scratchDisk[p]?.[relPath];
+        if (content === undefined) throw new Error(`could not read ${relPath}`);
+        return { content, stamp: hash(content) };
+      }
       const r = repo(p);
       const content = r?.files[relPath];
       if (content === undefined) throw new Error(`could not read ${relPath}`);
@@ -202,6 +209,10 @@ export function installFakeBackend(
       // Held writes decide nothing until they are let go: the stamp is checked
       // when the write actually happens, as it would be on disk.
       while (state.stallWrites) await new Promise((r) => setTimeout(r, 10));
+      if (typeof p === "string" && p.startsWith("/scratch/")) {
+        (state.scratchDisk[p] ??= {})[relPath] = content;
+        return hash(content);
+      }
       const r = repo(p);
       if (!r) throw new Error("no such repository");
       const now = r.files[relPath];
@@ -600,7 +611,7 @@ export function installFakeBackend(
           : ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.73.0"],
         installed: state.agentInstalled,
         installable: !state.agentInstalled,
-        conventions: [".claude/skills/plans/SKILL.md"],
+        conventions: [".claude/skills/plans/SKILL.md", "CLAUDE.md"],
       },
       {
         id: "codex",

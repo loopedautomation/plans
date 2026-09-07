@@ -145,6 +145,13 @@
       },
       "description": "The repositories in the sidebar, as absolute paths, in order. In the file rather than only in the window's own storage so that every build of the app on this machine — the installed one, one run from source — shows the same list. Adding, forgetting and reordering write it; editing it here is the same as doing those in the app."
     },
+    "workspaceOrder": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The workspaces in the sidebar, as ids, in the order you put them. The server lists them in its own order; this is yours, kept here for the same reason `repos` is. A workspace not named here goes after the ones that are, in the server's order, so a new one lands at the end and nothing you have arranged moves."
+    },
     "sourceLineNumbers": {
       "type": "boolean",
       "description": "Line numbers down the side of the raw markdown.",

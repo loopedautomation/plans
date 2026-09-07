@@ -74,6 +74,9 @@ importers:
       diff:
         specifier: ^9.0.0
         version: 9.0.0
+      katex:
+        specifier: ^0.18.4
+        version: 0.18.4
       lib0:
         specifier: ^0.2.117
         version: 0.2.117

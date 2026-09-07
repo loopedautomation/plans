@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
+import { listen, retrying } from "./events";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -418,6 +418,8 @@ export default function App() {
   /** The prose only — frontmatter is held apart in `matter`. */
   const [content, setContent] = useState("");
   const [matter, setMatter] = useState<string | null>(null);
+  /** A workspace file's markdown as the room holds it (declared here: the frontmatter writer reads it). */
+  const [wsSource, setWsSource] = useState("");
   const [docKey, setDocKey] = useState("");
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -2734,6 +2736,21 @@ export default function App() {
   /** Editing the metadata block saves on the same terms as editing the prose. */
   const onMatterChange = useCallback(
     (next: string | null) => {
+      /*
+       * A workspace file: the room owns the text, so the block is joined back
+       * onto the body and handed to the write editor as one edit — the same
+       * road a Source edit takes — and the room carries it to everyone. The
+       * sheet's `matter` is set here rather than read back, because the echo
+       * of that edit is deliberately ignored by the room reader.
+       */
+      if (wsIdOf(activePath)) {
+        const body = splitFrontmatter(wsSource).body;
+        const text = joinFrontmatter(next, body);
+        wsSourceEcho.current = mainWriteReplace.current?.(text) ?? null;
+        setMatter(next);
+        lastMatter.current = next;
+        return;
+      }
       if (!activeRepoPath || activeRepoPath === MEMORY || !activePath) return;
       setMatter(next);
       setDirty(true);
@@ -2792,6 +2809,7 @@ export default function App() {
       settings.autosave,
       settings.autosaveDelay,
       settings.statuses,
+      wsSource,
     ],
   );
   /** The block as last written through here, so a status edit can be told from a re-save. */
@@ -3218,16 +3236,21 @@ export default function App() {
   useEffect(() => {
     // In a plain browser (the test harness) there is no webview to ask.
     let un: Promise<() => void>;
+    // Gated the way `listen` in events.ts is: an unlisten that throws leaves
+    // the Rust half registered, and a leaked drop handler opens every
+    // dropped file twice.
+    let live = true;
     try {
       un = getCurrentWebview().onDragDropEvent((event) => {
-        if (event.payload.type !== "drop") return;
+        if (!live || event.payload.type !== "drop") return;
         for (const p of event.payload.paths) void dropPath(p);
       });
     } catch {
       return;
     }
     return () => {
-      un.then((f) => f()).catch(() => {});
+      live = false;
+      un.then((f) => retrying(f)).catch(() => {});
     };
   }, [dropPath]);
 
@@ -6053,16 +6076,38 @@ export default function App() {
    * alone: the settings page, the name sheets and the copy-out sheet all mean
    * "somewhere on disk" by it, and they are all still right.
    */
+  /** The workspaces in your order; the ones you have not placed after, as the server lists them. */
+  const orderedWorkspaces = useMemo(() => {
+    const rank = new Map(settings.workspaceOrder.map((id, i) => [id, i]));
+    const placed = workspaces.filter((w) => rank.has(w.id)).sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+    return [...placed, ...workspaces.filter((w) => !rank.has(w.id))];
+  }, [workspaces, settings.workspaceOrder]);
   const wsShelf = useMemo(
     () =>
-      workspaces.map((w) => ({
+      orderedWorkspaces.map((w) => ({
         path: wsShelfPath(w.id),
         name: w.name,
         branch: "workspace",
         planDirs: [],
         workspace: true as const,
       })),
-    [workspaces],
+    [orderedWorkspaces],
+  );
+  /**
+   * Put a workspace at `toIndex` among the workspaces. The whole order is
+   * written, so a workspace the setting had never named is placed too.
+   */
+  const reorderWorkspace = useCallback(
+    (fromPath: string, toIndex: number) => {
+      const ids = orderedWorkspaces.map((w) => w.id);
+      const from = ids.indexOf(wsIdOf(fromPath) ?? "");
+      if (from === -1) return;
+      const to = Math.max(0, Math.min(toIndex, ids.length - 1));
+      if (to === from) return;
+      ids.splice(to, 0, ...ids.splice(from, 1));
+      set({ workspaceOrder: ids });
+    },
+    [orderedWorkspaces, set],
   );
   const wsShelfPaths = useMemo(
     () => new Set(wsShelf.map((s) => s.path)),
@@ -6226,7 +6271,6 @@ export default function App() {
    * document through a markdown boundary is the problem the folders plan
    * left for later. Seeing the raw file is the part that costs nothing.
    */
-  const [wsSource, setWsSource] = useState("");
   useEffect(() => {
     const id = wsIdOf(activePath);
     const docId = id
@@ -6248,6 +6292,18 @@ export default function App() {
     return () => meta.unobserve(read);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath, wsTrees, roomTick]);
+
+  /**
+   * A workspace file's frontmatter lives behind the same button a repository
+   * file's does. The block stays in the shared document — the room, the read
+   * endpoint and the tree's status dot all read it from there — so what is
+   * split off here is a view of it, refreshed as the room changes, and the
+   * editor hides the block it still holds.
+   */
+  useEffect(() => {
+    if (!wsIdOf(activePath)) return;
+    setMatter(settings.showFrontmatter ? splitFrontmatter(wsSource).matter : null);
+  }, [activePath, wsSource, settings.showFrontmatter]);
 
   /** The room behind the open buffer, when the open buffer is a workspace's. */
   const activeWsRoom = useMemo(() => {
@@ -6280,6 +6336,31 @@ export default function App() {
   const outsideRef = useRef<
     (workspace: string, path: string, text: string) => Promise<unknown>
   >(async () => {});
+
+  /**
+   * The conventions, written into a scratch folder the first time it is
+   * made this session. A repository gets them from a button in Settings; a
+   * workspace's folder is nobody's to press a button for, and an agent
+   * started there with no skills wrote every document as if there were no
+   * rules — which, in that folder, there were not. The Rust side leaves
+   * these files alone when it sweeps.
+   */
+  const conventionsDone = useRef(new Set<string>());
+  const conventionsInto = useCallback(async (dir: string) => {
+    if (conventionsDone.current.has(dir)) return;
+    conventionsDone.current.add(dir);
+    try {
+      let paths = agentPaths.current;
+      if (!paths.length) {
+        const found = await api.agentList().catch(() => [] as AgentFound[]);
+        paths = [...new Set(found.filter((a) => a.ready).flatMap((a) => a.conventions))];
+      }
+      await installConventions(dir, paths);
+    } catch {
+      // A folder that cannot take them is a folder the next chat will try again.
+      conventionsDone.current.delete(dir);
+    }
+  }, []);
 
   /**
    * Which workspaces need a scratch folder right now: the one on screen,
@@ -6321,6 +6402,7 @@ export default function App() {
             setScratchDirs((prev) =>
               prev[id] === dir ? prev : { ...prev, [id]: dir },
             );
+            void conventionsInto(dir);
             // What the agent changed on disk rather than through us — a
             // shell edit, a file it made — goes into the room the way one of
             // its client writes would. Queued, not awaited: the put has to
@@ -6861,6 +6943,7 @@ export default function App() {
               onForgetRepo={forgetRepo}
               onRenameRepo={renameRepo}
               onReorderRepo={reorderRepo}
+              onReorderWorkspace={reorderWorkspace}
               filter={filter}
               showExtensions={settings.showExtensions}
               statusOrder={statusOrder}
@@ -6895,6 +6978,7 @@ export default function App() {
               }
               onLeaveWorkspace={(repo) => void leaveWorkspace(wsIdOf(repo)!)}
               onDeleteWorkspace={(repo) => void deleteWorkspace(wsIdOf(repo)!)}
+              onMembersWorkspace={(repo) => setWsMembers(wsIdOf(repo)!)}
               onRename={shelfRename}
               onMoveTo={(repo, path) => setMoving({ repo, path })}
               onSetOpen={setOpen}
@@ -7205,9 +7289,6 @@ export default function App() {
                             const room = docId
                               ? rooms.current.get(docId)
                               : undefined;
-                            const status = (wsTrees[id] ?? []).find(
-                              (e) => e.path === file,
-                            )?.status;
                             return (
                               <>
                                 {room && room.status !== "open" && (
@@ -7220,23 +7301,10 @@ export default function App() {
                                       : "offline"}
                                   </span>
                                 )}
-                                {status && (
-                                  <span
-                                    className={`status-badge tone-${statusTone(status)}`}
-                                    title="status: from this file's frontmatter"
-                                    data-testid="ws-status"
-                                  >
-                                    {status}
-                                  </span>
-                                )}
-                                <button
-                                  className="rail-btn"
-                                  onClick={() => setWsMembers(id)}
-                                  title={`${ws.members.length} ${ws.members.length === 1 ? "member" : "members"}: see who, invite, remove`}
-                                  data-testid="members"
-                                >
-                                  Members
-                                </button>
+                                {/* Status, owner and due are read from `matter`
+                                below, as for any file; Members is on the
+                                workspace's heading in the tree, where it
+                                belongs to the workspace and not to a file. */}
                                 {shownRepos.length > 0 && (
                                   <button
                                     className="rail-btn"
@@ -7423,7 +7491,9 @@ export default function App() {
                       {(activeRepoPath === MEMORY ||
                         isMarkdownPath(activePath)) && (
                         <div
-                          className={`surface ${view === "write" ? "" : "aside"}`}
+                          className={`surface ${view === "write" ? "" : "aside"} ${
+                            wsIdOf(activePath) && settings.showFrontmatter ? "matter-apart" : ""
+                          }`}
                           onContextMenu={(e) => {
                             if (view !== "write") return;
                             e.preventDefault();

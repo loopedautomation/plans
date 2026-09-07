@@ -74,6 +74,15 @@ export type Settings = {
    * it; editing it here is the same as doing those in the app.
    */
   repos: string[];
+  /**
+   * The workspaces in the sidebar, as ids, in the order you put them.
+   *
+   * The server lists them in its own order; this is yours, kept here for
+   * the same reason `repos` is. A workspace not named here goes after the
+   * ones that are, in the server's order, so a new one lands at the end
+   * and nothing you have arranged moves.
+   */
+  workspaceOrder: string[];
 
   // Source
   /** Line numbers down the side of the raw markdown. */
@@ -227,6 +236,7 @@ export type Settings = {
 
 export const DEFAULTS: Settings = {
   repos: [],
+  workspaceOrder: [],
   theme: DEFAULT_THEME,
   fontId: "work-sans",
   monoId: "space-mono",

@@ -135,6 +135,47 @@
   font-style: italic;
 }
 
+/* ---------------------------------------------------------------------------
+   Alerts: `> [!NOTE]` and its four siblings, tagged by src/alert-view.ts.
+
+   A callout is a quote with a colour, a tint, and its label worn as a badge.
+   The hue tokens live in App.css per paper; only the shape is decided here.
+   The label text stays in the document, so the badge is the text itself
+   dressed up rather than replaced.
+   --------------------------------------------------------------------------- */
+.editor-host .milkdown .ProseMirror blockquote.alert {
+  --alert-hue: var(--ink-2);
+  border-left-color: var(--alert-hue);
+  background: color-mix(in srgb, var(--alert-hue) 8%, transparent);
+  border-radius: 0 4px 4px 0;
+  padding: 0.6em 1em 0.1em 1em;
+  color: var(--ink);
+  font-style: normal;
+}
+.editor-host .milkdown .ProseMirror blockquote.alert[data-alert="note"] { --alert-hue: var(--alert-note); }
+.editor-host .milkdown .ProseMirror blockquote.alert[data-alert="tip"] { --alert-hue: var(--alert-tip); }
+.editor-host .milkdown .ProseMirror blockquote.alert[data-alert="important"] { --alert-hue: var(--alert-important); }
+.editor-host .milkdown .ProseMirror blockquote.alert[data-alert="warning"] { --alert-hue: var(--alert-warning); }
+.editor-host .milkdown .ProseMirror blockquote.alert[data-alert="caution"] { --alert-hue: var(--alert-caution); }
+
+.editor-host .milkdown .ProseMirror .alert-label {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  color: var(--alert-hue);
+  border: 1px solid color-mix(in srgb, var(--alert-hue) 55%, transparent);
+  border-radius: 3px;
+  padding: 0 0.45em;
+  margin: 0 0.5em 0.1em 0;
+  vertical-align: 0.15em;
+}
+/* Still in the document, still a caret stop, just not drawn. */
+.editor-host .milkdown .ProseMirror .alert-brace { font-size: 0; letter-spacing: 0; }
+
 .editor-host .milkdown .ProseMirror hr {
   border: 0;
   border-top: 1px solid var(--rule);
@@ -153,6 +194,19 @@
   text-underline-offset: 2px;
 }
 
+/* A bullet is one line of a list, not a paragraph: the paragraph margin
+   inside an item made every list read double-spaced. The item carries a
+   small gap of its own; a nested list sits tight under its parent line. */
+.editor-host .milkdown .ProseMirror li { margin: 0.15em 0; }
+/* Crepe nests the paragraph under .children > .content-dom, and pads both it
+   and the bullet by 4px: a row was 32px of box plus 14px of paragraph margin. */
+.editor-host .milkdown .ProseMirror li p { margin: 0; padding: 2px 0; }
+.editor-host .milkdown .ProseMirror li > .label-wrapper,
+.editor-host .milkdown .ProseMirror li > .label-wrapper .label { height: 28px; padding: 0; }
+.editor-host .milkdown .ProseMirror li > ul,
+.editor-host .milkdown .ProseMirror li > ol { margin: 0.15em 0 0; }
+.editor-host .milkdown .ProseMirror ul,
+.editor-host .milkdown .ProseMirror ol { margin: 0 0 0.9em; }
 /* Task lists carry most of a plan's meaning; give the checkbox some presence. */
 .editor-host .milkdown .ProseMirror li[data-item-type="task"] { margin: 0.25em 0; }
 
@@ -312,6 +366,10 @@
 /* ---------------------------------------------------------------------------
    Mermaid: the diagram sits under its source, as a figure under a caption.
    --------------------------------------------------------------------------- */
+/* A diagram's fence, folded under its picture until the caret or the
+   figure's Source button asks for it. */
+.editor-host .milkdown .mermaid-source-folded { display: none; }
+
 .editor-host .milkdown .ProseMirror .mermaid-figure {
   display: flex;
   justify-content: center;
@@ -461,6 +519,39 @@
 /* The source lines of a <picture> stay in the document but out of sight —
    hidden rather than removed, so the markdown is untouched. */
 .editor-host .milkdown .ProseMirror .md-hidden { display: none; }
+.editor-host .milkdown .ProseMirror .md-folded { display: none; }
+
+/* A <details> section's head: the summary with a caret, folding what follows. */
+.editor-host .milkdown .ProseMirror .md-details-head {
+  /* Inline-level on purpose: the opener usually arrives inside a paragraph,
+     and a block-level button there put ProseMirror's trailing break on a
+     line of its own, which was a blank line under every head. */
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  width: 100%;
+  margin: 0;
+  vertical-align: top;
+  padding: 0.35em 0.6em;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--shade);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.editor-host .milkdown .ProseMirror .md-details-head:hover { border-color: var(--rule-strong); }
+.editor-host .milkdown .ProseMirror .md-details-caret {
+  flex: none;
+  color: var(--ink-3);
+  font-size: 0.75em;
+  transition: transform 120ms;
+}
+.editor-host .milkdown .ProseMirror .md-details-caret::before { content: "▶"; }
+.editor-host .milkdown .ProseMirror .md-details-head[aria-expanded="true"] .md-details-caret { transform: rotate(90deg); }
+.editor-host .milkdown .ProseMirror .md-details-summary { flex: 1; min-width: 0; }
+
 
 /* ---------------------------------------------------------------------------
    HTML wrappers: <div align="center">, <sub>, <b> and friends.
@@ -517,6 +608,58 @@
   border: 0;
   background: transparent;
 }
+
+/* A block shown as its preview — LaTeX — reads as a figure: the maths in the
+   middle, no "Preview" label or rule (there is nothing to divide it from),
+   and the language, Copy and Edit buttons appearing on hover as a diagram's
+   tools do. Crepe hides the editor with `.codemirror-host.hidden`. */
+.editor-host .milkdown .milkdown-code-block .preview-panel .preview-divider,
+.editor-host .milkdown .milkdown-code-block .preview-panel .preview-label { display: none; }
+.editor-host .milkdown .milkdown-code-block .preview-panel .preview {
+  text-align: center;
+  overflow-x: auto;
+  padding: 0.2em 0;
+  color: var(--ink);
+}
+.editor-host .milkdown .milkdown-code-block .preview-panel .katex-display { margin: 0.4em 0; }
+.editor-host .milkdown .milkdown-code-block:has(.codemirror-host.hidden) {
+  position: relative;
+  margin: 0.2em 0 0.8em;
+}
+.editor-host .milkdown .milkdown-code-block:has(.codemirror-host.hidden) .tools {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.editor-host .milkdown .milkdown-code-block:has(.codemirror-host.hidden):hover .tools,
+.editor-host .milkdown .milkdown-code-block:has(.codemirror-host.hidden):focus-within .tools { opacity: 1; }
+.editor-host .milkdown .milkdown-code-block .codemirror-host.hidden { display: none; }
+/* Copy and Edit, in the language button's voice. */
+.editor-host .milkdown .milkdown-code-block .tools .copy-button,
+.editor-host .milkdown .milkdown-code-block .tools .preview-toggle-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 3px 6px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.editor-host .milkdown .milkdown-code-block .tools .copy-button:hover,
+.editor-host .milkdown .milkdown-code-block .tools .preview-toggle-button:hover { color: var(--ink); border-color: var(--rule); }
+.editor-host .milkdown .milkdown-code-block .tools .copy-button svg,
+.editor-host .milkdown .milkdown-code-block .tools .preview-toggle-button svg { width: 10px; height: 10px; }
+/* Inline maths sits in the line, in the text's colour. */
+.editor-host .milkdown .ProseMirror span[data-type="math_inline"] { padding: 0 2px; color: var(--ink); }
 
 .editor-host .milkdown .language-button {
   display: inline-flex;
@@ -586,6 +729,33 @@
   color: var(--ink);
 }
 
+/* A footnote's definition: Crepe draws it as a <dl>, whose <dt> and <dd> are
+   blocks, so the number sat on a line of its own above the text. One row,
+   number in the margin's voice, text beside it; the first one carries the
+   rule that sets the notes apart from the page. */
+.editor-host .milkdown .ProseMirror dl[data-type="footnote_definition"] {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  margin: 0 0 0.4em;
+  font-size: 0.9em;
+  color: var(--ink-2);
+}
+.editor-host .milkdown .ProseMirror dl[data-type="footnote_definition"] dt {
+  flex: none;
+  min-width: 1.4em;
+  font-family: var(--mono);
+  font-size: 0.85em;
+  color: var(--ink-3);
+}
+.editor-host .milkdown .ProseMirror dl[data-type="footnote_definition"] dd { flex: 1; min-width: 0; margin: 0; }
+.editor-host .milkdown .ProseMirror dl[data-type="footnote_definition"] dd p { margin: 0; }
+.editor-host .milkdown .ProseMirror :not(dl[data-type="footnote_definition"]) + dl[data-type="footnote_definition"] {
+  margin-top: 1.6em;
+  padding-top: 0.8em;
+  border-top: 1px solid var(--rule);
+}
+
 /* Frontmatter left in the document: metadata, in the ledger voice, set apart
    from the prose without pretending to be code. */
 .editor-host .milkdown .ProseMirror .md-frontmatter {
@@ -600,6 +770,8 @@
   color: var(--ink-3);
   white-space: pre-wrap;
 }
+/* A workspace file: the block is in the shared document and behind the button, so not on the page. */
+.matter-apart .editor-host .milkdown .ProseMirror .md-frontmatter { display: none; }
 .editor-host .milkdown .ProseMirror .md-frontmatter.ProseMirror-selectednode {
   color: var(--ink-2);
   border-bottom-color: var(--rule-strong);

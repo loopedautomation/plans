@@ -34,6 +34,11 @@ pub struct Entry {
     pub written: HashMap<String, String>,
 }
 
+/// The root files the app writes the conventions into, for the agents that
+/// read one (see `discover::KNOWN`). Written by the frontend into the folder
+/// like any other file, and to be left there.
+const CONVENTIONS: &[&str] = &["AGENTS.md", "GEMINI.md", "CLAUDE.md"];
+
 /// Every scratch folder in use, by folder.
 #[derive(Default)]
 pub struct Scratch(Mutex<HashMap<PathBuf, Entry>>);
@@ -173,7 +178,11 @@ fn sweep(
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let p = entry.path();
-        if entry.file_name().to_string_lossy().starts_with('.') {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // The agent's own dotfiles, and the conventions the app writes at
+        // the root for the agents that read a root file: neither the
+        // workspace's nor news.
+        if name.starts_with('.') || (dir == root && CONVENTIONS.contains(&name.as_str())) {
             continue;
         }
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
@@ -368,9 +377,12 @@ mod tests {
         materialise(&tmp, &[file("plan.md", "# Plan\n")], &mut written).unwrap();
         std::fs::create_dir_all(tmp.join("notes")).unwrap();
         std::fs::write(tmp.join("notes/new.md"), "# New\n").unwrap();
-        // The agent's own dotfiles are neither news nor litter.
+        // The agent's own dotfiles are neither news nor litter, and nor are
+        // the conventions the app put at the root.
         std::fs::create_dir_all(tmp.join(".claude")).unwrap();
         std::fs::write(tmp.join(".claude/settings.json"), "{}").unwrap();
+        std::fs::write(tmp.join("CLAUDE.md"), "# Skills\n").unwrap();
+        std::fs::write(tmp.join("AGENTS.md"), "# Rules\n").unwrap();
 
         let changed = materialise(&tmp, &[file("plan.md", "# Plan\n")], &mut written).unwrap();
         assert_eq!(
@@ -382,6 +394,8 @@ mod tests {
         );
         assert!(tmp.join("notes/new.md").exists());
         assert!(tmp.join(".claude/settings.json").exists());
+        assert!(tmp.join("CLAUDE.md").exists());
+        assert!(tmp.join("AGENTS.md").exists());
 
         // Once the tree has it, it is an ordinary file of the tree.
         let changed = materialise(
@@ -424,9 +438,13 @@ mod tests {
     }
 
     fn tempdir() -> PathBuf {
+        // Tests run in parallel, and two of them have started within the
+        // same tick: a counter keeps their folders apart.
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let p = std::env::temp_dir().join(format!(
-            "plans-scratch-{}-{}",
+            "plans-scratch-{}-{}-{}",
             std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

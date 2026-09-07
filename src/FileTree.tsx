@@ -210,6 +210,8 @@ type Props = {
    * *is* an index, computed by the component that re-renders from the result.
    */
   onReorderRepo: (fromPath: string, toIndex: number) => void;
+  /** The same, for a workspace: `toIndex` is into the workspaces alone. */
+  onReorderWorkspace?: (fromPath: string, toIndex: number) => void;
   filter: string;
   showExtensions: boolean;
   /**
@@ -266,6 +268,8 @@ type Props = {
   ownedWorkspaces?: Set<string>;
   onLeaveWorkspace?: (repoPath: string) => void;
   onDeleteWorkspace?: (repoPath: string) => void;
+  /** Open the workspace's member list: who is in, invite, remove. */
+  onMembersWorkspace?: (repoPath: string) => void;
   /** Open or close a whole subtree at once. */
   onSetOpen: (keys: string[], open: boolean) => void;
 };
@@ -386,6 +390,8 @@ export const FileTree = memo(function FileTree(p: Props) {
   reposRef.current = p.repos;
   const reorderRef = useRef(p.onReorderRepo);
   reorderRef.current = p.onReorderRepo;
+  const reorderWsRef = useRef(p.onReorderWorkspace);
+  reorderWsRef.current = p.onReorderWorkspace;
   /** Which headings are workspaces, read from inside the bound drag handlers. */
   const wsRef = useRef(p.workspaces);
   wsRef.current = p.workspaces;
@@ -492,20 +498,29 @@ export const FileTree = memo(function FileTree(p: Props) {
     const reorderTo = (repoPath: string, y: number) => {
       const el = box.current;
       if (!el) return;
-      const list = reposRef.current;
+      // Two lists on one shelf, each ordered among its own kind: a
+      // repository slides between repositories, a workspace between
+      // workspaces, and crossing a block of the other kind is not a slot.
+      const ws = wsRef.current.has(repoPath);
+      const list = reposRef.current.filter((r) => wsRef.current.has(r.path) === ws);
       const from = list.findIndex((r) => r.path === repoPath);
       if (from === -1) return;
       let to = 0;
-      // Repositories only: a workspace's block is on the shelf but not in the
-      // list being reordered, so crossing one must not count as a slot.
-      for (const block of el.querySelectorAll<HTMLElement>(".tree-repo:not(.ws-block)")) {
+      const blocks = ws ? ".tree-repo.ws-block" : ".tree-repo:not(.ws-block)";
+      for (const block of el.querySelectorAll<HTMLElement>(blocks)) {
         const r = block.getBoundingClientRect();
         if (y > r.top + r.height / 2) to += 1;
       }
       // Past its own midpoint counts itself; settle on the slot, not the gap.
       if (to > from) to -= 1;
       if (to === from) return;
-      reorderRef.current(repoPath, to);
+      if (ws) reorderWsRef.current?.(repoPath, to);
+      else reorderRef.current(repoPath, to);
+    };
+    /** Where `repoPath` sits among its own kind. */
+    const homeOf = (repoPath: string) => {
+      const ws = wsRef.current.has(repoPath);
+      return reposRef.current.filter((r) => wsRef.current.has(r.path) === ws).findIndex((r) => r.path === repoPath);
     };
     const move = (e: PointerEvent) => {
       const start = pressed.current;
@@ -519,7 +534,7 @@ export const FileTree = memo(function FileTree(p: Props) {
         // live — a class on <body> is what turns it on.
         if (start.kind === "file") document.body.classList.add("tree-drag", "from-main");
         if (start.kind === "repo") {
-          const at = reposRef.current.findIndex((r) => r.path === start.repo);
+          const at = homeOf(start.repo);
           repoHome.current = at === -1 ? null : at;
         }
         trace("drag start", { path: start.path, kind: start.kind });
@@ -576,8 +591,11 @@ export const FileTree = memo(function FileTree(p: Props) {
       // A file drag has committed nothing yet, so dropping the state is the
       // whole cancel. A repo drag has already moved the list — put it back.
       if (it.kind === "repo" && repoHome.current !== null) {
-        const at = reposRef.current.findIndex((r) => r.path === it.repo);
-        if (at !== -1 && at !== repoHome.current) reorderRef.current(it.repo, repoHome.current);
+        const at = homeOf(it.repo);
+        if (at !== -1 && at !== repoHome.current) {
+          if (wsRef.current.has(it.repo)) reorderWsRef.current?.(it.repo, repoHome.current);
+          else reorderRef.current(it.repo, repoHome.current);
+        }
       }
       endDrag();
     };
@@ -725,8 +743,9 @@ export const FileTree = memo(function FileTree(p: Props) {
   // A filter is its own navigation — everything it matched should be visible.
   const filtering = p.filter.trim().length > 0;
 
-  /** The headings that are repositories, which are the ones that reorder. */
+  /** The headings that are repositories, and the ones that are workspaces: two lists, each ordered by hand. */
   const disks = p.repos.filter((r) => !isWs(r.path));
+  const shelves = p.repos.filter((r) => isWs(r.path));
 
   const row = (node: Node, repo: RepoInfo, depth: number): React.ReactNode => {
     const pad = { paddingLeft: `${10 + depth * 13}px` };
@@ -1091,38 +1110,41 @@ export const FileTree = memo(function FileTree(p: Props) {
                 Collapse all
               </button>
               {/* The drag without the steady hand: the same reorder, one step
-                  at a time, reachable from the keyboard. Only the
-                  repositories are ordered by hand, and the index is into
-                  them — the workspaces sit under the shelf in the server's
-                  order and are not part of this list. */}
-              {!isWs(menu.repo) && disks.findIndex((r) => r.path === menu.repo) > 0 && (
-                <button
-                  {...menuItem()}
-                  onClick={() =>
-                    act(() =>
-                      p.onReorderRepo(menu.repo, disks.findIndex((r) => r.path === menu.repo) - 1),
-                    )
-                  }
-                >
-                  Move up
-                </button>
-              )}
-              {!isWs(menu.repo) &&
-                disks.findIndex((r) => r.path === menu.repo) < disks.length - 1 && (
-                  <button
-                    {...menuItem()}
-                    onClick={() =>
-                      act(() =>
-                        p.onReorderRepo(menu.repo, disks.findIndex((r) => r.path === menu.repo) + 1),
-                      )
-                    }
-                  >
-                    Move down
-                  </button>
-                )}
+                  at a time, reachable from the keyboard. The index is into
+                  the heading's own kind — repositories among repositories,
+                  workspaces among workspaces. */}
+              {(() => {
+                const ws = isWs(menu.repo);
+                const kin = ws ? shelves : disks;
+                const at = kin.findIndex((r) => r.path === menu.repo);
+                const move = ws ? p.onReorderWorkspace : p.onReorderRepo;
+                if (at === -1 || !move) return null;
+                return (
+                  <>
+                    {at > 0 && (
+                      <button {...menuItem()} onClick={() => act(() => move(menu.repo, at - 1))}>
+                        Move up
+                      </button>
+                    )}
+                    {at < kin.length - 1 && (
+                      <button {...menuItem()} onClick={() => act(() => move(menu.repo, at + 1))}>
+                        Move down
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
               {isWs(menu.repo) && (
                 <>
                   <span className="ctx-rule" />
+                  {/* The members are the workspace's, not a file's, so they
+                      are reachable from the heading and not only from the
+                      page of a file that happens to be open in it. */}
+                  {p.onMembersWorkspace && (
+                    <button {...menuItem()} onClick={() => act(() => p.onMembersWorkspace?.(menu.repo))}>
+                      Members…
+                    </button>
+                  )}
                   {p.ownedWorkspaces?.has(menu.repo) ? (
                     <button
                       {...menuItem("warn")}
@@ -1193,11 +1215,7 @@ export const FileTree = memo(function FileTree(p: Props) {
               data-repo={r.path}
               data-path=""
               data-kind="repo"
-              // A workspace has no place on the shelf to be dragged to: the
-              // repositories are ordered by hand, the workspaces by the
-              // server's list. The heading is still a drop spot for a file
-              // moving to the workspace's root.
-              {...(r.workspace ? {} : dragHandle(r.path, "", "repo"))}
+              {...dragHandle(r.path, "", "repo")}
               {...dropSpot(r.path, "", `${r.path}::root`)}
               onClick={() => p.onToggle(key)}
               aria-expanded={open}

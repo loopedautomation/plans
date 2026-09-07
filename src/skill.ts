@@ -87,6 +87,40 @@ export const SKILLS: BundledSkill[] = [
 /** Claude Code's plans path, still — the default destination when no agent is found. */
 export const SKILL_PATH = SKILLS[0].claudePath;
 
+/**
+ * The file Claude Code reads on every turn, unasked.
+ *
+ * A skill under `.claude/skills/` is offered to Claude, not given: it is
+ * listed by its description and opened when the model decides it applies,
+ * which for the writing rules meant a document written with every em dash
+ * the skill forbids. `CLAUDE.md` is loaded into every session, so a short
+ * section there says which skill to read before which kind of work. The
+ * skills themselves stay where they are; this is the pointer, not a copy.
+ */
+export const POINTER_PATH = "CLAUDE.md";
+const POINTER_BEGIN = "<!-- plans:begin skills -->";
+const POINTER_END = "<!-- plans:end skills -->";
+
+/** The `description:` line of a skill's frontmatter, which is what it is for. */
+function describe(skill: BundledSkill): string {
+  const m = /^description:\s*(.+)$/m.exec(skill.text.slice(0, skill.text.indexOf("\n---", 4) + 4));
+  return (m?.[1] ?? skill.label).trim();
+}
+
+function pointerSection(): string {
+  const lines = SKILLS.map((s) => `- \`${s.claudePath}\` — ${describe(s)}`);
+  return (
+    `${POINTER_BEGIN}\n` +
+    "## Skills for this folder\n\n" +
+    "The conventions live in the skills below. Read the one that applies " +
+    "before starting the work, not after — in particular, read the writing " +
+    "skill before writing or editing any prose a person will read, and " +
+    "follow it to the letter.\n\n" +
+    `${lines.join("\n")}\n` +
+    `${POINTER_END}\n`
+  );
+}
+
 export type SkillInstall = "installed" | "updated" | "current";
 
 /** Whether a repository has the conventions, and whether they are the bundled ones. */
@@ -123,14 +157,18 @@ function section(skill: BundledSkill): string {
 
 /** One skill's managed section, put into a file that may already say other things. */
 function merge(existing: string | null, skill: BundledSkill): string {
-  const wanted = section(skill);
+  return mergeSection(existing, section(skill), skill.begin, skill.end);
+}
+
+/** A fenced section, replaced where it is or appended where it is not. */
+function mergeSection(existing: string | null, wanted: string, begin: string, end: string): string {
   if (existing === null || !existing.trim()) return wanted;
-  const from = existing.indexOf(skill.begin);
-  const to = existing.indexOf(skill.end);
+  const from = existing.indexOf(begin);
+  const to = existing.indexOf(end);
   if (from !== -1 && to > from) {
-    return existing.slice(0, from) + wanted.trimEnd() + existing.slice(to + skill.end.length);
+    return existing.slice(0, from) + wanted.trimEnd() + existing.slice(to + end.length);
   }
-  // Nothing of this skill's in there yet: append, and leave every word else alone.
+  // Nothing of ours in there yet: append, and leave every word else alone.
   return `${existing.replace(/\s*$/, "")}\n\n${wanted}`;
 }
 
@@ -142,12 +180,18 @@ function merge(existing: string | null, skill: BundledSkill): string {
  * (`AGENTS.md`, `GEMINI.md`) holds every skill, each in its own fenced
  * section — one file, several fences, a single block of our footprint.
  */
-function targets(paths: string[]): { path: string; skills: BundledSkill[] }[] {
+type Target = { path: string; skills: BundledSkill[]; pointer?: boolean };
+
+function targets(paths: string[]): Target[] {
   const wants = paths.length ? paths : [SKILL_PATH];
-  const out: { path: string; skills: BundledSkill[] }[] = [];
+  const out: Target[] = [];
   const seen = new Set<string>();
   for (const path of wants) {
-    if (appOwned(path)) {
+    if (path === POINTER_PATH) {
+      if (seen.has(path)) continue;
+      seen.add(path);
+      out.push({ path, skills: SKILLS, pointer: true });
+    } else if (appOwned(path)) {
       // The table in discover.rs names the plans file; the review file sits
       // beside it, in the same skills directory.
       for (const skill of SKILLS) {
@@ -166,7 +210,8 @@ function targets(paths: string[]): { path: string; skills: BundledSkill[] }[] {
 }
 
 /** What the file at `path` should contain once the conventions are installed. */
-function wanted(target: { path: string; skills: BundledSkill[] }, existing: string | null): string {
+function wanted(target: Target, existing: string | null): string {
+  if (target.pointer) return mergeSection(existing, pointerSection(), POINTER_BEGIN, POINTER_END);
   if (appOwned(target.path)) return target.skills[0].text;
   return target.skills.reduce((acc, skill) => merge(acc, skill), existing) as string;
 }

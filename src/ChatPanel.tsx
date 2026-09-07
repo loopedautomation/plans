@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen } from "./events";
 import { api, type AgentCommand, type ChatId, type ConfigOption } from "./api";
 import { SKILLS } from "./skill";
 import { track } from "./analytics";

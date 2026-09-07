@@ -179,12 +179,14 @@ pub const KNOWN: &[Known] = &[
         id: "claude",
         label: "Claude Code",
         program: "npx",
-        args: &["-y", "@agentclientprotocol/claude-agent-acp@0.73.0"],
+        args: &["-y", "@agentclientprotocol/claude-agent-acp@0.75.1"],
         install: "Needs Node. Install it to start instantly instead of fetching each time.",
         auth: "Run `claude` in a terminal once and sign in.",
         bin: Some("claude-agent-acp"),
-        package: Some("@agentclientprotocol/claude-agent-acp@0.73.0"),
-        conventions: &[".claude/skills/plans/SKILL.md"],
+        package: Some("@agentclientprotocol/claude-agent-acp@0.75.1"),
+        // The skills, and the file read on every turn that says when to
+        // open which: a skill on its own is offered, not applied.
+        conventions: &[".claude/skills/plans/SKILL.md", "CLAUDE.md"],
     },
     Known {
         id: "codex",

@@ -1,6 +1,6 @@
 ---
 name: writing
-description: Voice and prose rules for anything a human reads in the Looped Plans app - plans, reviews, docs and copy. Use whenever writing or rewriting prose in a plans/ folder or a review, alongside the plans and review skills.
+description: Voice and prose rules for anything a human reads - any markdown document, plan, note, review, doc or copy, in a repository or a workspace. Read before writing or rewriting any prose, alongside the plans and review skills where those apply.
 ---
 # Writing
 

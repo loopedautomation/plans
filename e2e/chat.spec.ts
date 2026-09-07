@@ -1729,6 +1729,33 @@ test("the answer is rendered as markdown, and never as markup", async ({ page })
   await expect(bubble.locator(".chat-md-code")).toContainText("cargo test");
 });
 
+test("a diff fence is rows, tinted by what happened to them", async ({ page }) => {
+  await open(page);
+  await openPlan(page);
+  await page.keyboard.press("Meta+j");
+  await say(page, "show the change");
+
+  await page.evaluate(() => {
+    const f = (window as any).__fake;
+    f.emit("agent-message", {
+      repo: "/repo/one",
+      turn: 1,
+      text: "Here:\n\n```diff\n@@ -1,2 +1,2 @@\n keep\n-old line\n+new line\n```\n\n```\nplain\n```",
+    });
+  });
+
+  const diff = page.locator(".chat-msg.assistant .chat-md-diff");
+  await expect(diff.locator(".diff-row.add")).toHaveText(/new line/);
+  await expect(diff.locator(".diff-row.del")).toHaveText(/old line/);
+  await expect(diff.locator(".diff-row.hunk")).toHaveCount(1);
+  await expect(diff.locator(".diff-row.ctx")).toHaveText(/keep/);
+  const bg = (sel: string) =>
+    page.evaluate((q) => getComputedStyle(document.querySelector(q)!).backgroundColor, sel);
+  expect(await bg(".chat-md-diff .diff-row.add")).not.toBe(await bg(".chat-md-diff .diff-row.ctx"));
+  // A fence with no language is still the code as written.
+  await expect(page.locator(".chat-msg.assistant .chat-md-code:not(.chat-md-diff)")).toHaveText("plain");
+});
+
 test("html in an answer is text, not html", async ({ page }) => {
   await open(page);
   await openPlan(page);

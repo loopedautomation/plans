@@ -16,7 +16,27 @@ import type { EditorView } from "@milkdown/kit/prose/view";
 import type { Node as PMNode } from "@milkdown/kit/prose/model";
 import mermaid from "mermaid";
 
-type MermaidState = { signature: string; set: DecorationSet };
+/**
+ * The widgets, and the folds.
+ *
+ * A diagram's source is folded under its picture: the figure is what a
+ * reader wants, and the fence is what an editor wants, so the fence is
+ * shown only while the caret is inside it or while its figure's Source
+ * button has been pressed. `shown` holds the start positions of the blocks
+ * unfolded by hand, mapped through every edit so they follow the block;
+ * `blocks` is every diagram's range, so a selection can be checked against
+ * them without another walk; `all` is the widgets plus the folds, which is
+ * what the view is handed.
+ */
+type MermaidState = {
+  signature: string;
+  set: DecorationSet;
+  blocks: { from: number; to: number }[];
+  shown: number[];
+  all: DecorationSet;
+};
+
+type Toggle = { toggle: number };
 
 const key = new PluginKey<MermaidState>("plans-mermaid");
 
@@ -56,6 +76,7 @@ function applyTheme() {
   const signature = `${v("--paper")}${v("--ink")}`;
   if (signature === themed) return;
   themed = signature;
+  const series = [1, 2, 3, 4, 5, 6].map((i) => v(`--chart-${i}`)).filter(Boolean);
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
@@ -76,6 +97,32 @@ function applyTheme() {
       clusterBorder: v("--rule"),
       titleColor: v("--ink"),
       edgeLabelBackground: v("--paper"),
+      /*
+       * Series colours. Mermaid's own are a pale orange for xy charts and a
+       * rainbow for pies, neither of which belongs on this paper; these are
+       * the paper's chart tokens, in order, so the first bar is the same blue
+       * on every diagram and the night palette is lifted rather than merely
+       * the day one on black.
+       */
+      ...Object.fromEntries(series.map((c, i) => [`pie${i + 1}`, c])),
+      pieStrokeColor: v("--paper"),
+      pieOuterStrokeColor: v("--rule-strong"),
+      pieTitleTextColor: v("--ink"),
+      pieSectionTextColor: v("--paper"),
+      pieLegendTextColor: v("--ink-2"),
+      xyChart: {
+        backgroundColor: v("--paper"),
+        titleColor: v("--ink"),
+        xAxisLabelColor: v("--ink-2"),
+        xAxisTitleColor: v("--ink-2"),
+        xAxisTickColor: v("--rule-strong"),
+        xAxisLineColor: v("--rule-strong"),
+        yAxisLabelColor: v("--ink-2"),
+        yAxisTitleColor: v("--ink-2"),
+        yAxisTickColor: v("--rule-strong"),
+        yAxisLineColor: v("--rule-strong"),
+        plotColorPalette: series.join(","),
+      },
     },
   });
 }
@@ -355,16 +402,18 @@ function maximise(source: string) {
   document.body.append(scrim);
 }
 
-function build(doc: PMNode): DecorationSet {
+function build(doc: PMNode): { set: DecorationSet; blocks: { from: number; to: number }[] } {
   const out: Decoration[] = [];
+  const blocks: { from: number; to: number }[] = [];
   doc.descendants((node, pos) => {
     if (!isMermaid(node)) return;
     const source = node.textContent.trim();
     if (!source) return;
+    blocks.push({ from: pos, to: pos + node.nodeSize });
     out.push(
       Decoration.widget(
         pos + node.nodeSize,
-        () => {
+        (view, getPos) => {
           const host = document.createElement("div");
           host.className = "mermaid-figure";
           host.setAttribute("contenteditable", "false");
@@ -393,6 +442,35 @@ function build(doc: PMNode): DecorationSet {
           reset.textContent = "1:1";
           reset.title = "Reset the diagram";
           tools.append(reset);
+
+          /*
+           * The fence, folded under the picture, and this is the way to it.
+           * Through `getPos()` rather than the `pos` above: an edit higher up
+           * moves the widget without rebuilding it, and the closure's number
+           * is then a position in a document that no longer exists.
+           */
+          const src = document.createElement("button");
+          src.className = "mermaid-tool";
+          src.type = "button";
+          src.textContent = "</>";
+          src.title = "Show the diagram's source";
+          src.setAttribute("aria-label", "Show the diagram's source");
+          const shownNow = () => {
+            const st = key.getState(view.state);
+            const at = getPos();
+            const block = st?.blocks.find((b) => b.to === at);
+            return !!block && !!st?.shown.includes(block.from);
+          };
+          src.setAttribute("aria-pressed", String(shownNow()));
+          tools.append(src);
+          src.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const at = getPos();
+            if (at === undefined) return;
+            view.dispatch(view.state.tr.setMeta(key, { toggle: at } satisfies Toggle));
+            src.setAttribute("aria-pressed", String(shownNow()));
+          });
 
           const at = steer(host, stage, framed.get(source) ?? { k: 1, x: 0, y: 0 }, (now) => {
             if (now) framed.set(source, now);
@@ -436,7 +514,35 @@ function build(doc: PMNode): DecorationSet {
       ),
     );
   });
-  return DecorationSet.create(doc, out);
+  return { set: DecorationSet.create(doc, out), blocks };
+}
+
+/**
+ * Which fences are hidden right now: every diagram's, except one the caret is
+ * in — a fence being typed must not vanish under the typist — and any shown
+ * by hand. Applied over the widgets, so the view gets one set.
+ */
+function withFolds(
+  doc: PMNode,
+  sel: { from: number; to: number },
+  set: DecorationSet,
+  blocks: { from: number; to: number }[],
+  shown: number[],
+): DecorationSet {
+  const folds: Decoration[] = [];
+  for (const b of blocks) {
+    if (shown.includes(b.from)) continue;
+    if (sel.from >= b.from && sel.to <= b.to) continue;
+    folds.push(Decoration.node(b.from, b.to, { class: "mermaid-source-folded" }));
+  }
+  return folds.length ? set.add(doc, folds) : set;
+}
+
+function fresh(doc: PMNode, sel: { from: number; to: number }, shown: number[]): MermaidState {
+  const { set, blocks } = build(doc);
+  // A hand-shown block that no longer starts a diagram is forgotten.
+  const kept = shown.filter((p) => blocks.some((b) => b.from === p));
+  return { signature: signature(doc), set, blocks, shown: kept, all: withFolds(doc, sel, set, blocks, kept) };
 }
 
 export const mermaidView = $prose(
@@ -446,7 +552,7 @@ export const mermaidView = $prose(
       state: {
         // Signature in the plugin's state, not a module variable: two editors
         // would otherwise share it, and the second would render nothing.
-        init: (_, state) => ({ signature: signature(state.doc), set: build(state.doc) }),
+        init: (_, state) => fresh(state.doc, state.selection, []),
         /**
          * Only rebuild when a diagram's own text changed. Otherwise the old
          * decorations are moved to their new positions, which is what
@@ -454,22 +560,42 @@ export const mermaidView = $prose(
          * meant a full document scan and a fresh widget per diagram per key.
          */
         apply(tr, old) {
-          if (tr.getMeta(key)) {
-            return { signature: signature(tr.doc), set: build(tr.doc) };
+          const meta = tr.getMeta(key) as Toggle | true | undefined;
+          const sel = tr.selection;
+          let shown = tr.docChanged ? old.shown.map((p) => tr.mapping.map(p)) : old.shown;
+          if (meta && typeof meta === "object") {
+            // The widget sits at the block's end; the fold is keyed by its start.
+            const block = old.blocks.find((b) => b.to === meta.toggle);
+            if (block) {
+              shown = shown.includes(block.from)
+                ? shown.filter((p) => p !== block.from)
+                : [...shown, block.from];
+            }
           }
-          if (!tr.docChanged) return old;
+          if (meta === true) return fresh(tr.doc, sel, shown);
+          if (!tr.docChanged) {
+            // A moved caret, or a toggle: the widgets stand, the folds may not.
+            const all = withFolds(tr.doc, sel, old.set, old.blocks, shown);
+            return { ...old, shown, all };
+          }
           const now = signature(tr.doc);
           // Mapping through a whole-document replacement drops everything, and
           // the signature cannot tell that apart from an ordinary edit.
           const mapped = old.set.map(tr.mapping, tr.doc);
           const intact = mapped.find().length === old.set.find().length;
-          if (now === old.signature && intact) return { signature: now, set: mapped };
-          return { signature: now, set: build(tr.doc) };
+          if (now === old.signature && intact) {
+            const blocks = old.blocks.map((b) => ({
+              from: tr.mapping.map(b.from),
+              to: tr.mapping.map(b.to),
+            }));
+            return { signature: now, set: mapped, blocks, shown, all: withFolds(tr.doc, sel, mapped, blocks, shown) };
+          }
+          return fresh(tr.doc, sel, shown);
         },
       },
       props: {
         // Through the key: `this` is not reliably the plugin here.
-        decorations: (state) => key.getState(state)?.set,
+        decorations: (state) => key.getState(state)?.all,
       },
       /**
        * Repaint when the paper changes.

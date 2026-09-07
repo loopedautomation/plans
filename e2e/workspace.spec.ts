@@ -111,9 +111,15 @@ async function answer(page: Page, value: string, confirm: string) {
   await page.locator(".matter-sheet .act", { hasText: confirm }).click();
 }
 
-/** Invite someone from the page head's members sheet, and close it again. */
-async function invite(page: Page, login: string) {
-  await page.getByTestId("members").click();
+/** The members sheet, from the workspace heading's menu. */
+async function members(page: Page, name: string) {
+  await menu(page, heading(page, name), "Members");
+  await expect(page.locator(".members-sheet")).toBeVisible();
+}
+
+/** Invite someone from the workspace's members sheet, and close it again. */
+async function invite(page: Page, name: string, login: string) {
+  await members(page, name);
   await page.locator(".members-sheet .member-invite").fill(login);
   await page.locator(".members-sheet .act", { hasText: "Invite" }).click();
   await expect(page.locator(`.members-sheet .member[data-login="${login.toLowerCase()}"]`)).toBeVisible();
@@ -152,7 +158,7 @@ test("a workspace is a folder in the tree, and both people see every change", as
   const bob = await boot(browser, "bob");
   await expect(bob.locator(".ws-hint")).toContainText("None yet");
 
-  await invite(alice, "bob");
+  await invite(alice, "Roadmap", "bob");
 
   // The invite reaches bob on his next look at the list, and what he gets is
   // the folder — drawn from the tree, without a socket into it yet.
@@ -267,6 +273,47 @@ test("a workspace is a folder in the tree, and both people see every change", as
   await expect(alice.locator(".page-path")).toHaveText("");
 });
 
+/*
+ * The shelf's workspaces are yours to arrange, the way the repositories are:
+ * from the heading's menu one step at a time, and the order is a setting,
+ * so it is the same after a reload. The heading's menu also opens the
+ * members list, which belongs to the workspace and not to a file in it.
+ */
+test("workspaces reorder from the heading's menu, keep the order, and open their members", async ({ browser }) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Alpha", "Create");
+  await expect(heading(alice, "Alpha")).toBeVisible();
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Beta", "Create");
+  await expect(heading(alice, "Beta")).toBeVisible();
+  const names = () => alice.locator(".row.repo.ws .repo-name").allTextContents();
+  const before = await names();
+  expect(before.sort()).toEqual(["Alpha", "Beta"]);
+
+  // The last one has no "Move down"; the first has no "Move up".
+  const last = (await names())[1];
+  await alice.locator(".row.repo.ws", { hasText: last }).click({ button: "right" });
+  await expect(alice.locator(".ctx-item", { hasText: "Move down" })).toHaveCount(0);
+  await alice.locator(".ctx-item", { hasText: "Move up" }).click();
+  await expect.poll(names).toEqual([last, last === "Alpha" ? "Beta" : "Alpha"]);
+
+  // Kept: the order survives a reload, ahead of whatever the server says.
+  const after = await names();
+  await alice.reload();
+  await expect(alice.getByTestId("account")).toHaveText("alice");
+  await expect.poll(names).toEqual(after);
+
+  // Members, from the heading.
+  await alice.locator(".row.repo.ws", { hasText: "Alpha" }).click({ button: "right" });
+  await alice.locator(".ctx-item", { hasText: "Members" }).click();
+  await expect(alice.locator(".members-sheet")).toBeVisible();
+  await expect(alice.locator(".members-sheet")).toContainText("Alpha");
+  await alice.keyboard.press("Escape");
+
+  expect((alice as any).__faults).toEqual([]);
+});
+
 test("two accounts make a two-voice thread, signed by login, and it travels into a repository verbatim", async ({
   browser,
 }) => {
@@ -277,7 +324,7 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   await alice.locator(".ws-new").click();
   await answer(alice, "Threads", "Create");
   await expect(editor(alice).locator("h1")).toHaveText("Threads");
-  await invite(alice, "bob@example.com");
+  await invite(alice, "Threads", "bob@example.com");
 
   const bob = await boot(browser, "bob@example.com");
   await expect(heading(bob, "Threads")).toBeVisible();
@@ -364,8 +411,8 @@ test("the owner removes a member, whose editor closes; hands the workspace on; a
   await alice.locator(".ws-new").click();
   await answer(alice, "Doors", "Create");
   await expect(editor(alice).locator("h1")).toHaveText("Doors");
-  await invite(alice, "bob");
-  await invite(alice, "cara@example.com");
+  await invite(alice, "Doors", "bob");
+  await invite(alice, "Doors", "cara@example.com");
 
   const bob = await boot(browser, "bob");
   await heading(bob, "Doors").click();
@@ -374,7 +421,7 @@ test("the owner removes a member, whose editor closes; hands the workspace on; a
 
   // Bob's sheet: everyone listed, the owner first and marked, alice here,
   // and no way to remove anyone — only to leave.
-  await bob.getByTestId("members").click();
+  await members(bob, "Doors");
   const rows = bob.locator(".members-sheet .member");
   await expect(rows).toHaveCount(3);
   await expect(rows.first()).toHaveAttribute("data-login", "alice");
@@ -387,7 +434,7 @@ test("the owner removes a member, whose editor closes; hands the workspace on; a
   // room: the shelf leaves his sidebar, his editor with it, and a line says
   // why.
   alice.on("dialog", (d) => void d.accept());
-  await alice.getByTestId("members").click();
+  await members(alice, "Doors");
   await alice.locator('.members-sheet .member[data-login="cara@example.com"] .rail-btn', { hasText: "Remove" }).click();
   await expect(alice.locator(".members-sheet .member")).toHaveCount(2);
   await alice.locator('.members-sheet .member[data-login="bob"] .rail-btn', { hasText: "Remove" }).click();
@@ -399,10 +446,10 @@ test("the owner removes a member, whose editor closes; hands the workspace on; a
 
   // Invited back, bob is made the owner; alice is then an ordinary member
   // and walks out through her own row.
-  await invite(alice, "bob");
+  await invite(alice, "Doors", "bob");
   await bob.reload();
   await expect(heading(bob, "Doors")).toBeVisible();
-  await alice.getByTestId("members").click();
+  await members(alice, "Doors");
   await alice.locator('.members-sheet .member[data-login="bob"] .rail-btn', { hasText: "Make owner" }).click();
   await expect(alice.locator('.members-sheet .member[data-login="bob"] .member-note').first()).toHaveText("owner");
   await expect(alice.locator(".members-sheet .rail-btn", { hasText: "Remove" })).toHaveCount(0);
@@ -538,7 +585,7 @@ test("a plan in a repository is shared as a page, follows its saves, and stops",
   // Stopped from the same control that started it, and the address dies.
   await alice.getByTestId("share-plan").click();
   await alice.getByTestId("stop-sharing").click();
-  await expect(alice.getByTestId("share-plan")).toHaveText("Share…");
+  await expect(alice.getByTestId("share-plan")).toHaveText("Share");
   await reader.reload();
   await expect(reader.locator(".share-gone")).toContainText("This plan is not shared");
 
@@ -657,6 +704,15 @@ test("an agent in a workspace reads what was just typed and writes into everyone
   await alice.keyboard.type("Read me back.");
   await expect.poll(() => scratch(alice, "plan.md")).toContain("Read me back.");
 
+  // The folder has the conventions before the agent starts: the skills, and
+  // the file Claude reads on every turn that says when to open which.
+  const disk = () => alice.evaluate((d) => Object.keys((window as any).__fake.scratchDisk[d] ?? {}), dir);
+  await expect.poll(disk).toContain(".claude/skills/writing/SKILL.md");
+  await expect.poll(disk).toContain("CLAUDE.md");
+  const pointer = await alice.evaluate((d) => (window as any).__fake.scratchDisk[d]["CLAUDE.md"] as string, dir);
+  expect(pointer).toContain("<!-- plans:begin skills -->");
+  expect(pointer).toContain(".claude/skills/writing/SKILL.md");
+
   // A read is answered from the room, with what was typed a moment ago.
   await alice.locator(".rail-btn", { hasText: "Chat" }).click();
   await expect(alice.locator(".mux")).toBeVisible();
@@ -694,7 +750,7 @@ test("an agent in a workspace reads what was just typed and writes into everyone
 
   // Bob is in the room too, with the same file open.
   const bob = await boot(browser, "bob");
-  await invite(alice, "bob");
+  await invite(alice, "Agents", "bob");
   await bob.reload();
   await expect(bob.getByTestId("account")).toHaveText("bob");
   await heading(bob, "Agents").click();
@@ -774,4 +830,51 @@ test("an agent in a workspace reads what was just typed and writes into everyone
 
   expect((alice as any).__faults).toEqual([]);
   expect((bob as any).__faults).toEqual([]);
+});
+
+test("a workspace file's frontmatter sits behind the button, hidden from the page, and reaches the room", async ({
+  browser,
+}) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Matter", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Matter");
+  const token = await session("alice");
+  const id = await only(token);
+  const dir = `/scratch/${id}`;
+
+  // No block, no button — the same rule as a repository file.
+  await expect(alice.locator(".rail-btn", { hasText: "Frontmatter" })).toHaveCount(0);
+  await expect(alice.getByTestId("members")).toHaveCount(0);
+
+  // The agent writes a block in; the page shows the badge, not the YAML.
+  await alice.evaluate(
+    ([repo, ws]) =>
+      (window as any).__fake.emit("agent-fs", {
+        repo,
+        requestId: "m1",
+        op: "write",
+        workspace: ws,
+        path: "plan.md",
+        content: "---\nstatus: draft\nowner: alice\n---\n\n# Matter\n\nBody.\n",
+      }),
+    [dir, id] as const,
+  );
+  await expect(editor(alice)).toContainText("Body.");
+  await expect(editor(alice).locator(".md-frontmatter")).toBeHidden();
+  await expect(alice.locator(".page-head .status-badge")).toHaveText("draft");
+  await expect(alice.locator(".page-head .status-badge")).toHaveCount(1);
+
+  // Edited in the sheet, the block goes to the room: the read endpoint and
+  // the tree's dot both see it.
+  await alice.locator(".rail-btn", { hasText: "Frontmatter" }).click();
+  const box = alice.locator(".matter-sheet textarea");
+  await expect(box).toHaveValue(/status: draft/);
+  await box.fill("status: done\nowner: alice");
+  await alice.keyboard.press("Escape");
+  await expect(alice.locator(".page-head .status-badge")).toHaveText("done");
+  await expect(row(alice, "plan").locator(".status-dot")).toHaveClass(/tone-done/);
+  await expect
+    .poll(async () => (await fetch(`${base}/w/${id}/plan.md`, { headers: { Authorization: `Bearer ${token}` } })).text())
+    .toMatch(/^---\nstatus: done\nowner: alice\n---\n\n# Matter\n\nBody\./);
 });

@@ -11,6 +11,7 @@ import { codeTheme } from "./code-theme";
 import { htmlBridge, htmlContext, htmlView, isComment, pictureView } from "./html-view";
 import { editorViewCtx } from "@milkdown/core";
 import { mermaidView } from "./mermaid-view";
+import { alertView } from "./alert-view";
 import { pasteLink } from "./paste-link";
 import { imageContext, pasteImage } from "./paste-image";
 import { yamlSchema } from "./yaml-node";
@@ -19,6 +20,7 @@ import type { FindHandle } from "./find";
 import { trace } from "./perf";
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import type { Profile, Room } from "./workspace";
+import "katex/dist/katex.min.css";
 import "./editor-theme.css";
 
 type Props = {
@@ -316,6 +318,13 @@ export function Editor({
         [CrepeFeature.CodeMirror]: {
           theme: codeTheme,
           /**
+           * A block with a preview — LaTeX, today — opens as the preview, the
+           * way a mermaid fence opens as its diagram; the source is behind the
+           * block's own Edit button. A block with nothing to preview is
+           * unaffected: the mode only means anything where a preview exists.
+           */
+          previewOnlyByDefault: true,
+          /**
            * Crepe ships a short language list that has no YAML in it, which
            * matters here: frontmatter is YAML, and so is half of what gets
            * pasted into a plan. The full CodeMirror set, plus YAML explicitly
@@ -401,6 +410,7 @@ export function Editor({
     crepe.editor.use(pictureView);
     // ```mermaid blocks keep their source and gain a diagram beneath it.
     crepe.editor.use(mermaidView);
+    crepe.editor.use(alertView);
     // ⌘F over the rendered text: matches as decorations, recomputed with the
     // document so an agent's write through the watcher cannot strand them.
     crepe.editor.use($prose(() => findProsePlugin((c, t) => onFindCountRef.current?.(c, t))));

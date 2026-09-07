@@ -24,6 +24,33 @@ import { attachMentions } from "./mentions";
 
 const COMMENT = /^\s*<!--([\s\S]*?)-->\s*$/;
 
+/* ===========================================================================
+   <details>, folded and unfolded.
+   ---------------------------------------------------------------------------
+   remark ends the html node at the first blank line, so `<details>` and its
+   `<summary>` arrive as one node, the body as ordinary markdown blocks, and
+   `</details>` as a node of its own — a native <details> rendered from the
+   opener alone has nothing inside it to fold. The opener is drawn as a head
+   that toggles, the blocks up to the closer are hidden while it is folded,
+   and the closer is never shown. The file is not touched: what is folded is
+   remembered here, by the summary's text, for as long as the window lives.
+   =========================================================================== */
+const DETAILS_OPEN = /^<details\b([^>]*)>\s*(?:<summary\b[^>]*>([\s\S]*?)<\/summary>)?\s*$/i;
+const DETAILS_CLOSE = /^<\/details>$/i;
+
+/** Folded or not, by summary — an `open` attribute decides until it is clicked. */
+const folds = new Map<string, boolean>();
+
+function detailsOf(value: string): { open: boolean; summary: string } | null {
+  const m = value.trim().match(DETAILS_OPEN);
+  if (!m) return null;
+  return { open: /\bopen\b/i.test(m[1] ?? ""), summary: (m[2] ?? "").trim() || "Details" };
+}
+
+function isFolded(d: { open: boolean; summary: string }): boolean {
+  return folds.get(d.summary) ?? !d.open;
+}
+
 /**
  * What a handle may look like: `@name`, or `@name@host.tld` — a workspace's
  * login is an email, so the second `@` is part of the name, not the end of
@@ -421,7 +448,7 @@ export function isComment(value: string): boolean {
   return COMMENT.test(value);
 }
 
-export const htmlView = $view(htmlSchema.node, () => (node, _view, getPos, decorations) => {
+export const htmlView = $view(htmlSchema.node, () => (node, view, getPos, decorations) => {
   const edit = () =>
     htmlBridge.request?.({
       from: getPos() ?? 0,
@@ -449,6 +476,37 @@ export const htmlView = $view(htmlSchema.node, () => (node, _view, getPos, decor
       stopEvent: () => true,
       destroy,
     };
+  }
+
+  const details = detailsOf(value);
+  if (details) {
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "md-details-head";
+    head.setAttribute("data-type", "html");
+    head.setAttribute("data-value", value);
+    head.setAttribute("aria-expanded", String(!isFolded(details)));
+    const caret = document.createElement("span");
+    caret.className = "md-details-caret";
+    caret.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.className = "md-details-summary";
+    label.innerHTML = sanitize(details.summary);
+    head.append(caret, label);
+    head.title = "Fold or unfold this section. Double-click to edit the HTML";
+    head.addEventListener("click", (e) => {
+      e.preventDefault();
+      folds.set(details.summary, !isFolded(details));
+      head.setAttribute("aria-expanded", String(!isFolded(details)));
+      // The blocks under it are decorations: ask the plugin to look again.
+      view.dispatch(view.state.tr.setMeta(pictureKey, true));
+    });
+    head.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      edit();
+    });
+    return { dom: head, ignoreMutation: () => true, stopEvent: () => true };
   }
 
   const dom = document.createElement("span");
@@ -651,6 +709,7 @@ function wrapperDecorations(doc: PMNode): Decoration[] {
   for (const c of htmlChunks(doc)) {
     const v = c.value.trim();
     if (/^<!--/.test(v) || /<picture\b|<\/picture>/i.test(v)) continue;
+    if (DETAILS_OPEN.test(v) || DETAILS_CLOSE.test(v)) continue;
 
     const open = v.match(/^<([a-zA-Z][\w-]*)((?:\s[^>]*)?)>$/);
     const close = v.match(/^<\/([a-zA-Z][\w-]*)>$/);
@@ -692,8 +751,33 @@ function wrapperDecorations(doc: PMNode): Decoration[] {
   return out;
 }
 
+function detailsDecorations(doc: PMNode): Decoration[] {
+  const out: Decoration[] = [];
+  const stack: { folded: boolean; to: number }[] = [];
+  for (const c of htmlChunks(doc)) {
+    const d = detailsOf(c.value);
+    if (d) {
+      stack.push({ folded: isFolded(d), to: c.block[1] });
+      continue;
+    }
+    if (!DETAILS_CLOSE.test(c.value.trim())) continue;
+    const opened = stack.pop();
+    // The closer is never drawn: the head stands for the section.
+    out.push(Decoration.inline(c.from, c.to, { class: "md-hidden" }));
+    if (c.block[0] !== c.from) out.push(Decoration.node(c.block[0], c.block[1], { class: "md-folded" }));
+    if (!opened || !opened.folded || opened.to >= c.block[0]) continue;
+    doc.nodesBetween(opened.to, c.block[0], (node, pos) => {
+      if (!node.isBlock) return;
+      if (pos < opened.to || pos + node.nodeSize > c.block[0]) return;
+      out.push(Decoration.node(pos, pos + node.nodeSize, { class: "md-folded" }));
+      return false;
+    });
+  }
+  return out;
+}
+
 function pictureDecorations(doc: PMNode, repo: string, relPath: string): DecorationSet {
-  const out: Decoration[] = wrapperDecorations(doc);
+  const out: Decoration[] = [...wrapperDecorations(doc), ...detailsDecorations(doc)];
   for (const run of commentRuns(doc)) {
     const seen = new Set<string>();
     for (const [from, to] of run.blocks) {

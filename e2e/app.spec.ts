@@ -790,6 +790,77 @@ test("a diagram is redrawn when the paper changes", async ({ page }) => {
     .not.toBe(before);
 });
 
+test("a diagram's source is folded under it, and shown on request or when typed in", async ({ page }) => {
+  await open(page, [
+    {
+      path: "/repo/one",
+      name: "one",
+      branch: "main",
+      files: { "chart.md": "# Chart\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\nAfter.\n" },
+    },
+  ]);
+  await fileRow(page, "chart").click();
+  await expect(page.locator(".mermaid-figure svg")).toBeVisible({ timeout: 20000 });
+  const fence = page.locator(".ProseMirror .mermaid-source-folded");
+  // Folded: in the document, not on the page.
+  await expect(fence).toHaveCount(1);
+  await expect(fence).toBeHidden();
+
+  const show = page.locator('.mermaid-figure [aria-label="Show the diagram\'s source"]');
+  await show.click();
+  await expect(page.locator(".ProseMirror .mermaid-source-folded")).toHaveCount(0);
+  await expect(page.locator(".ProseMirror .cm-content")).toBeVisible();
+  // With the caret inside, the fence stays even when the button says fold:
+  // a fence being typed must not vanish under the typist. Leaving folds it.
+  await page.locator(".ProseMirror .cm-content").click();
+  await show.click();
+  await expect(page.locator(".ProseMirror .mermaid-source-folded")).toHaveCount(0);
+  await page.locator(".ProseMirror p", { hasText: "After." }).click();
+  await expect(page.locator(".ProseMirror .mermaid-source-folded")).toHaveCount(1);
+});
+
+test("maths opens as its preview, with the source behind Edit; a footnote is one line", async ({ page }) => {
+  await open(page, [
+    {
+      path: "/repo/one",
+      name: "one",
+      branch: "main",
+      files: {
+        "m.md":
+          "# M\n\n$$\nE = mc^2\n$$\n\n```js\nlet a = 1\n```\n\nA note[^1] here.\n\n[^1]: The plans skill lives at `.claude/skills/plans/SKILL.md`.\n",
+      },
+    },
+  ]);
+  await fileRow(page, "m").click();
+  const blocks = page.locator(".ProseMirror .milkdown-code-block");
+  await expect(blocks).toHaveCount(2);
+  // The maths: rendered, styled (KaTeX's stylesheet hides its MathML twin),
+  // and its editor folded away.
+  const maths = blocks.nth(0);
+  await expect(maths.locator(".katex-display")).toBeVisible();
+  // KaTeX's stylesheet takes the MathML twin out of the flow by clipping it,
+  // which is the one sign the stylesheet is loaded at all.
+  await expect(maths.locator(".katex-mathml")).toHaveCSS("position", "absolute");
+  await expect(maths.locator(".codemirror-host")).toBeHidden();
+  await maths.hover();
+  await maths.locator(".preview-toggle-button").click();
+  await expect(maths.locator(".codemirror-host")).toBeVisible();
+  // Code with nothing to preview is still code.
+  await expect(blocks.nth(1).locator(".codemirror-host")).toBeVisible();
+  await expect(blocks.nth(1).locator(".preview-panel")).toHaveCount(0);
+
+  // The footnote's number and text share a line.
+  const note = page.locator('.ProseMirror dl[data-type="footnote_definition"]');
+  await expect(note).toHaveCount(1);
+  const [dt, dd] = await Promise.all([
+    note.locator("dt").boundingBox(),
+    note.locator("dd").boundingBox(),
+  ]);
+  // Baseline-aligned, the smaller number sits a few pixels lower than the
+  // text's top; a line of its own would be a whole line height away.
+  expect(Math.abs((dt?.y ?? 0) - (dd?.y ?? 99))).toBeLessThan(12);
+});
+
 test("a file with a standalone <br /> still opens, and switching works", async ({ page }) => {
   const faults = await open(page, [
     {
@@ -868,4 +939,36 @@ test("rename asks for a name; moving is a separate question", async ({ page }) =
       page.evaluate(() => Object.keys((window as any).__fake.repos[0].files)),
     )
     .toContain("Second Thoughts.md");
+});
+
+test("an alert is a coloured quote with its label as a badge", async ({ page }) => {
+  await open(page, [
+    {
+      path: "/repo/one",
+      name: "one",
+      branch: "main",
+      files: {
+        "alerts.md":
+          "# Alerts\n\n> [!WARNING]\n> Easy to get wrong.\n\n> Just a quote.\n\n> Not [!NOTE] an alert.\n",
+      },
+    },
+  ]);
+  await fileRow(page, "alerts").click();
+  const alert = page.locator(".ProseMirror blockquote.alert");
+  await expect(alert).toHaveCount(1);
+  await expect(alert).toHaveAttribute("data-alert", "warning");
+  await expect(alert.locator(".alert-label")).toHaveText("WARNING");
+  // The brackets are in the text, and drawn at no size.
+  expect(await alert.locator(".alert-brace").count()).toBe(2);
+  expect(
+    await page.evaluate(() => getComputedStyle(document.querySelector(".alert-brace")!).fontSize),
+  ).toBe("0px");
+  // Tinted, where a plain quote is not.
+  const bg = (i: number) =>
+    page.evaluate(
+      (n) => getComputedStyle(document.querySelectorAll(".ProseMirror blockquote")[n]).backgroundColor,
+      i,
+    );
+  expect(await bg(0)).not.toBe(await bg(1));
+  expect(await page.locator(".ProseMirror blockquote").count()).toBe(3);
 });

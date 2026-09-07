@@ -11,6 +11,8 @@ import { installFakeBackend, type FakeRepo } from "./fake-backend";
 const FILES: Record<string, string> = {
   "wrap.md": `Para with <sub>a subtitle</sub> and <b>bold</b> inline.\n`,
   "break.md": `Line one<br/>line two\n`,
+  "fold.md":
+    "# Fold\n\n<details>\n<summary>Full error output</summary>\n\n```\nError: ENOENT\n```\n\n</details>\n\n<details open>\n<summary>Open by default</summary>\n\nShown from the start.\n\n</details>\n\nAfter.\n",
   "centre.md": `<div align="center">\n\n# Title<br/><sub><b>Sub.</b></sub>\n\n</div>\n`,
   "plain.md": `# Plain\n\nNo html at all.\n`,
 };
@@ -71,4 +73,33 @@ test("html round-trips unchanged when it is only read", async ({ page }) => {
     (window as any).__fake.calls.filter((c: any) => c.cmd === "write_plan"),
   );
   expect(writes, "rendering html is not editing it").toHaveLength(0);
+});
+
+test("a <details> section folds under its summary, and unfolds on a click", async ({ page }) => {
+  await open(page, "fold.md");
+  const editor = page.locator(".milkdown .ProseMirror");
+  const heads = editor.locator(".md-details-head");
+  await expect(heads).toHaveCount(2);
+  await expect(heads.nth(0)).toHaveText("Full error output");
+  await expect(heads.nth(0)).toHaveAttribute("aria-expanded", "false");
+  await expect(heads.nth(1)).toHaveAttribute("aria-expanded", "true");
+  // Folded: the code is in the document and not on the page. Open: shown.
+  await expect(editor.getByText("Error: ENOENT")).toBeHidden();
+  await expect(editor.getByText("Shown from the start.")).toBeVisible();
+  await expect(editor.getByText("After.")).toBeVisible();
+  // The closers are never shown.
+  await expect(editor.locator(".md-html:not(.md-hidden)")).toHaveCount(0);
+
+  // An open head sits close over its body: no blank line between them.
+  const [head, body] = await Promise.all([
+    heads.nth(1).boundingBox(),
+    editor.getByText("Shown from the start.").boundingBox(),
+  ]);
+  expect((body?.y ?? 0) - ((head?.y ?? 0) + (head?.height ?? 0))).toBeLessThan(24);
+
+  await heads.nth(0).click();
+  await expect(heads.nth(0)).toHaveAttribute("aria-expanded", "true");
+  await expect(editor.getByText("Error: ENOENT")).toBeVisible();
+  await heads.nth(1).click();
+  await expect(editor.getByText("Shown from the start.")).toBeHidden();
 });

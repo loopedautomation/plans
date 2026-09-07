@@ -11,7 +11,12 @@ Remember to add changesets for any patched bugs - fixed bugs belong in the chang
 
 ## Open
 
-<br />
+- Improve the ID format used (make it look more pleasant e.g. no special characters_- etc) and also have a version we can copy for an agent which is unrendered or raw markdown
+- Can’t move documents between workspaces (either via the move menu or by dnd)
+- Ctrl/Cmd+F not jumping to the match
+- Per workspace or repo expanded / collapsed state should be persisted
+- on the shared/public version of a document, we should show the Aa button top left with a minimal visual settings page - we can move themes into that.
+- After editing a mermaid, I can’t collapse the code block again to show only the diagram
 
 ## Watch for
 
@@ -31,6 +36,21 @@ Not bugs yet — places the same class of mistake would land next.
   green test proves the harness agrees with the code, not that the app works.
 
 ## Fixed
+
+### A workspace chat's answer came back three times over
+
+Every streamed chunk landed three times in the bubble, and only in a
+workspace chat. Tauri's `listen` is registered in two places — Rust keeps
+the listener, and a script Rust evaluates in the webview records its id —
+and `listen()` resolves before that script has necessarily run. Tauri's
+unlisten reads the record first and throws when it is missing, so the
+Rust half is never removed and the handler keeps firing. A workspace chat
+re-subscribes right after mount, when its scratch folder's path arrives:
+that is the window. Found in the app's own perf log, which had been
+recording the rejection — "undefined is not an object (evaluating
+`listeners[eventId].handlerId`)" — a hundred times. The pattern: an
+unsubscribe that can fail is a subscription that lives forever, so the
+handler has to be gated on our side and not only removed on theirs.
 
 ### Sign-in failed on a Mac with a keychain
 
