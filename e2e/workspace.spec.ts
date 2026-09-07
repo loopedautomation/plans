@@ -910,35 +910,35 @@ test("a workspace file's frontmatter sits behind the button, hidden from the pag
 test("a document moves to another workspace, from Move… and by dragging", async ({ browser }) => {
   const alice = await boot(browser, "alice");
   await alice.locator(".ws-new").click();
-  await answer(alice, "Alpha", "Create");
-  await expect(editor(alice).locator("h1")).toHaveText("Alpha");
+  await answer(alice, "Origin", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Origin");
   await alice.locator(".ws-new").click();
-  await answer(alice, "Beta", "Create");
-  await expect(editor(alice).locator("h1")).toHaveText("Beta");
+  await answer(alice, "Target", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Target");
 
-  // A second file in Alpha, with a line of its own in it.
-  await heading(alice, "Alpha").click({ button: "right" });
+  // A second file in Origin, with a line of its own in it.
+  await heading(alice, "Origin").click({ button: "right" });
   await alice.locator(".ctx .ctx-item", { hasText: "New file here" }).click();
   await answer(alice, "notes.md", "Create");
-  await expect(alice.locator(".page-path")).toHaveText("Alpha · notes.md");
+  await expect(alice.locator(".page-path")).toHaveText("Origin · notes.md");
   await editor(alice).locator("h1").click();
   await alice.keyboard.press("End");
   await alice.keyboard.press("Enter");
   await alice.keyboard.type("Travels with the file.");
   await expect(editor(alice)).toContainText("Travels with the file.");
 
-  // Move… offers Beta; the open tab follows the file there, text and all.
+  // Move… offers Target; the open tab follows the file there, text and all.
   await menu(alice, row(alice, "notes"), "Move to…");
   await alice.locator('.matter-sheet [aria-label="Folder"]').click();
-  await alice.locator(".dd-item", { hasText: "Beta · root" }).click();
+  await alice.locator(".dd-item", { hasText: "Target · root" }).click();
   await alice.locator(".matter-sheet .act", { hasText: "Move" }).click();
-  await expect(alice.locator(".page-path")).toHaveText("Beta · notes.md", { timeout: 10_000 });
+  await expect(alice.locator(".page-path")).toHaveText("Target · notes.md", { timeout: 10_000 });
   await expect(editor(alice)).toContainText("Travels with the file.");
   await expect(row(alice, "notes")).toHaveCount(1);
 
   // And back, by dragging the row onto the other workspace's heading.
-  await row(alice, "notes").dragTo(heading(alice, "Alpha"));
-  await expect(alice.locator(".page-path")).toHaveText("Alpha · notes.md", { timeout: 10_000 });
+  await row(alice, "notes").dragTo(heading(alice, "Origin"));
+  await expect(alice.locator(".page-path")).toHaveText("Origin · notes.md", { timeout: 10_000 });
   await expect(editor(alice)).toContainText("Travels with the file.");
   await expect(row(alice, "notes")).toHaveCount(1);
 
@@ -946,8 +946,8 @@ test("a document moves to another workspace, from Move… and by dragging", asyn
   const token = await session("alice");
   const key = { headers: { Authorization: `Bearer ${token}` } };
   const list = await (await fetch(`${base}/workspaces`, key)).json();
-  const alpha = list.find((w: { name: string }) => w.name === "Alpha").id;
-  const beta = list.find((w: { name: string }) => w.name === "Beta").id;
+  const alpha = list.find((w: { name: string }) => w.name === "Origin").id;
+  const beta = list.find((w: { name: string }) => w.name === "Target").id;
   await expect.poll(async () => (await fetch(`${base}/w/${alpha}/notes.md`, key)).status).toBe(200);
   expect((await fetch(`${base}/w/${beta}/notes.md`, key)).status).toBe(404);
 });

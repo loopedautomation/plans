@@ -196,6 +196,8 @@ type Tab = { repo: string; path: string; view?: View };
  * every write path already refuses them without being told to.
  */
 const MEMORY = "\u0000memory";
+/** Where the tree's open folders are remembered. */
+const EXPANDED_KEY = "plans.expanded.v1";
 
 /**
  * A workspace's files ride the memory rails.
@@ -413,7 +415,28 @@ export default function App() {
   const [statusByRepo, setStatusByRepo] = useState<Record<string, GitStatus>>(
     {},
   );
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /**
+   * Which folders are open, by `repo::dir`, remembered across launches: a
+   * tree that closes every folder on every start is a tree that has to be
+   * re-opened before it is useful. Local to this window's storage, like the
+   * empty-folder memory — it is a view of the tree, not a fact about it.
+   */
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(EXPANDED_KEY);
+      const list = raw ? (JSON.parse(raw) as unknown) : null;
+      return new Set(Array.isArray(list) ? list.filter((k): k is string => typeof k === "string") : []);
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expanded]));
+    } catch {
+      // The tree still works; it just forgets on the next launch.
+    }
+  }, [expanded]);
   const [activePath, setActivePath] = useState<string | null>(null);
   /** The prose only — frontmatter is held apart in `matter`. */
   const [content, setContent] = useState("");

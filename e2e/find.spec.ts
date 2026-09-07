@@ -155,3 +155,21 @@ test("find works where only Source exists: a non-markdown file", async ({ page }
   await expect(page.locator(".find-count")).toHaveText("1 of 2");
   await expect(page.locator(".source .cm-searchMatch")).toHaveCount(2);
 });
+
+test("a match far down the page is scrolled to", async ({ page }) => {
+  const body = Array.from({ length: 80 }, (_, i) => `Paragraph ${i} with filler to make the page long.`).join("\n\n");
+  REPOS[0].files["long.md"] = `# Long\n\n${body}\n\nThe needle is here.\n`;
+  await boot(page);
+  await fileRow(page, "long").click();
+  await page.locator(".ProseMirror h1").click();
+  const host = page.locator(".main-pane .editor-host");
+  expect(await host.evaluate((e) => e.scrollTop)).toBe(0);
+  await page.keyboard.press("Meta+f");
+  await page.keyboard.type("needle");
+  /*
+   * ProseMirror's own scroll-into-view walks up from the DOM selection's
+   * focus node — the find bar's input, outside the editor — so it never
+   * reached the editor's scroller and the match stayed off screen.
+   */
+  await expect.poll(() => host.evaluate((e) => e.scrollTop)).toBeGreaterThan(1000);
+});

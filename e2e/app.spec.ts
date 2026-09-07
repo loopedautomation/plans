@@ -810,12 +810,14 @@ test("a diagram's source is folded under it, and shown on request or when typed 
   await show.click();
   await expect(page.locator(".ProseMirror .mermaid-source-folded")).toHaveCount(0);
   await expect(page.locator(".ProseMirror .cm-content")).toBeVisible();
-  // With the caret inside, the fence stays even when the button says fold:
-  // a fence being typed must not vanish under the typist. Leaving folds it.
+  // After an edit the caret is still in the fence; the button folds anyway,
+  // by moving the caret out first — it used to be refused by the rule that
+  // keeps a fence being typed from vanishing under the typist.
   await page.locator(".ProseMirror .cm-content").click();
-  await show.click();
-  await expect(page.locator(".ProseMirror .mermaid-source-folded")).toHaveCount(0);
-  await page.locator(".ProseMirror p", { hasText: "After." }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" --> C");
+  await expect(page.locator(".ProseMirror .cm-content")).toContainText("--> C");
+  await page.locator('.mermaid-figure [aria-label="Show the diagram\'s source"]').click();
   await expect(page.locator(".ProseMirror .mermaid-source-folded")).toHaveCount(1);
 });
 
@@ -859,6 +861,21 @@ test("maths opens as its preview, with the source behind Edit; a footnote is one
   // Baseline-aligned, the smaller number sits a few pixels lower than the
   // text's top; a line of its own would be a whole line height away.
   expect(Math.abs((dt?.y ?? 0) - (dd?.y ?? 99))).toBeLessThan(12);
+});
+
+test("which folders are open is remembered across launches", async ({ page }) => {
+  await open(page);
+  const folder = page.locator(".row.dir", { hasText: "notes" }).first();
+  await expect(folder).toBeVisible();
+  // Every folder is opened by the helper; close one, reload, and it stays closed.
+  await folder.click();
+  await expect(fileRow(page, "second")).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator(".files")).toBeVisible();
+  await expect(page.locator(".row.dir", { hasText: "notes" }).first()).toBeVisible();
+  await expect(fileRow(page, "second")).toHaveCount(0);
+  await page.locator(".row.dir", { hasText: "notes" }).first().click();
+  await expect(fileRow(page, "second")).toBeVisible();
 });
 
 test("a file with a standalone <br /> still opens, and switching works", async ({ page }) => {

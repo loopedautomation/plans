@@ -192,10 +192,16 @@ export function scrollToCurrent(view: EditorView) {
   } else {
     // A real selection, so the match behaves like one — but this is reading,
     // not editing: nothing here marks the document touched.
-    view.dispatch(
-      view.state.tr
-        .setSelection(TextSelection.create(view.state.doc, m.from, m.to))
-        .scrollIntoView(),
-    );
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to)));
+    /*
+     * Scrolled by hand, not with `tr.scrollIntoView()`. ProseMirror scrolls
+     * by walking up from the DOM selection's focus node, and while the find
+     * bar has focus that node is the bar's input — outside the editor, so
+     * the walk never meets the editor's scroller and nothing moves. The
+     * match's own element is inside it, and scrolls every ancestor.
+     */
+    const { node } = view.domAtPos(m.from);
+    const el = node instanceof Element ? node : node.parentElement;
+    el?.scrollIntoView({ block: "center" });
   }
 }

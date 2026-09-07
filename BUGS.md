@@ -11,12 +11,7 @@ Remember to add changesets for any patched bugs - fixed bugs belong in the chang
 
 ## Open
 
-- Improve the ID format used (make it look more pleasant e.g. no special characters_- etc) and also have a version we can copy for an agent which is unrendered or raw markdown
-- Can’t move documents between workspaces (either via the move menu or by dnd)
-- Ctrl/Cmd+F not jumping to the match
-- Per workspace or repo expanded / collapsed state should be persisted
-- on the shared/public version of a document, we should show the Aa button top left with a minimal visual settings page - we can move themes into that.
-- After editing a mermaid, I can’t collapse the code block again to show only the diagram
+<br />
 
 ## Watch for
 

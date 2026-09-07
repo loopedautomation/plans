@@ -10,7 +10,7 @@
  * of the time, and re-rendering on every keystroke would flash.
  */
 import { $prose } from "@milkdown/utils";
-import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
+import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import type { Node as PMNode } from "@milkdown/kit/prose/model";
@@ -468,7 +468,19 @@ function build(doc: PMNode): { set: DecorationSet; blocks: { from: number; to: n
             e.stopPropagation();
             const at = getPos();
             if (at === undefined) return;
-            view.dispatch(view.state.tr.setMeta(key, { toggle: at } satisfies Toggle));
+            const tr = view.state.tr.setMeta(key, { toggle: at } satisfies Toggle);
+            /*
+             * Folding with the caret still in the fence — which is where it is
+             * after an edit — would be refused by the caret rule, so the caret
+             * is put after the figure first. The block being folded is the one
+             * the widget belongs to, which ends where the widget sits.
+             */
+            const block = key.getState(view.state)?.blocks.find((b) => b.to === at);
+            const sel = view.state.selection;
+            if (block && shownNow() && sel.from >= block.from && sel.to <= block.to) {
+              tr.setSelection(TextSelection.near(tr.doc.resolve(block.to), 1));
+            }
+            view.dispatch(tr);
             src.setAttribute("aria-pressed", String(shownNow()));
           });
 
