@@ -49,6 +49,8 @@ COPY --chown=plans:nodejs --from=deps /app/node_modules ./node_modules
 COPY --chown=plans:nodejs --from=deps /app/server/node_modules ./server/node_modules
 COPY --chown=plans:nodejs server/package.json ./server/
 COPY --chown=plans:nodejs server/src ./server/src
+# The og card's face and its fallback picture; see server/src/og.js.
+COPY --chown=plans:nodejs server/assets ./server/assets
 COPY --chown=plans:nodejs server/drizzle ./server/drizzle
 COPY --chown=plans:nodejs --from=reader /app/server/public ./server/public
 COPY --chown=plans:nodejs server/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

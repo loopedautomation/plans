@@ -854,3 +854,113 @@ test("a member leaves; only the maker deletes, and the room empties when they do
   assert.equal((await call("/workspaces", { token: alice })).value.some((w) => w.id === id), false);
   assert.equal(s.rooms.rooms.has(id), false);
 });
+
+test("a page's address unfurls: og tags in the shell, a card at og.png, and nothing for a dead id", async () => {
+  // The reader is not built into a test checkout; its source shell has the
+  // same placeholder, which is all the templating reads.
+  process.env.PLANS_READER_DIR = new URL("../../src/share/", import.meta.url).pathname;
+  const alice = await signIn("alice");
+  const markdown = [
+    "---",
+    "status: review",
+    "owner: alice",
+    "reviewers: bob, cara",
+    "---",
+    "# Ship & \"soon\"",
+    "",
+    "<!-- @alice: a comment that must not leak -->",
+    "",
+    "```",
+    "code, not prose",
+    "```",
+    "",
+    "> [!NOTE]",
+    "> The **opening** line, with a [link](x.md) in it.",
+    "",
+    "## Later",
+    "",
+  ].join("\n");
+  const made = await call("/api/pages", {
+    method: "POST",
+    token: alice,
+    body: { repo: "/repo/one", path: "plans/unfurl.md", name: "unfurl.md", markdown },
+  });
+  const { id } = made.value;
+
+  // `PUBLIC_URL` names the deployment; without it the request's host does.
+  process.env.PUBLIC_URL = "https://plans.example/";
+  const page = await fetch(`${base}/${id}`);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  // Escaped, and read from the document rather than the stored name.
+  assert.match(html, /<title>Ship &amp; &quot;soon&quot;<\/title>/);
+  assert.match(html, /<meta property="og:title" content="Ship &amp; &quot;soon&quot;" \/>/);
+  assert.equal(html.match(/<title>/g).length, 1);
+  assert.match(html, /<meta property="og:description" content="The opening line, with a link in it\." \/>/);
+  assert.match(html, new RegExp(`<meta property="og:image" content="https://plans.example/api/pages/${id}/og.png" />`));
+  assert.match(html, new RegExp(`<meta property="og:url" content="https://plans.example/${id}" />`));
+  delete process.env.PUBLIC_URL;
+  assert.match(await (await fetch(`${base}/${id}`)).text(), new RegExp(`og:url" content="${base}/${id}"`));
+  assert.match(html, /<meta name="twitter:card" content="summary_large_image" \/>/);
+  assert.doesNotMatch(html, /must not leak/);
+  assert.doesNotMatch(html, /reviewers/);
+  assert.doesNotMatch(html, /<!-- og -->/);
+  // The noindex stays: unfurl-on-paste and index-by-crawl are different consents.
+  assert.match(html, /name="robots" content="noindex, nofollow"/);
+
+  // The card: a PNG, cached briefly, and the same facts.
+  const card = await fetch(`${base}/api/pages/${id}/og.png`);
+  assert.equal(card.status, 200);
+  assert.equal(card.headers.get("content-type"), "image/png");
+  assert.equal(card.headers.get("cache-control"), "public, max-age=300");
+  const bytes = Buffer.from(await card.arrayBuffer());
+  assert.deepEqual([...bytes.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.ok(bytes.length > 1000);
+
+  // A `description:` of the author's own beats the opening line.
+  await call("/api/pages", {
+    method: "POST",
+    token: alice,
+    body: { id, name: "unfurl.md", markdown: "---\ndescription: Say this instead.\n---\n# Ship\n\nNot this.\n" },
+  });
+  assert.match(await (await fetch(`${base}/${id}`)).text(), /og:description" content="Say this instead\."/);
+
+  // A dead id serves the shell exactly as `/` does, and no card.
+  await call(`/api/pages/${id}`, { method: "DELETE", token: alice });
+  const root = await (await fetch(`${base}/`)).text();
+  const dead = await (await fetch(`${base}/${id}`)).text();
+  assert.equal(dead, root);
+  assert.doesNotMatch(root, /og:title|<!-- og -->/);
+  assert.match(root, /<title>Plan<\/title>/);
+  assert.equal((await fetch(`${base}/api/pages/${id}/og.png`)).status, 404);
+  assert.equal((await fetch(`${base}/api/pages/${"z".repeat(26)}/og.png`)).status, 404);
+  delete process.env.PLANS_READER_DIR;
+});
+
+test("a folder page unfurls as its landing file, and a deep link as the file it names", async () => {
+  process.env.PLANS_READER_DIR = new URL("../../src/share/", import.meta.url).pathname;
+  const alice = await signIn("alice");
+  const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Unfurled" } })).value;
+  const tree = connect(id, alice);
+  await Promise.all([tree.open, tree.synced]);
+  const plan = await openPlan(id, alice);
+  await publish(plan, "# The landing\n\nWhat the folder is about.\n");
+  tree.doc.getMap("tree").set("notes.md", { kind: "file", doc: "unfurl-notes" });
+  const notes = connect("unfurl-notes", alice, id);
+  await Promise.all([notes.open, notes.synced]);
+  await publish({ ...notes, docId: "unfurl-notes" }, "# Some notes\n\nA deeper file.\n");
+  const page = (await call("/api/pages", { method: "POST", token: alice, body: { workspaceId: id, path: "/" } })).value.id;
+
+  await until(async () => /The landing/.test(await (await fetch(`${base}/${page}`)).text()));
+  const landing = await (await fetch(`${base}/${page}`)).text();
+  assert.match(landing, /og:title" content="The landing"/);
+  assert.match(landing, /og:description" content="What the folder is about\."/);
+  const deep = await (await fetch(`${base}/${page}/notes.md`)).text();
+  assert.match(deep, /og:title" content="Some notes"/);
+  assert.match(deep, new RegExp(`og:url" content="http://[^"]+/${page}/notes.md"`));
+  assert.equal((await fetch(`${base}/api/pages/${page}/og.png`)).headers.get("content-type"), "image/png");
+  plan.close();
+  notes.close();
+  tree.close();
+  delete process.env.PLANS_READER_DIR;
+});

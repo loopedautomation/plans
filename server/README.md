@@ -209,6 +209,7 @@ predate the move.
 | `GET /pages/:id`                     | A published plan, to anyone: `{ id, kind: "file", name, source, live, publishedAt, markdown }`. A folder page answers `{ kind: "folder", name, prefix, files, landing }`. No auth. |
 | `GET /pages/:id.md`                  | The same plan as markdown; a folder's landing file.                                           |
 | `GET /pages/:id/<path>`              | One file of a folder page as markdown, if `<path>` is under the prefix; `404` otherwise.       |
+| `GET /pages/:id/og.png`              | The page's card, 1200×630, for link unfurlers: title, opening line, status and owner. Drawn on request from the live document, `max-age=300`; the wordmark alone when it cannot be drawn. `404` for a dead id. |
 | `POST /pages`                        | Publish or republish. `{ workspaceId, path }` — a `path` ending in `/` names a folder, `/` the whole workspace — or `{ repo, path, name, markdown }`, or `{ id, … }`. |
 | `DELETE /pages/:id`                  | Stop sharing. The publisher, or any member of the page's workspace.                          |
 | `GET /workspaces/:id/page`           | Whether this document is published, for a member. A file under a live folder share answers with the folder's page and `covers`, its path on it. Not a listing of anyone's pages. |
@@ -221,6 +222,16 @@ that has expired, or that was never minted here answers the same way, and so
 does a page whose sharing was stopped.
 
 ### Published pages
+
+A page's shell carries Open Graph tags. `GET /{id}` (and `/{id}/{path}` on a
+folder page) replaces the `<!-- og -->` placeholder in the reader's shell with
+an escaped `<title>`, `og:title`, `og:description`, `og:url`, `og:image` and
+`twitter:card`, read from the document by `src/og.js`: the first heading, the
+first paragraph of prose (or a `description:` frontmatter key when there is
+one), and `status`/`owner`. Comments, fences and every other frontmatter key
+stay off the card. A dead id serves the shell exactly as `/` does. `og:url`
+uses `PUBLIC_URL` when set, else the request's host. The reader's `noindex`
+stays: unfurling a pasted link and being indexed are different consents.
 
 A page is a plan at an address anyone can open: `https://<server>/{id}`, where
 the id is twenty-four random bytes and the whole of the security. A page

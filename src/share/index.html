@@ -6,7 +6,10 @@
     <!-- A page nobody has the URL for is unreachable; one that is indexed is
          not. The id is the secret, so it stays out of search engines. -->
     <meta name="robots" content="noindex, nofollow" />
-    <title>Plan</title>
+    <!-- Replaced by the server with a page's title and og tags when the
+         address names a live page, and removed otherwise. Unfurlers read
+         these; nothing else does. See server/src/og.js. -->
+    <!-- og -->
   </head>
   <body>
     <div id="root"></div>

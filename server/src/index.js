@@ -17,6 +17,7 @@ import { WebSocketServer } from "ws";
 import { normalisePagePath, openDb } from "./db.js";
 import { makeAuth, httpError, isLogin } from "./auth.js";
 import { Rooms, FIRST_FILE, treeId } from "./rooms.js";
+import { extract, metaTags, renderCard, fallbackCard, etag, publicOrigin, PLACEHOLDER } from "./og.js";
 
 export function startServer({
   port = Number(process.env.PORT ?? 8787),
@@ -202,9 +203,39 @@ export function startServer({
     // `/{id}.md` is the page's markdown: the address a reader has, with the
     // extension a shell expects. The shell itself is `/{id}`.
     if (req.method === "GET" && RAW_PATH.test(path)) return api(req, res, `/pages${path}`);
-    if (req.method === "GET") return reader(res, path);
+    if (req.method === "GET") return reader(res, path, await pageHead(req, path));
     throw httpError(404, "not found");
   }
+
+  /**
+   * The facts an unfurler is shown for a page: the landing file's for a
+   * folder, the named file's for a deep link into one. Throws when the id
+   * does not resolve, like the page itself.
+   */
+  const pageFacts = async (id, rel) => {
+    const p = await readPage(id);
+    if (p.kind !== "folder") return extract(p.markdown, p.name);
+    const at = rel || p.landing;
+    if (!at) return extract("", p.name);
+    const { markdown } = await readPageFile(id, at);
+    return extract(markdown, at === p.landing ? p.name : `${p.name} / ${at}`);
+  };
+
+  /**
+   * The shell's head for an address, or null: a dead id serves the shell
+   * exactly as `/` does, so a probe learns nothing a browser would not.
+   */
+  const pageHead = async (req, path) => {
+    const m = path.match(/^\/([A-Za-z0-9_-]{1,64})(?:\/(.+))?$/);
+    if (!m) return null;
+    try {
+      const facts = await pageFacts(m[1], m[2] ? decodeURIComponent(m[2]) : null);
+      const origin = publicOrigin(req);
+      return metaTags(facts, { pageUrl: `${origin}${path}`, imageUrl: `${origin}/api/pages/${m[1]}/og.png` });
+    } catch {
+      return null;
+    }
+  };
 
   async function api(req, res, path) {
     const m = (re) => path.match(re);
@@ -378,6 +409,32 @@ export function startServer({
       const text = p.kind === "folder" ? (p.landing ? (await readPageFile(p.id, p.landing)).markdown : "") : p.markdown;
       res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" });
       res.end(text);
+      return;
+    }
+    /*
+     * The page's card, drawn on request so a live page's card follows the
+     * room. A dead id is a 404 through the same door as the page itself;
+     * a card that cannot be drawn is the wordmark alone, never a 500 — an
+     * unfurler that gets an error caches the brokenness. Five minutes of
+     * cache: enough that a channel full of one link is one drawing, short
+     * enough that a renamed plan's card catches up.
+     */
+    if ((seg = m(/^\/pages\/([\w-]+)\/og\.png$/)) && req.method === "GET") {
+      const facts = await pageFacts(seg[1], null);
+      let png;
+      try {
+        png = await renderCard(facts);
+      } catch (e) {
+        console.error("og card failed", e instanceof Error ? e.message : e);
+        png = await fallbackCard();
+      }
+      res.writeHead(200, {
+        "Content-Type": "image/png",
+        "Content-Length": png.length,
+        "Cache-Control": "public, max-age=300",
+        ETag: etag(png),
+      });
+      res.end(png);
       return;
     }
     // One file under a folder page, as markdown. The reader and an agent
@@ -591,6 +648,11 @@ function viewerPage() {
  * plan were not shared.
  */
 const PUBLIC = fileURLToPath(new URL("../public/", import.meta.url));
+/** Where the reader's files are: the build beside the server, or, for a test, wherever it says. */
+const publicDir = () => {
+  const dir = process.env.PLANS_READER_DIR?.trim();
+  return dir ? `${resolve(dir)}/` : PUBLIC;
+};
 // `/{id}` and, for a folder page, `/{id}/{path}`: the shell reads both out of
 // its own address. The deep form asks for an id-length first segment, so a
 // stray `/src/db.js` is a 404 and not a shell; an id has never been shorter.
@@ -617,8 +679,17 @@ const TYPES = {
   map: "application/json",
 };
 
-async function reader(res, pathname) {
+/**
+ * The shell, with a page's `<meta>` in its head when `head` names one.
+ *
+ * Deliberately not server rendering: the body stays the client's, the shell
+ * stays one file, and this is a string replacement of one placeholder. With
+ * no head — `/`, or an id that does not resolve — the placeholder goes and
+ * the shell is the same bytes either way.
+ */
+async function reader(res, pathname, head = null) {
   let rel;
+  const PUBLIC = publicDir();
   try {
     rel = decodeURIComponent(pathname).replace(/^\/+/, "");
   } catch {
@@ -644,8 +715,9 @@ async function reader(res, pathname) {
   if (!(await isFile(shell))) {
     throw httpError(503, "the reader is not built into this deployment");
   }
+  const html = (await readFile(shell, "utf8")).replace(PLACEHOLDER, head ?? "<title>Plan</title>");
   res.writeHead(200, { "Content-Type": TYPES.html, "Cache-Control": "no-store" });
-  res.end(await readFile(shell));
+  res.end(html);
 }
 
 async function isFile(p) {

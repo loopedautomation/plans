@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 ---
 # opengraph
 
@@ -134,16 +134,16 @@ grant the second.
 
 ## Next
 
-- [ ] `og.js` (or a section of index.js): shared extraction — line-based
+- [x] `og.js` (or a section of index.js): shared extraction — line-based
       frontmatter split mirroring src/matter.ts:30–41, first-heading title,
       stripped-and-truncated first paragraph
-- [ ] Placeholder comment in src/share/index.html `<head>`; `reader()`
+- [x] Placeholder comment in src/share/index.html `<head>`; `reader()`
       replaces it with escaped meta tags when `ID_PATH` matches and
       `readPage` resolves, with nothing otherwise
-- [ ] `satori` + `@resvg/resvg-js` in server/package.json; one TTF added to
+- [x] `satori` + `@resvg/resvg-js` in server/package.json; one TTF added to
       the Docker image; `GET /api/pages/:id/og.png` rendering the 1200×630
       card, static fallback PNG on any render error, `max-age=300`
-- [ ] server/test: `GET /{id}` HTML contains escaped og:title/description
+- [x] server/test: `GET /{id}` HTML contains escaped og:title/description
       and the image URL; dead id serves the untouched shell; `og.png`
       answers `image/png` and 404s for a revoked page
 - [ ] Sanity-check a real unfurl (Slack or opengraph.xyz) against
