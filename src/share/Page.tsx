@@ -8,9 +8,17 @@
  *
  * See plans/public-plan-pages.md.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Editor } from "../Editor";
 import { applyTheme, THEMES, type ThemeId } from "../theme";
+import {
+  applyType,
+  DEFAULT_TYPE,
+  FONTS,
+  MEASURE_RANGE,
+  SIZE_RANGE,
+  type TypeSettings,
+} from "../fonts";
 import { splitFrontmatter, matterValue, statusTone } from "../matter";
 import { fetchPage, pageId, type Page as Plan } from "./pages";
 import "./page.css";
@@ -112,9 +120,9 @@ export function Page() {
   return (
     <div className="share-page">
       <div className="page-head">
+        <Look />
         <span className="page-path">{plan.name}</span>
         <span className="page-actions">
-          <ThemeSwitch />
           {status && (
             <span className={`status-badge tone-${statusTone(status)}`} title="status: from this plan's frontmatter">
               {status}
@@ -170,6 +178,9 @@ export function ago(at: number, now = Date.now()): string {
 }
 
 const THEME_KEY = "plans.share.theme";
+const LOOK_KEY = "plans.share.look";
+
+type Look = TypeSettings & { theme: ThemeId };
 
 /** What the reader's browser prefers, unless they have chosen here before. */
 function startingTheme(): ThemeId {
@@ -183,32 +194,144 @@ function startingTheme(): ThemeId {
 }
 
 /**
- * The app's three papers, for a reader with no settings page. The choice is
- * kept in this browser only; a public page has nobody to save it for.
+ * How the page looks to this reader: the paper, and the type. Kept in this
+ * browser only — a public page has nobody to save it for — with the paper
+ * still read from the key it had before the type joined it.
  */
-function ThemeSwitch() {
-  const [theme, setTheme] = useState<ThemeId>(startingTheme);
+function startingLook(): Look {
+  const base: Look = { ...DEFAULT_TYPE, theme: startingTheme() };
+  try {
+    const kept = localStorage.getItem(LOOK_KEY);
+    if (!kept) return base;
+    const got = JSON.parse(kept) as Partial<Look>;
+    return {
+      theme: got.theme && THEMES.some((t) => t.id === got.theme) ? got.theme : base.theme,
+      fontId: got.fontId && FONTS.some((f) => f.id === got.fontId) ? got.fontId : base.fontId,
+      size: clamp(got.size, SIZE_RANGE, base.size),
+      measure: clamp(got.measure, MEASURE_RANGE, base.measure),
+    };
+  } catch {
+    return base;
+  }
+}
+
+function clamp(v: unknown, r: { min: number; max: number }, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : fallback;
+}
+
+/**
+ * The Aa control: the app's appearance settings, cut down to what a reader
+ * with no settings page can want — paper, face, size, measure — behind one
+ * button at the head's leading edge, where the app keeps its own.
+ */
+function Look() {
+  const [look, setLook] = useState<Look>(startingLook);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    applyTheme(theme);
+    applyTheme(look.theme);
+    applyType(look);
     try {
-      localStorage.setItem(THEME_KEY, theme);
+      localStorage.setItem(LOOK_KEY, JSON.stringify(look));
+      localStorage.setItem(THEME_KEY, look.theme);
     } catch {
       // fine: it lasts the visit
     }
-  }, [theme]);
+  }, [look]);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const step = (key: "size" | "measure", by: number, r: { min: number; max: number; step: number }) =>
+    setLook((l) => ({ ...l, [key]: Math.min(r.max, Math.max(r.min, l[key] + by * r.step)) }));
+
   return (
-    <span className="segmented small theme-switch" role="group" aria-label="Paper">
-      {THEMES.map((t) => (
-        <button
-          key={t.id}
-          className={theme === t.id ? "on" : ""}
-          onClick={() => setTheme(t.id)}
-          title={t.label}
-          data-testid={`theme-${t.id}`}
-        >
-          {t.label}
-        </button>
-      ))}
-    </span>
+    <div className="share-look" ref={box}>
+      <button
+        className={`rail-btn ${open ? "on" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        title="Paper and type"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        data-testid="look"
+      >
+        <span className="aa">Aa</span>
+      </button>
+      {open && (
+        <div className="share-look-sheet" role="dialog" aria-label="Paper and type" data-testid="look-sheet">
+          <div className="look-row">
+            <span className="look-name">Paper</span>
+            <span className="segmented small" role="group" aria-label="Paper">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  className={look.theme === t.id ? "on" : ""}
+                  onClick={() => setLook((l) => ({ ...l, theme: t.id }))}
+                  title={t.label}
+                  data-testid={`theme-${t.id}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div className="look-row">
+            <span className="look-name">Face</span>
+            <span className="look-faces">
+              {FONTS.map((f) => (
+                <button
+                  key={f.id}
+                  className={`look-face ${look.fontId === f.id ? "on" : ""}`}
+                  style={{ fontFamily: f.stack }}
+                  onClick={() => setLook((l) => ({ ...l, fontId: f.id }))}
+                  aria-pressed={look.fontId === f.id}
+                  title={`${f.note} · ${f.designer}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </span>
+          </div>
+          <div className="look-row">
+            <span className="look-name">Size</span>
+            <span className="segmented small" role="group" aria-label="Size">
+              <button onClick={() => step("size", -1, SIZE_RANGE)} aria-label="Smaller" data-testid="size-down">
+                −
+              </button>
+              <span className="look-value" data-testid="size-value">{look.size}</span>
+              <button onClick={() => step("size", 1, SIZE_RANGE)} aria-label="Larger" data-testid="size-up">
+                +
+              </button>
+            </span>
+          </div>
+          <div className="look-row">
+            <span className="look-name">Measure</span>
+            <span className="segmented small" role="group" aria-label="Measure">
+              <button onClick={() => step("measure", -1, MEASURE_RANGE)} aria-label="Narrower">
+                −
+              </button>
+              <span className="look-value">{look.measure}ch</span>
+              <button onClick={() => step("measure", 1, MEASURE_RANGE)} aria-label="Wider">
+                +
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
