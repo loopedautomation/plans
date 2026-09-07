@@ -54,6 +54,34 @@ const PLAN = [
   "",
 ].join("\n");
 
+/**
+ * Two proposals that read the same, word for word, against two paragraphs that
+ * also read the same. Nothing but where they sit tells them apart.
+ */
+const TWIN = [
+  "<!--",
+  "@ratul suggests:",
+  "The line that both proposals quote.",
+  "---",
+  "The line, rewritten.",
+  "-->",
+].join("\n");
+
+const TWINS = [
+  "# Twins",
+  "",
+  "The line that both proposals quote.",
+  "",
+  TWIN,
+  "",
+  "Between the two.",
+  "",
+  "The line that both proposals quote.",
+  "",
+  TWIN,
+  "",
+].join("\n");
+
 const REPOS: FakeRepo[] = [
   {
     path: "/repo/one",
@@ -62,6 +90,7 @@ const REPOS: FakeRepo[] = [
     files: {
       "plan.md": PLAN,
       "plain.md": "# Plain\n\nFirst paragraph here.\n\nSecond paragraph here.\n",
+      "twins.md": TWINS,
     },
   },
 ];
@@ -154,6 +183,27 @@ test("a stale proposal goes in where it sits, rather than nowhere", async ({ pag
 
   await expect(page.locator(".ProseMirror")).toContainText("Whatever it should have said instead.");
   await expect(page.locator(".md-suggestion.stale")).toHaveCount(0);
+});
+
+test("two proposals that read the same are still two, and each keeps its own paragraph", async ({
+  page,
+}) => {
+  await open(page, "twins");
+  await expect(page.locator(".md-suggestion")).toHaveCount(2);
+
+  // The second card, which quotes exactly what the first quotes. Only its own
+  // paragraph — the one below "Between the two." — may move.
+  await page.locator(".md-suggestion").nth(1).locator(".md-suggestion-act", { hasText: "Accept" }).click();
+  await expect(page.locator(".md-suggestion")).toHaveCount(1);
+
+  await page.keyboard.press("Meta+s");
+  await page.waitForTimeout(500);
+  await page.locator(".view-switch button", { hasText: "Source" }).click();
+  const source = await page.locator(".source .cm-content").innerText();
+  expect(source).toContain("Between the two.\n\nThe line, rewritten.");
+  // The first proposal and the paragraph it quotes are exactly as they were.
+  expect(source).toContain("# Twins\n\nThe line that both proposals quote.\n\n<!--");
+  expect(source.match(/@ratul suggests:/g) ?? []).toHaveLength(1);
 });
 
 test("a person proposes the same way an agent does, from the page menu", async ({ page }) => {

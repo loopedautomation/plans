@@ -260,9 +260,12 @@ separators, or an empty old side and it is the comment it always was.
   transaction. A one-textblock proposal replaces the target's inline content
   rather than the node, so a heading stays a heading.
 - Positions are re-read at the moment a button is pressed, and the run finds
-  itself in the live document by its own text. Decorations are only rebuilt
-  when the html in the document changes, so in a room a teammate typing above
-  the card would otherwise have moved every position under it.
+  itself in the live document by the widget's own position, which ProseMirror
+  maps through every transaction. Not by its text: two proposals can say
+  exactly the same thing, and matching on text would resolve the first
+  wherever the second was pressed. Decorations are only rebuilt when the html
+  in the document changes, so in a room a teammate typing above the card would
+  otherwise have moved every position under it.
 - `SUGGEST_PROMPT` beside `REWRITE_PROMPT`, `suggestPrompt` in settings and
   its textarea in Settings. `rewriteSelection` became `askAboutSelection`,
   which takes the kind: the flush, the quote and the line hint are one path
@@ -282,7 +285,10 @@ built for the Diff view's surface is not what a card inside the prose wants.
 And the grammar tests are e2e rather than unit — the repository has no unit
 runner, so `e2e/suggestion.spec.ts` puts a thread, a two-separator body, a
 live proposal and a stale one in one document and asserts which of them draws
-as what, which is the same question asked where it can be answered.
+as what, which is the same question asked where it can be answered. A sixth
+case puts two proposals that read the same, word for word, over two paragraphs
+that also read the same, and presses the second: only the second paragraph may
+move.
 
 The open questions the plan left open stay open, unchanged: agents' workspace
 edits do not default to suggestions, a suggestion is one block, and the Diff

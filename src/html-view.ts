@@ -1017,9 +1017,17 @@ function runSpan(run: Run): Span {
   };
 }
 
-/** Where a gathered run sits in the document as it is now, found by its text. */
-function runBlock(doc: PMNode, html: string): Span | null {
-  const hit = commentRuns(doc).find((r) => r.html === html);
+/**
+ * Where a gathered run sits in the document as it is now, found by position.
+ *
+ * Not by its text: two suggestions can say exactly the same thing, and the
+ * first match is then the wrong card's — accepting the second would resolve
+ * the first and rewrite the first's paragraph. The widget's own position is
+ * mapped through every transaction, so it says which run was clicked even
+ * after a teammate has typed above it, and identical twins stay apart.
+ */
+function runAt(doc: PMNode, pos: number): Span | null {
+  const hit = commentRuns(doc).find((r) => pos >= r.from && pos <= r.to);
   return hit ? runSpan(hit) : null;
 }
 
@@ -1154,18 +1162,22 @@ function pictureDecorations(doc: PMNode, repo: string, relPath: string): Decorat
     out.push(
       Decoration.widget(
         run.to,
-        (view) => {
+        (view, getPos) => {
           card = sugg
             ? drawSuggestion(sugg, () => {
                 /*
                  * Read out of the live document, not out of the one these
                  * decorations were built from: between the two a teammate may
                  * have typed above the card, and every position here would be
-                 * off by what they wrote. The run finds itself by its own text
-                 * — the same rule the quote follows.
+                 * off by what they wrote. The widget carries its own position
+                 * forward through their edits, so the run it stands over is
+                 * the one asked for — never a twin that reads the same.
                  */
                 const live = view.state.doc;
-                return { doc: live, block: runBlock(live, run.html) ?? runSpan(run) };
+                const here = getPos?.();
+                const block =
+                  (here === undefined ? null : runAt(live, here)) ?? runSpan(run);
+                return { doc: live, block };
               })
             : commentCard(run.html, (next) =>
                 htmlBridge.apply?.({ from: run.from, to: run.to, value: next }),
