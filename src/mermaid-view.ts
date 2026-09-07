@@ -80,6 +80,10 @@ function applyTheme() {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
+    // A diagram that fails to parse is reported in its own figure, in a
+    // line; without this mermaid also appends a full-size "Syntax error in
+    // text" picture to the document body, which lands under the status bar.
+    suppressErrorRendering: true,
     fontFamily: v("--mono") || "monospace",
     theme: "base",
     themeVariables: {
