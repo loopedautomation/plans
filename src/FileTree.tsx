@@ -461,11 +461,12 @@ export const FileTree = memo(function FileTree(p: Props) {
    */
   const allowed = (it: Carried | null, repoPath: string, dir: string) => {
     if (!it) return false;
-    // Across a boundary only a file travels, and only inward: a repository's
-    // file dropped on a workspace becomes a shared copy of it. The way out of
-    // a workspace is "Copy to repository" on the page, which asks where and
-    // what to call it — a drop cannot.
-    if (it.repo !== repoPath) return it.kind === "file" && !isWs(it.repo);
+    // Across a boundary only a file travels, and never out of a workspace
+    // onto disk: a repository's file dropped on a workspace becomes a shared
+    // copy of it, and a workspace's file dropped on another workspace moves
+    // there. The way out to a repository is "Copy to repository" on the
+    // page, which asks where and what to call it — a drop cannot.
+    if (it.repo !== repoPath) return it.kind === "file" && (!isWs(it.repo) || isWs(repoPath));
     const from = it.path.includes("/") ? it.path.slice(0, it.path.lastIndexOf("/")) : "";
     if (from === dir) return false;
     if (it.kind === "dir" && (dir === it.path || dir.startsWith(`${it.path}/`))) return false;

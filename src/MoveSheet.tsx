@@ -15,14 +15,29 @@ type Props = {
   relPath: string;
   /** Every folder in the repository, plus the root. */
   folders: string[];
+  /**
+   * Other places the file may go — another workspace, with its folders. Each
+   * is a group in the same list, headed by its name, so moving across is the
+   * same gesture as moving within.
+   */
+  elsewhere?: { repo: string; label: string; folders: string[] }[];
   onCancel: () => void;
-  onMove: (dir: string) => void;
+  /** `repo` is set only when the choice was in `elsewhere`. */
+  onMove: (dir: string, repo?: string) => void;
 };
 
-export function MoveSheet({ relPath, folders, onCancel, onMove }: Props) {
+/** One value for the dropdown: a folder here, or `repo⏎dir` elsewhere. A
+ *  newline, because the app's own buffer prefixes already use `\u0000`. */
+const AWAY = "\n";
+
+export function MoveSheet({ relPath, folders, elsewhere = [], onCancel, onMove }: Props) {
   const name = relPath.split("/").pop() ?? relPath;
   const from = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
-  const [dir, setDir] = useState(from);
+  const [pick, setPick] = useState(from);
+  const away = pick.includes(AWAY) ? pick.split(AWAY) : null;
+  const dir = away ? away[1] : pick;
+  const repo = away ? away[0] : undefined;
+  const setDir = setPick;
   const sheet = useRef<HTMLDivElement>(null);
   useFocusTrap(sheet);
 
@@ -37,12 +52,12 @@ export function MoveSheet({ relPath, folders, onCancel, onMove }: Props) {
         onCancel();
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (dir !== from) onMove(dir);
+        if (pick !== from) onMove(dir, repo);
       }
     };
     window.addEventListener("keydown", keys, true);
     return () => window.removeEventListener("keydown", keys, true);
-  }, [dir, from, onCancel, onMove]);
+  }, [pick, dir, repo, from, onCancel, onMove]);
 
   return (
     <div className="matter-scrim" onMouseDown={onCancel}>
@@ -62,19 +77,29 @@ export function MoveSheet({ relPath, folders, onCancel, onMove }: Props) {
         <div className="name-where">
           <Dropdown
             ariaLabel="Folder"
-            value={dir}
+            value={pick}
             onChange={setDir}
             choices={[
               { value: "", label: "repository root" },
               ...folders.map((f) => ({ value: f, label: f })),
+              ...elsewhere.flatMap((w) => [
+                { value: `${w.repo}${AWAY}`, label: `${w.label} · root`, apart: true },
+                ...w.folders.map((f) => ({
+                  value: `${w.repo}${AWAY}${f}`,
+                  label: `${w.label} · ${f}`,
+                })),
+              ]),
             ]}
           />
         </div>
-        <p className="name-path">{dir ? `${dir}/${name}` : name}</p>
+        <p className="name-path">
+          {away ? `${elsewhere.find((w) => w.repo === repo)?.label ?? ""} · ` : ""}
+          {dir ? `${dir}/${name}` : name}
+        </p>
 
         <div className="matter-foot">
           <span>⏎ move · esc cancel</span>
-          <button className="act" onClick={() => onMove(dir)} disabled={dir === from}>
+          <button className="act" onClick={() => onMove(dir, repo)} disabled={pick === from}>
             Move
           </button>
         </div>
