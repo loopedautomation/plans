@@ -683,6 +683,9 @@ button, .rail, .bar, .tabs, .ctx {
   white-space: nowrap;
 }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* Share is the last thing in the row: the outward-facing action sits at the
+   edge, after the file's own chips and the view controls. */
+.page-actions [data-testid="share-plan"] { order: 100; margin-left: 4px; }
 .page-head .rail-btn { padding: 3px 7px; }
 .page-head .rail-btn:hover { color: var(--git-mod); }
 
