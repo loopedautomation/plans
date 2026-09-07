@@ -5251,10 +5251,81 @@ export default function App() {
     [presence, wsRoomFor, openWorkspaceFile, notify],
   );
 
+  /**
+   * A document moved from one workspace to another.
+   *
+   * A room belongs to the workspace whose tree names it, so the document
+   * does not travel: the text does. The file is made in the other workspace
+   * with the same markdown (the way a repository file is imported), the
+   * source tree stops naming the old one, and any tab on it follows. The
+   * old document is left in place, unnamed, as every workspace delete is.
+   */
+  const moveBetweenWorkspaces = useCallback(
+    async (fromId: string, from: string, toId: string, dir: string) => {
+      const me = presence();
+      if (!me) return;
+      const name = from.split("/").pop() ?? from;
+      const to = dir ? `${dir}/${name}` : name;
+      try {
+        const entry = (wsTreesRef.current[fromId] ?? []).find(
+          (e) => e.path === from && e.kind === "file",
+        );
+        if (!entry?.doc) {
+          notify(`${from} is not a file in this workspace`, "error");
+          return;
+        }
+        // The text as it stands: from the editor if this is the open buffer
+        // (its last keystrokes may still be inside the debounce), else what
+        // the room has published.
+        htmlBridge.collect?.();
+        const source = await roomFor(fromId, entry.doc);
+        if (!source) return;
+        await settled(source);
+        const content =
+          (activeWsRoomRef.current?.id === entry.doc
+            ? mainWriteMarkdown.current?.()
+            : null) ??
+          source.doc.getMap<string>("meta").get("markdown") ??
+          "";
+        const target = await wsRoomFor(toId);
+        if (!target) return;
+        await settled(target);
+        const docId = wsTree.addFile(target, to);
+        const session = await workspaceToken();
+        if (!session) return;
+        let room = rooms.current.get(docId);
+        if (!room) {
+          room = openRoom(docId, toId, session, me);
+          rooms.current.set(docId, room);
+          room.onStatus(() => setRoomTick((n) => n + 1));
+        }
+        room.doc.getMap<string>("meta").set("markdown", content);
+        const fromTree = await wsRoomFor(fromId);
+        if (fromTree) wsTree.remove(fromTree, from);
+        track("workspace_file_moved_across");
+        const wasOpen = tabs.some((t) => t.path === wsBufferPath(fromId, from));
+        for (const t of tabs.filter((x) => x.path === wsBufferPath(fromId, from)))
+          await closeTabRef.current?.(t.repo, t.path);
+        const wsName = workspaces.find((w) => w.id === toId)?.name ?? "the workspace";
+        notify(`Moved ${name} to ${wsName}`);
+        if (wasOpen) await openWorkspaceFile(toId, to);
+      } catch (e) {
+        notify(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
+    [presence, roomFor, wsRoomFor, openWorkspaceFile, notify, tabs, workspaces],
+  );
+
   const copyTo = useCallback(
     async (fromRepo: string, from: string, toRepo: string, dir: string) => {
       await flush();
       const ws = wsIdOf(toRepo);
+      const fromWs = wsIdOf(fromRepo);
+      // Between two workspaces a drop is a move: nothing is on disk to keep.
+      if (ws && fromWs) {
+        await moveBetweenWorkspaces(fromWs, from, ws, dir);
+        return;
+      }
       if (ws) {
         await importToWorkspace(fromRepo, from, ws, dir);
         return;
@@ -5270,7 +5341,7 @@ export default function App() {
         await openFile(toRepo, to);
       });
     },
-    [flush, fileAction, refreshFiles, openFile, importToWorkspace],
+    [flush, fileAction, refreshFiles, openFile, importToWorkspace, moveBetweenWorkspaces],
   );
 
   /**
@@ -7902,11 +7973,25 @@ export default function App() {
         <MoveSheet
           relPath={moving.path}
           folders={foldersIn(moving.repo)}
+          /* A workspace file may also go to another workspace: each of the
+             others, with its folders, so the choice is one list. */
+          elsewhere={
+            wsIdOf(moving.repo)
+              ? workspaces
+                  .filter((w) => w.id !== wsIdOf(moving.repo))
+                  .map((w) => ({
+                    repo: wsShelfPath(w.id),
+                    label: w.name,
+                    folders: foldersIn(wsShelfPath(w.id)),
+                  }))
+              : []
+          }
           onCancel={() => setMoving(null)}
-          onMove={(dir) => {
+          onMove={(dir, repo) => {
             const at = moving;
             setMoving(null);
-            shelfMove(at.repo, at.path, dir);
+            if (repo && repo !== at.repo) void copyTo(at.repo, at.path, repo, dir);
+            else shelfMove(at.repo, at.path, dir);
           }}
         />
       )}
