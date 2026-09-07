@@ -282,7 +282,10 @@ export function presentIn(room: Room): Present[] {
     if (client === room.doc.clientID) continue;
     const user = state?.user as Presence | undefined;
     if (!user?.name) continue;
-    out.push({ ...user, at: typeof state?.at === "string" ? state.at : null });
+    // The colour is ours to decide, not theirs to send: a login always
+    // wears the ink `colorFor` gives it, whatever build the peer runs.
+    const color = user.login ? colorFor(user.login) : user.color;
+    out.push({ ...user, color, at: typeof state?.at === "string" ? state.at : null });
   }
   return out;
 }
@@ -312,12 +315,16 @@ export type Room = {
 
 /**
  * The colour a person's cursor wears, from their login: stable across
- * sessions and machines without anyone having to agree on it.
+ * sessions and machines without anyone having to agree on it. It is one of
+ * the paper's six chart inks rather than a hue of its own — the app's rule
+ * is that nothing chromatic is invented — and it is handed over as the
+ * token, so the same person is the lifted blue on night and the printer's
+ * blue on day.
  */
 export function colorFor(login: string): string {
   let h = 0;
   for (let i = 0; i < login.length; i++) h = (Math.imul(31, h) + login.charCodeAt(i)) | 0;
-  return `hsl(${(h >>> 0) % 360} 55% 48%)`;
+  return `var(--chart-${((h >>> 0) % 6) + 1})`;
 }
 
 /**

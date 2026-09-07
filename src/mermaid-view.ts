@@ -99,6 +99,14 @@ function applyTheme() {
       nodeBorder: v("--rule-strong"),
       clusterBkg: v("--paper"),
       clusterBorder: v("--rule"),
+      /*
+       * An entity's attribute rows. Left unset, mermaid lightens `mainBkg`
+       * by 75 for the odd rows, which is white on every paper — bands of it
+       * across a night diagram. The rows alternate paper and shade, as the
+       * editor's own tables do.
+       */
+      rowOdd: v("--paper"),
+      rowEven: v("--shade"),
       titleColor: v("--ink"),
       edgeLabelBackground: v("--paper"),
       /*

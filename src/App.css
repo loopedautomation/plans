@@ -3539,7 +3539,7 @@ body.tree-drag .tabs.drop-hot {
   font-size: 9px;
   letter-spacing: 0.06em;
   line-height: 1.4;
-  color: #fff;
+  color: var(--paper);
   white-space: nowrap;
   user-select: none;
 }
@@ -3555,7 +3555,9 @@ body.tree-drag .tabs.drop-hot {
   object-fit: cover;
   font-family: var(--mono);
   font-weight: 700;
-  color: #fff;
+  /* The paper, not white: the inks are lifted on night, and white on a
+     light blue is no letter at all. */
+  color: var(--paper);
   line-height: 1;
   user-select: none;
   box-shadow: 0 0 0 1.5px var(--paper);
