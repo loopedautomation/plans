@@ -397,6 +397,21 @@
   padding: 3px 7px;
 }
 
+/* The same for a markdown image: the element stays where the editor put it —
+   removing it would fight whatever node view drew it — so the frame itself
+   carries the note, and the path it tried is its alt text. */
+.editor-host .milkdown .ProseMirror img.md-asset-missing {
+  min-width: 12ch;
+  min-height: 2em;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--git-mod);
+  border: 1px dashed var(--rule-strong);
+  border-radius: 3px;
+  padding: 3px 7px;
+}
+
 /* The source lines of a <picture> stay in the document but out of sight —
    hidden rather than removed, so the markdown is untouched. */
 .editor-host .milkdown .ProseMirror .md-hidden { display: none; }

@@ -283,12 +283,46 @@ function standalone(html: string): string {
  */
 const assets = new Map<string, string>();
 
-function resolveAssets(root: HTMLElement, repo: string, relPath: string) {
-  const dir = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+/**
+ * A source the browser can already fetch on its own — nothing to resolve.
+ */
+export const ABSOLUTE_SRC = /^(https?:|data:|blob:|\/\/)/i;
 
+/**
+ * Where a source written in a document actually lives, from the repository
+ * root. A leading "/" means the root; anything else is relative to the file.
+ */
+export function assetPath(relPath: string, raw: string): string {
+  const dir = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+  return raw.startsWith("/") ? raw.slice(1) : dir ? `${dir}/${raw}` : raw;
+}
+
+/** The data URL already read for this path, if it has been read before. */
+export function cachedAsset(repo: string, rel: string): string | null {
+  return assets.get(`${repo}::${rel}`) ?? null;
+}
+
+/**
+ * The bytes behind a repository-relative path, as a data URL, read once.
+ *
+ * The cache is shared with `image-assets.ts`, which resolves the same paths
+ * for markdown's own `![](…)` images: a README whose cover is written both
+ * ways reads the file once, and a folder of images opened twice is free the
+ * second time.
+ */
+export function assetUrl(repo: string, rel: string): Promise<string> {
+  const hit = cachedAsset(repo, rel);
+  if (hit) return Promise.resolve(hit);
+  return api.readAsset(repo, rel).then((url) => {
+    assets.set(`${repo}::${rel}`, url);
+    return url;
+  });
+}
+
+function resolveAssets(root: HTMLElement, repo: string, relPath: string) {
   const fix = (el: Element, attr: string) => {
     const raw = el.getAttribute(attr);
-    if (!raw || /^(https?:|data:|blob:|\/\/)/i.test(raw)) return;
+    if (!raw || ABSOLUTE_SRC.test(raw)) return;
 
     /**
      * Take the attribute off before the browser can act on it. A relative path
@@ -296,8 +330,7 @@ function resolveAssets(root: HTMLElement, repo: string, relPath: string) {
      * error handler below would report a miss before the real bytes arrived.
      */
     el.removeAttribute(attr);
-    const rel = raw.startsWith("/") ? raw.slice(1) : dir ? `${dir}/${raw}` : raw;
-    const key = `${repo}::${rel}`;
+    const rel = assetPath(relPath, raw);
 
     const miss = (why: string) => {
       const note = document.createElement("span");
@@ -308,14 +341,11 @@ function resolveAssets(root: HTMLElement, repo: string, relPath: string) {
 
     if (!repo) return miss("no repository");
 
-    const hit = assets.get(key);
+    const hit = cachedAsset(repo, rel);
     if (hit) return el.setAttribute(attr, hit);
 
-    void api.readAsset(repo, rel).then(
-      (url) => {
-        assets.set(key, url);
-        el.setAttribute(attr, url);
-      },
+    void assetUrl(repo, rel).then(
+      (url) => el.setAttribute(attr, url),
       (e) => miss(String(e).replace(/^Error:\s*/, "")),
     );
   };

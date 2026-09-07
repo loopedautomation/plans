@@ -13,6 +13,7 @@ import { editorViewCtx } from "@milkdown/core";
 import { mermaidView } from "./mermaid-view";
 import { pasteLink } from "./paste-link";
 import { imageContext, pasteImage } from "./paste-image";
+import { imageAssets } from "./image-assets";
 import { yamlSchema } from "./yaml-node";
 import { findPluginKey, findProsePlugin, scrollToCurrent } from "./find-prose";
 import type { FindHandle } from "./find";
@@ -399,6 +400,9 @@ export function Editor({
     crepe.editor.use(htmlView);
     // A <picture> is a run of html nodes; this picks one by the app's paper.
     crepe.editor.use(pictureView);
+    // `![](images/cover.png)` gets the same treatment the <img> above gets:
+    // relative paths read out of the repository rather than the app's origin.
+    crepe.editor.use(imageAssets);
     // ```mermaid blocks keep their source and gain a diagram beneath it.
     crepe.editor.use(mermaidView);
     // ⌘F over the rendered text: matches as decorations, recomputed with the

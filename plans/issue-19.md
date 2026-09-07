@@ -1,5 +1,5 @@
 ---
-status: busy
+status: done
 ---
 # Markdown images resolve like HTML ones
 
@@ -31,3 +31,56 @@ From [issue #19](https://github.com/loopedautomation/plans/issues/19).
 The intent is the issue's: one rule for relative image paths, whichever syntax
 wrote them. What follows is how that is reached without betting on a schema
 this app does not own.
+
+The issue suggests a node view on the `image` schema node. That is the obvious
+route and it is also a bet: Crepe's image feature replaces the plain commonmark
+image with block and inline nodes of its own, each drawn by a component that
+renders — and re-renders — its own `<img>`. A node view would have to name
+those types, take the element off the component that owns it, and be rewritten
+the next time Crepe rearranges its features.
+
+So the resolution is attached to the thing every one of those paths produces:
+an `<img>` in the editor's DOM with a relative `src`. A `MutationObserver` over
+the editor's DOM catches each one as it is drawn, and catches it again when a
+component redraws and puts the raw path back.
+
+## What was done
+
+- **`src/image-assets.ts`** is new: an `imageAssets` ProseMirror plugin whose
+  view observes `view.dom` and resolves any relative `src` it sees, plus one
+  pass over what is already on the page when the plugin is built. Images inside
+  `.md-html` are left alone — the HTML view already owns those. Reads are done
+  once per element: the pending path is parked in a data attribute so a redraw
+  mid-flight does not ask again.
+- The observer works from the mutation records, not from a document-wide sweep.
+  The file this was reported from holds ~640 images; re-scanning them on every
+  keystroke would trade a broken picture for a slow one.
+- The swap happens **synchronously in the observer's callback** rather than on
+  the next frame. A mutation callback is a microtask, so it runs before the
+  browser has had a task in which to fail the relative request — deferred, the
+  error lands first and a component watching for one has already drawn its
+  broken state.
+- A relative source is replaced by a 1×1 transparent GIF while the bytes are
+  read, rather than removed. `resolveAssets` removes the attribute because a
+  relative path would otherwise be attempted against the app's origin; removing
+  it here would instead show an image component's "add an image" placeholder,
+  which is a worse flash than none.
+- **`src/html-view.ts`** now exports the asset machinery it had kept private —
+  `ABSOLUTE_SRC`, `assetPath`, `cachedAsset`, `assetUrl` — and `resolveAssets`
+  is rewritten in terms of them. One cache, one `read_asset` call per path, so
+  a cover referenced both ways is read once. Behaviour there is unchanged.
+- An image that cannot be read says which path it tried and why, as the HTML
+  side already did: `md-asset-missing` on the frame, the reason as its alt text
+  and title, styled in `editor-theme.css` to match `.md-html-missing`.
+- `Editor.tsx` uses the plugin; `README.md` and `BUGS.md` say so; a changeset
+  describes the fix for the release notes.
+
+## Verification
+
+Two e2e tests in `e2e/html.spec.ts`: `![](images/photo.png)` renders with a
+data URL for a source and calls `read_asset` with `images/photo.png`, and the
+same picture written as `<img>` still renders the way it always did.
+
+The tests were not run on this machine — `pnpm` is not installed here and
+installing it was not available, so `pnpm test` and `pnpm exec tsc --noEmit`
+could not be executed locally. CI runs both on the pull request.
