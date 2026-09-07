@@ -7281,6 +7281,16 @@ export default function App() {
               onShareFolder={account ? shareFolder : undefined}
               onRename={shelfRename}
               onMoveTo={(repo, path) => setMoving({ repo, path })}
+              onCopyOut={
+                shownRepos.length > 0
+                  ? (repo, path) => {
+                      const id = wsIdOf(repo);
+                      if (!id) return;
+                      const into = activeRepo?.path ?? shownRepos[0].path;
+                      setWsCopying({ id, path, repo: into, dir: lastPlanDir(into) ?? "" });
+                    }
+                  : undefined
+              }
               onSetOpen={setOpen}
             />
           </div>
@@ -7605,28 +7615,9 @@ export default function App() {
                                 below, as for any file; Members is on the
                                 workspace's heading in the tree, where it
                                 belongs to the workspace and not to a file. */}
-                                {shownRepos.length > 0 && (
-                                  <button
-                                    className="rail-btn"
-                                    onClick={() =>
-                                      setWsCopying({
-                                        id,
-                                        path: file,
-                                        repo:
-                                          activeRepo?.path ??
-                                          shownRepos[0].path,
-                                        dir:
-                                          lastPlanDir(
-                                            activeRepo?.path ??
-                                              shownRepos[0].path,
-                                          ) ?? "",
-                                      })
-                                    }
-                                    title="Write this file into a repository, where git can see it"
-                                  >
-                                    Copy to a repo
-                                  </button>
-                                )}
+                                {/* "Copy to a repo" is on the file's menu in
+                                the tree, beside Move to…: it acts on the file,
+                                not on the page. */}
                               </>
                             );
                           })()}

@@ -255,6 +255,8 @@ type Props = {
   templates: { file: string; name: string }[];
   onRename: (repoPath: string, relPath: string) => void;
   onMoveTo: (repoPath: string, relPath: string) => void;
+  /** Write a workspace file into a repository, where git can see it. Absent when there is no repository to write into. */
+  onCopyOut?: (repoPath: string, relPath: string) => void;
   onNewFolder: (repoPath: string, dir: string) => void;
   /** Dragged into a folder: dir is "" for the repository root. */
   onMove: (repoPath: string, relPath: string, dir: string) => void;
@@ -994,6 +996,15 @@ export const FileTree = memo(function FileTree(p: Props) {
               >
                 Move to…
               </button>
+              {p.onCopyOut && isWs(menu.repo) && (
+                <button
+                  {...menuItem()}
+                  onClick={() => act(() => p.onCopyOut?.(menu.repo, menu.path))}
+                  title="Write this file into a repository, where git can see it"
+                >
+                  Copy to a repo…
+                </button>
+              )}
             </>
           )}
 

@@ -391,7 +391,7 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   await expect(reader.locator(".md-comment-who .avatar")).toHaveCount(0);
 
   // Copied into a repository, the thread is the same lines of the same file.
-  await alice.locator(".page-actions .rail-btn", { hasText: "Copy to a repo" }).click();
+  await menu(alice, row(alice, "plan"), "Copy to a repo…");
   await alice.locator(".matter-sheet .act", { hasText: "Copy" }).click();
   await expect(alice.locator(".page-path")).not.toContainText("Threads ·");
   const copied = await alice.evaluate(() => {
@@ -1007,7 +1007,7 @@ test("a review is requested, seen, approved and carried into a repository, all i
   await expect(alice.getByTestId("offer-approved")).toHaveCount(0);
 
   // Copied into a repository, the file carries all of it verbatim.
-  await alice.locator(".page-actions .rail-btn", { hasText: "Copy to a repo" }).click();
+  await menu(alice, row(alice, "plan"), "Copy to a repo…");
   await alice.locator(".matter-sheet .act", { hasText: "Copy" }).click();
   await expect(alice.locator(".page-path")).not.toContainText("Lifecycle ·");
   const copied = await alice.evaluate(() => {
