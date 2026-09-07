@@ -35,6 +35,24 @@ export const FIRST_FILE = "plan.md";
 /** The tree of a workspace lives in the room whose id *is* the workspace's. */
 export const treeId = (workspaceId) => workspaceId;
 
+/**
+ * `status:` from the head of a document, the way the app reads it: a `---`
+ * fence at byte zero, flat `key: value` lines, no YAML library. Null when
+ * there is no block or no status in it. Mirrors src/matter.ts.
+ */
+export function headStatus(markdown) {
+  if (typeof markdown !== "string" || !/^---[ \t]*\r?\n/.test(markdown)) return null;
+  const close = markdown.slice(4).match(/\r?\n---[ \t]*(?:\r?\n|$)/);
+  const block = close ? markdown.slice(markdown.indexOf("\n") + 1, 4 + close.index) : "";
+  for (const line of block.split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+    if (!m || m[1].toLowerCase() !== "status") continue;
+    const v = m[2].trim().replace(/^["']|["']$/g, "");
+    return v.length ? v : null;
+  }
+  return null;
+}
+
 /** The tree map, as the wire and the app both see it. */
 function entriesOf(doc) {
   const out = [];
@@ -127,16 +145,43 @@ export class Rooms {
   /** A workspace's tree, seeded if it has never had one. Read-only callers. */
   async tree(workspaceId) {
     const live = this.rooms.get(treeId(workspaceId));
-    if (live) return entriesOf(live.doc);
+    if (live) {
+      await this.repairStatus(live.doc);
+      return entriesOf(live.doc);
+    }
     const doc = new Y.Doc();
     const stored = await this.db.loadDoc(treeId(workspaceId));
     if (stored) Y.applyUpdate(doc, stored);
-    if (await this.seedInto(doc, workspaceId)) {
+    let dirty = await this.seedInto(doc, workspaceId);
+    if (await this.repairStatus(doc)) dirty = true;
+    if (dirty) {
       await this.db.saveDoc(treeId(workspaceId), workspaceId, "tree", Y.encodeStateAsUpdate(doc));
     }
     const out = entriesOf(doc);
     doc.destroy();
     return out;
+  }
+
+  /**
+   * The tree's `status` is a copy kept by whichever client has a file open,
+   * and a file nobody has opened since an agent's write — or one seeded
+   * before anyone opened it — can carry a stale one. The frontmatter is the
+   * truth; this makes the copy agree with it, entry by entry, for every
+   * file whose document exists. Returns whether anything changed.
+   */
+  async repairStatus(doc) {
+    const tree = doc.getMap("tree");
+    let changed = false;
+    for (const [path, value] of tree) {
+      if (!value || typeof value !== "object" || value.kind === "folder" || !value.doc) continue;
+      const markdown = await this.markdown(value.doc);
+      if (!markdown) continue;
+      const status = headStatus(markdown);
+      if ((value.status ?? null) === status) continue;
+      tree.set(path, { ...value, status });
+      changed = true;
+    }
+    return changed;
   }
 
   /** Make the tree for a workspace that has just been created. */

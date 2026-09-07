@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 ---
 # Workspace plan lifecycle
 
@@ -181,23 +181,23 @@ the cache; the frontmatter stays the truth.
 
 ## Next
 
-- [ ] Recognize `review` in `statusTone` (`matter.ts:121-128`) with its own
+- [x] Recognize `review` in `statusTone` (`matter.ts:121-128`) with its own
       tone, and add it to the default vocabulary (`settings.ts:260`)
-- [ ] Workspace scaffold and `owner:` writing use `account.login` instead of
+- [x] Workspace scaffold and `owner:` writing use `account.login` instead of
       git's author when the active buffer is a workspace doc
       (`App.tsx:2857-2872`)
-- [ ] Parse and render `reviewers:` (and `approved:`) in both pane headers,
+- [x] Parse and render `reviewers:` (and `approved:`) in both pane headers,
       resolving handles against `profiles` for face and colour
       (`App.tsx:7317-7331`, `SplitPane.tsx:340-343`)
-- [ ] *Request review* palette command: set status, write `reviewers:`,
+- [x] *Request review* palette command: set status, write `reviewers:`,
       insert the mentioning comment; *Approve* appends to `approved:`
-- [ ] Tint the comment mark when the latest turn mentions the signed-in
+- [x] Tint the comment mark when the latest turn mentions the signed-in
       login (`html-view.ts:103-160`)
-- [ ] A "threads in this document" jump list (palette first; a rail only if
+- [x] A "threads in this document" jump list (palette first; a rail only if
       the list earns it)
-- [ ] Server-side verify-and-repair of tree `status` in `tree(workspaceId)`
+- [x] Server-side verify-and-repair of tree `status` in `tree(workspaceId)`
       (`rooms.js:128`, using `markdownAt` at `rooms.js:161`)
-- [ ] Tests: an e2e where one account requests review, another approves, and
+- [x] Tests: an e2e where one account requests review, another approves, and
       the copied-to-repository file carries `reviewers:`/`approved:` and the
       threads verbatim (`e2e/workspace.spec.ts`); a server test for the tree
       status repair (`server/test/server.test.js`)

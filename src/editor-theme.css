@@ -328,6 +328,8 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
+/* A thread whose latest turn names you is a thread asking for you. */
+.md-comment-mark.for-you { color: var(--git-mod); border-color: var(--git-mod); }
 .md-comment-mark:hover { color: var(--ink); border-color: var(--ink-3); }
 .md-comment.open .md-comment-mark { color: var(--ink); border-color: var(--ink); }
 

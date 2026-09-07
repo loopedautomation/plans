@@ -61,6 +61,17 @@ const HANDLE = "[A-Za-z0-9_.+-]+(?:@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)?";
 const AUTHOR = new RegExp(`@(${HANDLE})`);
 const TURN = new RegExp(`^@(${HANDLE}):\\s*(.*)$`);
 
+/** Does this text mention the handle — whole, or as its short form before the `@`? */
+export function mentionsHandle(text: string, handle: string): boolean {
+  const names = [handle, shortHandle(handle)].map((h) => h.toLowerCase());
+  const re = new RegExp(`@(${HANDLE})`, "g");
+  for (const m of text.matchAll(re)) {
+    const hit = m[1].toLowerCase();
+    if (names.includes(hit) || names.includes(shortHandle(hit))) return true;
+  }
+  return false;
+}
+
 /** Author written into the comment as `@name`, if there is one. */
 export function commentAuthor(body: string): string | null {
   return body.match(AUTHOR)?.[1] ?? null;
@@ -144,6 +155,14 @@ function commentCard(
   mark.type = "button";
   mark.textContent = turns.length > 1 ? `comment +${turns.length}` : "comment";
   mark.title = body;
+  /*
+   * Named in the latest turn, this thread is asking for you: tint the mark.
+   * A render-side rule only — the file carries nothing extra, so the copied
+   * repository file and the public page keep today's rendering.
+   */
+  const me = htmlContext.author;
+  const last = turns[turns.length - 1];
+  if (me && last && mentionsHandle(last.text, me)) mark.classList.add("for-you");
 
   const card = document.createElement("span");
   card.className = "md-comment-card";
@@ -409,7 +428,8 @@ export const htmlBridge: {
   /** Set by Editor: put a new fragment in at the cursor. */
   insert: ((value: string) => void) | null;
   /** Set by Editor: put a comment in at the cursor. */
-  comment: ((value: string) => void) | null;
+  /** Insert a comment at the cursor, or — `atTop` — under the first heading. */
+  comment: ((value: string, atTop?: boolean) => void) | null;
   /** Set by Editor: put the cursor at the end of the document and focus it. */
   focusEnd: (() => void) | null;
   /**

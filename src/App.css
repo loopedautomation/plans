@@ -2604,6 +2604,7 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
 }
 .tone-draft { color: var(--ink-3); }
 .tone-ready { color: var(--git-staged); }
+.tone-review { color: var(--git-mod); }
 .tone-approved { color: var(--status-approved); }
 .tone-busy { color: var(--git-mod); }
 .tone-done { color: var(--git-new); }
@@ -2616,6 +2617,22 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
   letter-spacing: 0.03em;
   color: var(--ink-3);
 }
+/* Reviewers: each a face and a handle in their presence colour, a check once
+   they have approved, and the offer of `approved` when everyone has. */
+.matter-people { display: inline-flex; align-items: center; gap: 8px; }
+.matter-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+}
+.matter-person .avatar { width: 14px; height: 14px; font-size: 8px; }
+.matter-person.approved .matter-handle { text-decoration: underline; text-decoration-color: var(--git-new); text-underline-offset: 3px; }
+.matter-check { color: var(--git-new); font-size: 10px; }
+.matter-offer { color: var(--status-approved); border-color: var(--status-approved); }
 .matter-due.overdue { color: var(--git-mod); }
 
 /* The status: dot on a tree row, riding after the name. */

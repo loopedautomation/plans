@@ -114,7 +114,7 @@ export function track(
  * Anything under one of these reports as the prefix alone. Every other id
  * is a static string in this codebase, and goes as it is.
  */
-const PERSONAL_PREFIXES = ["chat.", "repo.", "agent.use.", "skill.open.", "status.", "model.", "effort."];
+const PERSONAL_PREFIXES = ["chat.", "repo.", "agent.use.", "skill.open.", "status.", "model.", "effort.", "thread."];
 
 /** A palette command id, with the part that is not ours cut off. */
 export function commandName(id: string): string {

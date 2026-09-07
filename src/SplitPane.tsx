@@ -13,6 +13,7 @@
  * a layout tree, a serialization format for it, and focus rules nobody
  * remembers. For a plans editor on a laptop screen, two is the useful number.
  */
+import { MatterPeople } from "./MatterPeople";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { DiffView } from "./DiffView";
@@ -417,6 +418,7 @@ export function SplitPane({
               @{who}
             </span>
           )}
+          {matter !== null && <MatterPeople matter={matter} />}
           {due && (
             <span
               className={`matter-due ${overdue ? "overdue" : ""}`}

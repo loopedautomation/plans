@@ -208,6 +208,12 @@ type Props = {
   routingChoices: { model: string[]; effort: string[] };
   onSetRouting: (key: "model" | "effort", value: string | null) => void;
   onScaffoldMatter: () => void;
+  /** Review, as two gestures on a workspace document; absent elsewhere. */
+  onRequestReview?: () => void;
+  onApprove?: () => void;
+  /** The open document's comment threads, first line each, in order. */
+  threads: string[];
+  onJumpThread: (index: number) => void;
   /**
    * The merged keymap. Where a command's id has a binding, its hint is
    * rendered from it rather than typed by hand — so the palette cannot lie
@@ -417,6 +423,38 @@ function buildCommands(p: Props): Command[] {
         run: () => p.onSetStatus(null),
       });
     }
+    if (p.onRequestReview) {
+      add({
+        id: "review.request",
+        group: "Plans",
+        label: "Request review…",
+        hint: "status: review · reviewers: · a comment at the top",
+        terms: "ask reviewers approve",
+        run: p.onRequestReview,
+      });
+    }
+    if (p.onApprove) {
+      add({
+        id: "review.approve",
+        group: "Plans",
+        label: "Approve",
+        hint: "adds you to approved:",
+        terms: "review sign off lgtm",
+        run: p.onApprove,
+      });
+    }
+    // Every thread in the document, to jump to: the scannability a margin
+    // would give, without moving where the comments live.
+    p.threads.forEach((line, i) => {
+      add({
+        id: `thread.${i}`,
+        group: "Comments",
+        label: `Thread: ${line}`,
+        hint: `${i + 1} of ${p.threads.length}`,
+        terms: "comment threads review",
+        run: () => p.onJumpThread(i),
+      });
+    });
     // Same shape for the routing keys: "opus" is two keys from anywhere —
     // offering only what the live agent advertised, so the palette never
     // writes a value the dispatching agent would not recognise.

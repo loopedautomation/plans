@@ -317,6 +317,40 @@ test("a workspace is a folder: the tree is a room, and so is every file in it", 
   treeB.close();
 });
 
+test("the tree's status is the frontmatter's, even for a file nobody has open", async () => {
+  const alice = await signIn("alice");
+  const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Dots" } })).value;
+  const tree = connect(id, alice);
+  await Promise.all([tree.open, tree.synced]);
+  // A file named in the tree with no status copy, whose document says review.
+  tree.doc.getMap("tree").set("review.md", { kind: "file", doc: "dots-review-doc" });
+  const file = connect("dots-review-doc", alice, id);
+  await Promise.all([file.open, file.synced]);
+  file.doc.getMap("meta").set("markdown", "---\nstatus: review\nreviewers: bob\n---\n\n# Review me\n");
+  await until(() => s.rooms.rooms.get("dots-review-doc")?.doc.getMap("meta").get("markdown"));
+
+  // Read through the API: the copy was missing, and the listing repairs it.
+  const listed = (await call(`/workspaces/${id}/tree`, { token: alice })).value;
+  assert.equal(listed.find((e) => e.path === "review.md").status, "review");
+  // The live tree room learned it too, which is what every client's dot reads.
+  await until(() => tree.doc.getMap("tree").get("review.md")?.status === "review");
+
+  // A stale copy is corrected, not trusted.
+  tree.doc.getMap("tree").set("review.md", { kind: "file", doc: "dots-review-doc", status: "draft" });
+  await until(() => s.rooms.rooms.get(id)?.doc.getMap("tree").get("review.md")?.status === "draft");
+  const again = (await call(`/workspaces/${id}/tree`, { token: alice })).value;
+  assert.equal(again.find((e) => e.path === "review.md").status, "review");
+
+  // Frontmatter gone: the copy goes with it.
+  file.doc.getMap("meta").set("markdown", "# Review me\n");
+  await until(() => s.rooms.rooms.get("dots-review-doc")?.doc.getMap("meta").get("markdown") === "# Review me\n");
+  const cleared = (await call(`/workspaces/${id}/tree`, { token: alice })).value;
+  assert.equal(cleared.find((e) => e.path === "review.md").status, null);
+
+  file.close();
+  tree.close();
+});
+
 test("the websocket refuses non-members before it opens", async () => {
   const alice = await signIn("alice");
   const eve = await signIn("eve");

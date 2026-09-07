@@ -257,7 +257,7 @@ export const DEFAULTS: Settings = {
   showFrontmatter: true,
   showCompleted: true,
   showAllFiles: false,
-  statuses: "draft, ready, approved, busy, done",
+  statuses: "draft, ready, review, approved, busy, done",
   agentCommand: "claude {prompt}",
   chatCommand: "claude",
   handoffPrompt: HANDOFF_PROMPT,

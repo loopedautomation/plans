@@ -128,11 +128,14 @@ import {
   isDone,
   isMarkdownPath,
   joinFrontmatter,
+  handleList,
   matterValue,
   setMatterValue,
   splitFrontmatter,
   statusTone,
+  withHandle,
 } from "./matter";
+import { MatterPeople } from "./MatterPeople";
 import {
   applySettings,
   DEFAULTS,
@@ -2914,12 +2917,87 @@ export default function App() {
     }
     if (!matterValue(m, "status"))
       m = setMatterValue(m, "status", statusChoices[0] ?? "draft");
-    if (!matterValue(m, "owner") && author)
-      m = setMatterValue(m, "owner", author);
+    // In a workspace the owner is a login — the identity the server enforces,
+    // the shape a mention takes — whatever git's name in the scratch folder is.
+    const owner = wsIdOf(activePath) ? (account?.login ?? author) : author;
+    if (!matterValue(m, "owner") && owner)
+      m = setMatterValue(m, "owner", owner);
     if (!matterValue(m, "due")) m = setMatterValue(m, "due", "");
     onMatterChange(m);
     setMatterOpen(true);
-  }, [matter, activePath, statusChoices, author, onMatterChange]);
+  }, [matter, activePath, statusChoices, author, account, onMatterChange]);
+
+  /**
+   * Review is a gesture, not an object. *Request review* sets the status,
+   * names the reviewers, clears any earlier sign-off — re-requesting is the
+   * human saying "look again" — and writes a comment at the top mentioning
+   * them; presence and the amber dot in the tree are the notification.
+   * *Approve* appends the signed-in login to `approved:`. Both are words in
+   * the file, which is what an agent, a copy to a repository and the public
+   * page all read.
+   */
+  const requestReview = useCallback(() => {
+    const me = account?.login;
+    if (!me || !wsIdOf(activePath)) return;
+    setAsking({
+      title: "Request review",
+      placeholder: "@mira @sam",
+      note: "Sets status: review, names them in reviewers:, and leaves a comment at the top asking.",
+      confirm: "Request",
+      mentions: Object.keys(activeProfiles ?? {}),
+      initial: handleList(matterValue(matter ?? "", "reviewers")).map((h) => `@${h}`).join(" "),
+      run: (value) => {
+        const who = handleList(value);
+        if (!who.length) return;
+        let m = matter ?? "";
+        m = setMatterValue(m, "status", "review");
+        m = setMatterValue(m, "reviewers", who.join(", "));
+        m = setMatterValue(m, "approved", null);
+        onMatterChange(m);
+        htmlBridge.comment?.(`<!-- @${me}: ${who.map((h) => `@${h}`).join(" ")} — ready for your eyes -->`, true);
+        track("review_requested", { reviewers: who.length });
+      },
+    });
+  }, [account, activePath, activeProfiles, matter, onMatterChange]);
+
+  const approve = useCallback(() => {
+    const me = account?.login;
+    if (!me || !wsIdOf(activePath)) return;
+    const next = setMatterValue(matter ?? "", "approved", withHandle(matterValue(matter ?? "", "approved"), me));
+    onMatterChange(next);
+    track("review_approved");
+  }, [account, activePath, matter, onMatterChange]);
+
+  /**
+   * The document's comment threads, first line each, for the palette: what
+   * a margin would give — every open point at a glance — without moving
+   * where the points live. Jumping is scrolling the card into view and
+   * opening it; the cards sit in document order, as the comments do.
+   */
+  const threads = useMemo(() => {
+    const text = wsIdOf(activePath) ? wsSource : content;
+    const out: string[] = [];
+    for (const m of text.matchAll(/<!--([\s\S]*?)-->/g)) {
+      const line = m[1]
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find(Boolean);
+      if (!line) continue;
+      const said = line.replace(/^@[^:\s]+:\s*/, "");
+      out.push(said.length > 72 ? `${said.slice(0, 71)}…` : said);
+    }
+    return out;
+  }, [activePath, wsSource, content]);
+  const jumpThread = useCallback((i: number) => {
+    const card = document.querySelectorAll(".main-pane .md-comment")[i] as HTMLElement | undefined;
+    if (!card) return;
+    card.scrollIntoView({ block: "center" });
+    // The mark opens on mousedown, not click: the card must not take the
+    // caret with it, and a mousedown is the one event that would.
+    card
+      .querySelector(".md-comment-mark")
+      ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  }, []);
 
   // "onBlur": the window losing focus is the cue, as in an IDE.
   useEffect(() => {
@@ -7488,6 +7566,11 @@ export default function App() {
                                     @{who}
                                   </span>
                                 )}
+                                <MatterPeople
+                                  matter={matter}
+                                  profiles={activeProfiles}
+                                  onSetStatus={(v) => setStatus(v)}
+                                />
                                 {due && (
                                   <span
                                     className={`matter-due ${overdue ? "overdue" : ""}`}
@@ -8282,6 +8365,10 @@ export default function App() {
         routingChoices={routingChoices}
         onSetRouting={setRouting}
         onScaffoldMatter={scaffoldMatter}
+        onRequestReview={account && wsIdOf(activePath) ? requestReview : undefined}
+        onApprove={account && wsIdOf(activePath) ? approve : undefined}
+        threads={threads}
+        onJumpThread={jumpThread}
         keymap={keymap}
         onShortcuts={() => setShortcuts(true)}
         splitOpen={!!split}

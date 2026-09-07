@@ -120,11 +120,41 @@ export function setMatterValue(matter: string, key: string, value: string | null
  */
 export function statusTone(
   status: string,
-): "draft" | "ready" | "approved" | "busy" | "done" | "other" {
+): "draft" | "ready" | "review" | "approved" | "busy" | "done" | "other" {
   const s = status.trim().toLowerCase();
-  if (s === "draft" || s === "ready" || s === "approved" || s === "busy" || s === "done")
+  if (
+    s === "draft" ||
+    s === "ready" ||
+    s === "review" ||
+    s === "approved" ||
+    s === "busy" ||
+    s === "done"
+  )
     return s;
   return "other";
+}
+
+/**
+ * A list of handles, as `reviewers:` and `approved:` carry them. Both
+ * spellings are read — `mira, sam` and `@mira @sam` — since the second is
+ * how a comment mentions people and someone will write it; the app writes
+ * the comma form. Flat, so it stays inside the no-YAML-library contract.
+ */
+export function handleList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  const out: string[] = [];
+  for (const raw of value.split(/[,\s]+/)) {
+    const h = raw.trim().replace(/^@/, "");
+    if (h && !out.some((x) => x.toLowerCase() === h.toLowerCase())) out.push(h);
+  }
+  return out;
+}
+
+/** The list with one more handle in it, once; unchanged if already there. */
+export function withHandle(value: string | null | undefined, handle: string): string {
+  const list = handleList(value);
+  if (!list.some((x) => x.toLowerCase() === handle.toLowerCase())) list.push(handle);
+  return list.join(", ");
 }
 
 /**

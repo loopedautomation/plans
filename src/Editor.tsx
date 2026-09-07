@@ -462,12 +462,22 @@ export function Editor({
      * is kept, not replaced — the comment sits at its end, about the text it
      * follows. A selection at the document itself falls back to the end.
      */
-    bridge.comment = (value) => {
+    bridge.comment = (value, atTop = false) => {
       touched = true;
       crepe.editor.action((ctx) => {
         const view = ctx.get(editorViewCtx);
         const nodes = nodesFor(value, view.state.schema);
         if (!nodes.length) return;
+        if (atTop) {
+          // Under the title, if the document opens with one; else first.
+          // A request for review is about the whole plan, so it goes where
+          // the plan begins rather than wherever the caret happened to be.
+          const first = view.state.doc.firstChild;
+          const at = first && (first.type.name === "heading" || first.type.name === "yaml") ? first.nodeSize : 0;
+          const para = view.state.schema.nodes.paragraph.create(null, nodes);
+          view.dispatch(view.state.tr.insert(at, para).scrollIntoView());
+          return;
+        }
         const { $to } = view.state.selection;
         if ($to.depth > 0) {
           view.dispatch(view.state.tr.insert($to.pos, nodes).scrollIntoView());

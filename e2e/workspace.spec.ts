@@ -951,3 +951,75 @@ test("a document moves to another workspace, from Move… and by dragging", asyn
   await expect.poll(async () => (await fetch(`${base}/w/${alpha}/notes.md`, key)).status).toBe(200);
   expect((await fetch(`${base}/w/${beta}/notes.md`, key)).status).toBe(404);
 });
+
+/** Run a palette command by name. */
+async function command(page: Page, name: string) {
+  await page.keyboard.press("Meta+Shift+p");
+  await page.locator(".palette-input").fill(`>${name}`);
+  await expect(page.locator(".palette-row").first()).toContainText(name.replace(/…$/, ""));
+  await page.keyboard.press("Enter");
+}
+
+test("a review is requested, seen, approved and carried into a repository, all in the file", async ({
+  browser,
+}) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Lifecycle", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Lifecycle");
+  await invite(alice, "Lifecycle", "bob");
+
+  // Request review: status, reviewers and a comment at the top, in one gesture.
+  await command(alice, "Request review…");
+  await expect(alice.locator(".matter-sheet")).toContainText("Request review");
+  await answer(alice, "@bob", "Request");
+  await expect(alice.locator(".page-head .status-badge")).toHaveText("review");
+  await expect(alice.locator(".page-head .status-badge")).toHaveClass(/tone-review/);
+  const reviewer = alice.getByTestId("reviewer");
+  await expect(reviewer).toHaveCount(1);
+  await expect(reviewer).toHaveAttribute("data-handle", "bob");
+  await expect(reviewer).toHaveAttribute("data-approved", "0");
+  await expect(alice.locator(".md-comment")).toHaveCount(1);
+  await expect(row(alice, "plan").locator(".status-dot")).toHaveClass(/tone-review/);
+
+  // Bob: the thread names him, so its mark is tinted; the palette lists it.
+  const bob = await boot(browser, "bob");
+  await heading(bob, "Lifecycle").click();
+  await row(bob, "plan").click();
+  await expect(bob.locator(".md-comment-mark")).toHaveClass(/for-you/);
+  await expect(bob.getByTestId("reviewer")).toHaveAttribute("data-handle", "bob");
+  await bob.keyboard.press("Meta+Shift+p");
+  await bob.locator(".palette-input").fill(">Thread:");
+  await expect(bob.locator(".palette-row", { hasText: "ready for your eyes" })).toHaveCount(1);
+  await bob.keyboard.press("Enter");
+  await expect(bob.locator(".md-comment.open")).toHaveCount(1);
+  await bob.keyboard.press("Escape");
+
+  // Bob approves; alice sees the check, and is offered the transition.
+  await command(bob, "Approve");
+  await expect(bob.getByTestId("reviewer")).toHaveAttribute("data-approved", "1");
+  await expect(alice.getByTestId("reviewer")).toHaveAttribute("data-approved", "1", { timeout: 10_000 });
+  await expect(alice.getByTestId("offer-approved")).toBeVisible();
+  // Alice's own mark is not tinted: the latest turn names bob, not her.
+  await expect(alice.locator(".md-comment-mark")).not.toHaveClass(/for-you/);
+  await alice.getByTestId("offer-approved").click();
+  await expect(alice.locator(".page-head .status-badge")).toHaveText("approved");
+  await expect(alice.getByTestId("offer-approved")).toHaveCount(0);
+
+  // Copied into a repository, the file carries all of it verbatim.
+  await alice.locator(".page-actions .rail-btn", { hasText: "Copy to a repo" }).click();
+  await alice.locator(".matter-sheet .act", { hasText: "Copy" }).click();
+  await expect(alice.locator(".page-path")).not.toContainText("Lifecycle ·");
+  const copied = await alice.evaluate(() => {
+    const repo = (window as any).__fake.repos[0];
+    return Object.values(repo.files as Record<string, string>).find((f) => f.includes("reviewers: bob")) ?? "";
+  });
+  expect(copied).toMatch(/^---\nstatus: approved\nreviewers: bob\napproved: bob\n---\n/);
+  expect(copied).toContain("<!-- @alice: @bob — ready for your eyes -->");
+  // In the repository the reviewers are text: there is no member list there.
+  await expect(alice.getByTestId("reviewer")).toHaveAttribute("data-handle", "bob");
+  await expect(alice.getByTestId("reviewer").locator(".avatar")).toHaveCount(0);
+
+  expect((alice as any).__faults).toEqual([]);
+  expect((bob as any).__faults).toEqual([]);
+});
