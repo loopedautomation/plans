@@ -75,7 +75,8 @@ sudo apt install ./Looped.Plans_*_amd64.deb
   trailing newline and frontmatter block are preserved exactly. Opening a file
   does not count as editing it.
 - **The HTML in your markdown renders.** Local images are read from the
-  repository, `<picture>` picks its source from the paper you are using rather
+  repository — `![](images/cover.png)` and `<img src="images/cover.png">` alike —
+  `<picture>` picks its source from the paper you are using rather
   than from the system appearance, and wrapper tags like `<div align="center">`
   or `<sub>` do what they say. Double-click any of it to edit the source.
   Comments become a margin note. Mermaid blocks draw a diagram under their source.

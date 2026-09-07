@@ -31,6 +31,19 @@ Not bugs yet — places the same class of mistake would land next.
 
 ## Fixed
 
+### A local image rendered as HTML but not as markdown
+
+`<img src="images/photo.png">` showed the picture; `![](images/photo.png)` next
+to it in the same file showed a broken frame. The resolver that reads a relative
+path out of the repository lived inside the HTML node view, so it only ever saw
+sources the *HTML* path had put on the page — markdown's own image node is drawn
+by Milkdown straight into the webview, where a relative path resolves against
+the app's origin and finds nothing. Reported from a catalogue of ~640 images
+that had to be bulk-rewritten to `<img>` tags to be readable at all. The pattern:
+a behaviour attached to one *syntax* rather than to the thing both syntaxes
+produce will be missing from the other one, and the reader has no way to guess
+which half they are in.
+
 ### The repositories you opened in one build were missing from another
 
 The sidebar's list lived in `localStorage`, which the webview keys by

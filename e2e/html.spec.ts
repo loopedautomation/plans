@@ -13,6 +13,9 @@ const FILES: Record<string, string> = {
   "break.md": `Line one<br/>line two\n`,
   "centre.md": `<div align="center">\n\n# Title<br/><sub><b>Sub.</b></sub>\n\n</div>\n`,
   "plain.md": `# Plain\n\nNo html at all.\n`,
+  // The two ways to point at the same file next to the document.
+  "cover.md": `# Cover\n\n![](images/photo.png)\n`,
+  "tag.md": `# Cover\n\n<img src="images/photo.png" />\n`,
 };
 
 const REPO: FakeRepo = {
@@ -62,6 +65,26 @@ test("a centred block is centred", async ({ page }) => {
   const centred = page.locator(".milkdown .ProseMirror .md-center").first();
   await expect(centred).toHaveCount(1);
   await expect(centred).toHaveCSS("text-align", "center");
+});
+
+test("a markdown image resolves against the repository, like an <img> does", async ({ page }) => {
+  await open(page, "cover.md");
+  const img = page.locator(".milkdown .ProseMirror img").first();
+  // Read through Rust and inlined: the raw relative path never survives, since
+  // it would resolve against the app's origin and there is nothing there.
+  await expect(img).toHaveAttribute("src", /^data:image\/png/);
+  const asked = await page.evaluate(() =>
+    (window as any).__fake.calls.filter((c: any) => c.cmd === "read_asset").map((c: any) => c.args),
+  );
+  expect(asked).toContainEqual(expect.objectContaining({ relPath: "images/photo.png" }));
+});
+
+test("the same picture written as html renders the same way", async ({ page }) => {
+  await open(page, "tag.md");
+  await expect(page.locator(".milkdown .ProseMirror .md-html img").first()).toHaveAttribute(
+    "src",
+    /^data:image\/png/,
+  );
 });
 
 test("html round-trips unchanged when it is only read", async ({ page }) => {
