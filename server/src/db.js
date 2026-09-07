@@ -79,6 +79,18 @@ function pleasantId(length) {
 }
 
 /** Short, URL-safe, and not guessable in bulk. */
+/**
+ * A page's path, as stored: a file's path as given; a folder's with one
+ * trailing `/`; the whole workspace as `/` rather than "", since "" is what
+ * pages from before folders carry and it means `plan.md` there.
+ */
+export function normalisePagePath(path) {
+  const p = String(path ?? "").trim();
+  if (p === "/" || p === "") return p;
+  if (p.endsWith("/")) return `${p.replace(/^\/+|\/+$/g, "")}/`;
+  return p;
+}
+
 export function newId() {
   return pleasantId(15);
 }
@@ -135,6 +147,12 @@ export async function openDb(url = process.env.DATABASE_URL ?? "") {
     publishedBy: p.published_by,
     publishedAt: Number(p.published_at),
   });
+  /**
+   * A folder page is a workspace page whose path ends in `/`; the whole
+   * workspace is `/`. The prefix is what a file's path has to start with
+   * to be readable through it — empty for the whole workspace.
+   */
+  const prefixOf = (p) => (p.path === "/" ? "" : p.path);
   const membersOf = async (id) =>
     (await c.query("SELECT login FROM members WHERE workspace_id = $1 ORDER BY login", [id])).map(
       (m) => m.login,
@@ -367,6 +385,7 @@ export async function openDb(url = process.env.DATABASE_URL ?? "") {
      * page whether or not anyone has pressed Share.
      */
     async publishWorkspacePage(workspaceId, path, name, login) {
+      path = normalisePagePath(path);
       const live = await this.workspacePage(workspaceId, path);
       if (live) return live;
       const id = newPageId();
@@ -396,7 +415,35 @@ export async function openDb(url = process.env.DATABASE_URL ?? "") {
       const r = await one("SELECT * FROM pages WHERE id = $1 AND revoked_at IS NULL", [id]);
       return r ? shapePage(r) : null;
     },
+    /** Is this page a folder's, and does it cover this file? */
+    isFolderPage(p) {
+      return !!p && p.source === "workspace" && typeof p.path === "string" && p.path.endsWith("/");
+    },
+    pagePrefix(p) {
+      return prefixOf(p);
+    },
+    pageFile(p, path) {
+      if (!this.isFolderPage(p)) return false;
+      const prefix = prefixOf(p);
+      return !!path && !path.endsWith("/") && path.startsWith(prefix) && !path.slice(prefix.length).split("/").includes("..");
+    },
+    /**
+     * The live folder page that covers a file, if one does: the longest
+     * prefix wins, so a shared subfolder's address is the one offered for a
+     * file in it even while the whole workspace is shared too.
+     */
+    async coveringPage(workspaceId, path) {
+      const rows = await c.query(
+        `SELECT * FROM pages
+         WHERE workspace_id = $1 AND path LIKE '%/' AND revoked_at IS NULL`,
+        [workspaceId],
+      );
+      const hits = rows.map(shapePage).filter((p) => this.pageFile(p, path));
+      hits.sort((a, b) => prefixOf(b).length - prefixOf(a).length);
+      return hits[0] ?? null;
+    },
     async workspacePage(workspaceId, path) {
+      path = normalisePagePath(path);
       const r = await one(
         "SELECT * FROM pages WHERE workspace_id = $1 AND path = $2 AND revoked_at IS NULL",
         [workspaceId, path],

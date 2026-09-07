@@ -27,11 +27,18 @@ type Props = {
   onPublish: () => Promise<void> | void;
   onStop: () => Promise<void> | void;
   onCopy: () => Promise<void> | void;
+  /**
+   * When the thing shared is a folder: which one, for the sentence that says
+   * everything under it is public, files added later included.
+   */
+  folder?: string | null;
+  /** When a file is readable through a folder's page: the folder's name. */
+  through?: string | null;
   onCopyRaw: () => Promise<void> | void;
   onClose: () => void;
 };
 
-export function ShareSheet({ name, url, raw, live, onPublish, onStop, onCopy, onCopyRaw, onClose }: Props) {
+export function ShareSheet({ name, url, raw, live, folder, through, onPublish, onStop, onCopy, onCopyRaw, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const field = useRef<HTMLInputElement | null>(null);
   const sheet = useRef<HTMLDivElement | null>(null);
@@ -79,11 +86,17 @@ export function ShareSheet({ name, url, raw, live, onPublish, onStop, onCopy, on
           <span className="tag">Share “{name}”</span>
         </div>
         <p className="name-path">
-          {url
-            ? live
-              ? "This plan has a page. Anyone with the address can read it, and it follows the document as it changes."
-              : "This plan has a page. Anyone with the address can read it, and it follows every save while sharing is on."
-            : "A page anyone can open in a browser — read-only, no account. The address is the whole of the secret: share it with the people you mean to, and stop sharing to take it back."}
+          {folder
+            ? url
+              ? `This folder has a page. Everything under ${folder === "the whole workspace" ? "the workspace" : folder} is public while the share is on, including a file someone adds tomorrow, and a link between two files in it works. One address; one Stop.`
+              : `One page for ${folder === "the whole workspace" ? "the whole workspace" : `everything under ${folder}`}, with the files listed beside the text. Everything under it is public while the share is on — including a file someone adds later without thinking about the link.`
+            : through
+              ? `This file is already readable: it is inside “${through}”, which is shared as a folder. The address below opens it there. Stop sharing stops the folder — every file in it.`
+              : url
+                ? live
+                  ? "This plan has a page. Anyone with the address can read it, and it follows the document as it changes."
+                  : "This plan has a page. Anyone with the address can read it, and it follows every save while sharing is on."
+                : "A page anyone can open in a browser — read-only, no account. The address is the whole of the secret: share it with the people you mean to, and stop sharing to take it back."}
         </p>
         {url && (
           <input

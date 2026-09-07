@@ -75,6 +75,78 @@
 .look-face:hover { border-color: var(--rule); color: var(--ink); }
 .look-face.on { border-color: var(--rule-strong); color: var(--ink); }
 
+/* A folder page: the files to the left of the document, the document
+   scrolling on its own. A file page has no column and no toggle. */
+.share-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.share-doc {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.share-files-toggle { display: none; }
+.share-files {
+  flex: none;
+  width: 220px;
+  overflow-y: auto;
+  padding: 10px 8px;
+  border-right: 1px solid var(--rule);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.share-group + .share-group { margin-top: 8px; }
+.share-dir {
+  padding: 2px 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.share-file {
+  display: block;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.share-file:hover { color: var(--ink); background: var(--shade); }
+.share-file.on { color: var(--ink); background: var(--shade); font-weight: 600; }
+.share-file.on::before { content: "▸ "; color: var(--ink-3); font-weight: 400; }
+.page-sep { color: var(--ink-3); }
+
+/* A phone: the measure is the whole width, so the list is a sheet behind
+   the head's Files button rather than a column beside the text. */
+@media (max-width: 720px) {
+  .with-files .share-files-toggle { display: inline-flex; }
+  .share-files {
+    display: none;
+    position: fixed;
+    top: var(--bar, 30px);
+    left: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(280px, 85vw);
+    box-shadow: var(--shadow);
+  }
+  .list-open .share-files { display: block; }
+}
+
 .share-when {
   font-family: var(--mono);
   font-size: 9.5px;

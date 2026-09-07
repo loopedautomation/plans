@@ -560,6 +560,80 @@ test("a workspace document's page reads the room, and there is only ever one of 
   a.close();
 });
 
+test("a folder page lists what is under it, answers each file, and dies as one", async () => {
+  const alice = await signIn("alice");
+  const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Folders" } })).value;
+  const tree = connect(id, alice);
+  await Promise.all([tree.open, tree.synced]);
+  tree.doc.getMap("tree").set("diet", { kind: "folder" });
+  tree.doc.getMap("tree").set("diet/README.md", { kind: "file", doc: "diet-readme" });
+  tree.doc.getMap("tree").set("diet/meals.md", { kind: "file", doc: "diet-meals" });
+  tree.doc.getMap("tree").set("private.md", { kind: "file", doc: "private-doc" });
+  const write = async (doc, text) => {
+    const c = connect(doc, alice, id);
+    await Promise.all([c.open, c.synced]);
+    c.doc.getMap("meta").set("markdown", text);
+    await until(() => s.rooms.rooms.get(doc)?.doc.getMap("meta").get("markdown") === text);
+    return c;
+  };
+  const opened = [
+    await write("diet-readme", "# Diet\n\nSee [meals](meals.md).\n"),
+    await write("diet-meals", "# Meals\n"),
+    await write("private-doc", "# Private\n"),
+  ];
+
+  // A path ending in `/` names a folder; its page lists the files under it,
+  // relative to the folder, and which one a reader lands on.
+  const made = await call("/api/pages", { method: "POST", token: alice, body: { workspaceId: id, path: "diet/" } });
+  assert.equal(made.status, 201, JSON.stringify(made.value));
+  const page = made.value.id;
+  assert.equal(made.value.name, "Folders / diet");
+  const folder = await call(`/api/pages/${page}`);
+  assert.equal(folder.value.kind, "folder");
+  assert.equal(folder.value.prefix, "diet/");
+  assert.deepEqual([...folder.value.files].sort(), ["README.md", "meals.md"]);
+  assert.equal(folder.value.landing, "README.md");
+
+  // Each file under it answers as markdown; the folder's own text is the landing file's.
+  assert.equal((await call(`/api/pages/${page}/meals.md`)).value, "# Meals\n");
+  assert.match((await call(`/api/pages/${page}.md`)).value, /# Diet/);
+  // Outside the prefix is not shared, and says so exactly like a stopped page.
+  assert.equal((await call(`/api/pages/${page}/private.md`)).status, 404);
+  assert.equal((await call(`/api/pages/${page}/../private.md`)).status, 404);
+
+  // A file under the folder is offered the folder's address, not a second id.
+  const covered = await call(`/api/workspaces/${id}/page?path=diet/meals.md`, { token: alice });
+  assert.equal(covered.value.id, page);
+  assert.equal(covered.value.covers, "meals.md");
+  assert.equal((await call(`/api/workspaces/${id}/page?path=private.md`, { token: alice })).value, null);
+
+  // The tree moves on; the listing follows it on the next read.
+  tree.doc.getMap("tree").set("diet/snacks.md", { kind: "file", doc: "diet-snacks" });
+  await until(() => s.rooms.rooms.get(id)?.doc.getMap("tree").get("diet/snacks.md"));
+  assert.deepEqual([...(await call(`/api/pages/${page}`)).value.files].sort(), ["README.md", "meals.md", "snacks.md"]);
+
+  // The whole workspace is `/`; a file page is unchanged beside it.
+  const whole = await call("/api/pages", { method: "POST", token: alice, body: { workspaceId: id, path: "/" } });
+  assert.equal(whole.value.name, "Folders");
+  const all = await call(`/api/pages/${whole.value.id}`);
+  assert.equal(all.value.prefix, "");
+  assert.ok(all.value.files.includes("private.md"));
+  assert.equal(all.value.landing, "plan.md");
+  const one = await call("/api/pages", { method: "POST", token: alice, body: { workspaceId: id, path: "diet/meals.md" } });
+  assert.equal((await call(`/api/pages/${one.value.id}`)).value.kind, "file");
+  assert.equal((await call(`/api/pages/${one.value.id}`)).value.markdown, "# Meals\n");
+  // Its own page wins over the folder's for the app's question.
+  assert.equal((await call(`/api/workspaces/${id}/page?path=diet/meals.md`, { token: alice })).value.id, one.value.id);
+
+  // Stopping the folder kills every path at once.
+  assert.equal((await call(`/api/pages/${page}`, { method: "DELETE", token: alice })).status, 200);
+  assert.equal((await call(`/api/pages/${page}`)).status, 404);
+  assert.equal((await call(`/api/pages/${page}/meals.md`)).status, 404);
+  assert.equal((await call(`/api/pages/${page}.md`)).status, 404);
+  for (const c of opened) c.close();
+  tree.close();
+});
+
 test("an old share link resolves to the document's page", async () => {
   const alice = await signIn("alice");
   const { id } = (await call("/api/workspaces", { method: "POST", token: alice, body: { name: "Old link" } })).value;
@@ -588,13 +662,15 @@ test("the reader's addresses are the reader's, whether or not it is built", asyn
   // address. Nothing is built in a test, so what is asserted is that the
   // server claims those addresses and says plainly why it cannot serve them,
   // rather than 404ing as if the plan were not shared.
-  for (const path of ["/", "/aaaaaaaaaaaaaaaaaaaaaaaa"]) {
+  for (const path of ["/", "/aaaaaaaaaaaaaaaaaaaaaaaa", "/aaaaaaaaaaaaaaaaaaaaaaaa/diet/meals.md"]) {
     const res = await fetch(base + path);
     assert.equal(res.status, 503);
     assert.match((await res.json()).error, /reader/);
   }
-  // Not an id and not a file: that really is a 404.
-  assert.equal((await fetch(`${base}/not/a/page`)).status, 404);
+  // Not an id and not a file: that really is a 404. A path under the
+  // reader's own folders is never a page, however it is spelt.
+  assert.equal((await fetch(`${base}/assets/not/a/page`)).status, 404);
+  assert.equal((await fetch(`${base}/share/not/a/page`)).status, 404);
   // And nothing above the reader's folder is servable.
   assert.equal((await fetch(`${base}/../src/db.js`)).status, 404);
 });
