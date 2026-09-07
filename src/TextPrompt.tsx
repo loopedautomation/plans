@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { attachMentions } from "./mentions";
 import { renderKeys } from "./keys";
+import { useFocusTrap } from "./focus";
 
 type Props = {
   title: string;
@@ -40,6 +41,8 @@ export function TextPrompt({
 }: Props) {
   const [value, setValue] = useState(initial ?? "");
   const field = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheet);
 
   useEffect(() => {
     const el = field.current;
@@ -74,7 +77,14 @@ export function TextPrompt({
 
   return (
     <div className="matter-scrim" onMouseDown={onCancel}>
-      <div className="matter-sheet" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="matter-sheet"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="matter-head">
           <span className="tag">{title}</span>
         </div>

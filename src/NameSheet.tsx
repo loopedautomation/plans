@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RepoInfo } from "./api";
 import { Dropdown } from "./Dropdown";
+import { useFocusTrap } from "./focus";
 
 type Props = {
   /**
@@ -51,6 +52,8 @@ export function NameSheet({
 }: Props) {
   const [title, setTitle] = useState(initial ?? "");
   const field = useRef<HTMLInputElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheet);
 
   useEffect(() => {
     field.current?.focus();
@@ -67,7 +70,14 @@ export function NameSheet({
 
   return (
     <div className="matter-scrim" onMouseDown={onCancel}>
-      <div className="matter-sheet" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="matter-sheet"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="matter-head">
           <span className="tag">{label}</span>
         </div>

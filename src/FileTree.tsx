@@ -14,6 +14,7 @@
 import type { HandoffKind } from "./agent";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { trace } from "./perf";
+import { useFocusTrap, useRovingFocus } from "./focus";
 import { statusTone } from "./matter";
 import { Faces, type Face } from "./Avatar";
 import { confirmed } from "./confirm";
@@ -289,6 +290,16 @@ type MenuAt = {
  * "" — the repository is the whole of it.
  */
 type Carried = { repo: string; path: string; kind: "file" | "dir" | "repo" };
+
+/**
+ * A row in the context menu. Every one of them is a `menuitem` — that is what
+ * makes the surrounding `role="menu"` true rather than decorative — so the
+ * role travels with the class instead of being repeated twenty times.
+ */
+const menuItem = (extra = "") => ({
+  className: extra ? `ctx-item ${extra}` : "ctx-item",
+  role: "menuitem" as const,
+});
 
 /** Every folder key in a subtree, so a repo can be opened or closed in one go. */
 function dirKeys(nodes: Node[], repoPath: string, out: string[] = []): string[] {
@@ -601,6 +612,76 @@ export const FileTree = memo(function FileTree(p: Props) {
     };
   }, [menu]);
 
+  /*
+   * The tree is one tab stop, and the menu is a menu.
+   *
+   * Rows used to be a hundred separate tab stops — reaching the file you meant
+   * was punishment rather than navigation. The roving cursor makes the whole
+   * tree one stop with arrows inside it, which is what `role="tree"` has always
+   * promised. The menu gets the same arrows plus the trap, so opening it from
+   * the keyboard actually puts you in it and Escape hands the row back.
+   */
+  useRovingFocus(box, { orientation: "vertical" });
+  useRovingFocus(menuRef, { orientation: "vertical", selector: ".ctx-item", active: !!menu });
+  useFocusTrap(menuRef, !!menu);
+
+  /**
+   * The keyboard's way into a row: ↑/↓ walk, ←/→ close and open, and the
+   * menu key opens what right-click opens.
+   *
+   * ↑/↓/Home/End belong to the roving hook; what is left here is the part
+   * that is about a *tree* rather than a list. On a closed folder → opens it;
+   * on an open one it steps inward, which is the same gesture twice. ← is the
+   * mirror, and on a leaf it climbs to the parent row — the level is on the
+   * row, so "the parent" is the nearest row above with a smaller one.
+   */
+  const onTreeKey = (e: React.KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const row = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-rove]");
+    if (!row || !box.current) return;
+    const rows = Array.from(box.current.querySelectorAll<HTMLElement>("[data-rove]"));
+    const i = rows.indexOf(row);
+    const open = row.getAttribute("aria-expanded");
+    const level = Number(row.dataset.level ?? "1");
+
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (open === "false") p.onToggle(row.dataset.rove!);
+      else rows[Math.min(i + 1, rows.length - 1)]?.focus();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (open === "true") p.onToggle(row.dataset.rove!);
+      else {
+        for (let k = i - 1; k >= 0; k--) {
+          if (Number(rows[k].dataset.level ?? "1") < level) {
+            rows[k].focus();
+            break;
+          }
+        }
+      }
+    } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+      e.preventDefault();
+      const r = row.getBoundingClientRect();
+      const repo = row.dataset.repo ?? "";
+      const path = row.dataset.path ?? "";
+      const kind = (row.dataset.kind ?? "file") as MenuAt["kind"];
+      setMenu({
+        // Under the row's own left edge, the way a right-click on it would sit.
+        x: r.left + 8,
+        y: r.bottom,
+        repo,
+        path,
+        mark:
+          kind === "file"
+            ? (p.marks.get(`${repo}::${path}`) ?? "clean")
+            : kind === "dir"
+              ? (dirMarks.get(`${repo}::${path}`) ?? "clean")
+              : "clean",
+        kind,
+      });
+    }
+  };
+
   /**
    * The filtered file lists, and the tree built from them.
    *
@@ -655,12 +736,18 @@ export const FileTree = memo(function FileTree(p: Props) {
       const open = filtering || p.expanded.has(key);
       const mark = dirMarks.get(key) ?? "clean";
       return (
-        <div key={key}>
+        <div key={key} role="none">
           <button
             className={`row dir ${mark} ${over === key ? "over" : ""} ${
               dragging?.repo === repo.path && dragging.path === node.path ? "lifted" : ""
             }`}
             style={pad}
+            role="treeitem"
+            data-rove={key}
+            data-level={depth + 1}
+            data-repo={repo.path}
+            data-path={node.path}
+            data-kind="dir"
             {...dragHandle(repo.path, node.path, "dir")}
             {...dropSpot(repo.path, node.path, key)}
             onClick={() => p.onToggle(key)}
@@ -681,7 +768,9 @@ export const FileTree = memo(function FileTree(p: Props) {
                 is gone — the same convention ls and a shell prompt use. */}
             <span className="row-name">{node.name}/</span>
           </button>
-          {open && node.children.map((c) => row(c, repo, depth + 1))}
+          {open && (
+            <div role="group">{node.children.map((c) => row(c, repo, depth + 1))}</div>
+          )}
         </div>
       );
     }
@@ -695,6 +784,13 @@ export const FileTree = memo(function FileTree(p: Props) {
           dragging?.repo === repo.path && dragging.path === node.path ? "lifted" : ""
         }`}
         style={pad}
+        role="treeitem"
+        aria-selected={active}
+        data-rove={`${repo.path}::${node.path}`}
+        data-level={depth + 1}
+        data-repo={repo.path}
+        data-path={node.path}
+        data-kind="file"
         {...dragHandle(repo.path, node.path, "file")}
         onClick={() => p.onOpen(repo.path, node.path)}
         onContextMenu={(e) => {
@@ -749,7 +845,7 @@ export const FileTree = memo(function FileTree(p: Props) {
     // folder on disk. A workspace's new file is a name and an empty document.
     if (p.templates.length < 2 || isWs(repo)) {
       return (
-        <button className="ctx-item" onClick={() => act(() => p.onNewFile(repo, dir))}>
+        <button {...menuItem()} onClick={() => act(() => p.onNewFile(repo, dir))}>
           New file here
         </button>
       );
@@ -757,7 +853,7 @@ export const FileTree = memo(function FileTree(p: Props) {
     return (
       <>
         <button
-          className="ctx-item"
+          {...menuItem()}
           aria-expanded={newOpen}
           onClick={() => setNewOpen((o) => !o)}
         >
@@ -767,7 +863,7 @@ export const FileTree = memo(function FileTree(p: Props) {
           p.templates.map((t) => (
             <button
               key={t.file}
-              className="ctx-item ctx-sub"
+              {...menuItem("ctx-sub")}
               onClick={() => act(() => p.onNewFile(repo, dir, t.file))}
             >
               {t.name}
@@ -781,6 +877,9 @@ export const FileTree = memo(function FileTree(p: Props) {
     <div
       className="tree"
       ref={box}
+      role="tree"
+      aria-label="Files"
+      onKeyDown={onTreeKey}
       // A completed drag ends on a row, and the click that follows would open
       // or toggle it — swallowed here, once, at the capture phase.
       onClickCapture={(e) => {
@@ -794,6 +893,8 @@ export const FileTree = memo(function FileTree(p: Props) {
         <div
           className="ctx"
           ref={menuRef}
+          role="menu"
+          aria-label={menu.kind === "repo" ? "Repository" : menu.path || "Menu"}
           // Hidden for the frame it takes to measure: a menu that appears at
           // the pointer and then jumps is worse than one that appears placed.
           style={{ left: at?.x ?? menu.x, top: at?.y ?? menu.y, visibility: at ? undefined : "hidden" }}
@@ -810,14 +911,14 @@ export const FileTree = memo(function FileTree(p: Props) {
           {menu.kind === "file" ? (
             <>
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() => act(() => p.onOpen(menu.repo, menu.path))}
               >
                 Open
               </button>
               {!isWs(menu.repo) && (
                 <button
-                  className="ctx-item"
+                  {...menuItem()}
                   onClick={() => act(() => p.onOpenSplit(menu.repo, menu.path))}
                 >
                   Open to the side
@@ -830,13 +931,13 @@ export const FileTree = memo(function FileTree(p: Props) {
               {p.onHandOff && !isWs(menu.repo) && (
                 <>
                   <button
-                    className="ctx-item"
+                    {...menuItem()}
                     onClick={() => act(() => p.onHandOff!(menu.repo, menu.path, "complete"))}
                   >
                     Hand off to agent: complete plan
                   </button>
                   <button
-                    className="ctx-item"
+                    {...menuItem()}
                     onClick={() => act(() => p.onHandOff!(menu.repo, menu.path, "implement"))}
                   >
                     Hand off to agent: implement plan
@@ -850,7 +951,7 @@ export const FileTree = memo(function FileTree(p: Props) {
 
           {menu.kind !== "file" && (
             <button
-              className="ctx-item"
+              {...menuItem()}
               onClick={() => act(() => p.onNewFolder(menu.repo, menu.path))}
             >
               New folder here
@@ -860,13 +961,13 @@ export const FileTree = memo(function FileTree(p: Props) {
           {menu.kind === "file" && (
             <>
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() => act(() => p.onRename(menu.repo, menu.path))}
               >
                 Rename…
               </button>
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() => act(() => p.onMoveTo(menu.repo, menu.path))}
               >
                 Move to…
@@ -882,7 +983,7 @@ export const FileTree = memo(function FileTree(p: Props) {
                   another app can actually open. menu.repo is the repository's
                   absolute path, so joining gives the file's. */}
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() =>
                   act(() =>
                     void navigator.clipboard.writeText(
@@ -895,7 +996,7 @@ export const FileTree = memo(function FileTree(p: Props) {
               </button>
 
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() => act(() => p.onReveal(menu.repo, menu.path))}
               >
                 Reveal in Finder
@@ -903,7 +1004,7 @@ export const FileTree = memo(function FileTree(p: Props) {
 
               {menu.kind === "repo" && (
                 <button
-                  className="ctx-item"
+                  {...menuItem()}
                   onClick={() => act(() => p.onTerminal(menu.repo))}
                 >
                   Open in Terminal
@@ -917,21 +1018,21 @@ export const FileTree = memo(function FileTree(p: Props) {
               <span className="ctx-rule" />
               {menu.mark === "staged" ? (
                 <button
-                  className="ctx-item"
+                  {...menuItem()}
                   onClick={() => act(() => p.onUnstage(menu.repo, menu.path))}
                 >
                   Unstage
                 </button>
               ) : (
                 <button
-                  className="ctx-item"
+                  {...menuItem()}
                   onClick={() => act(() => p.onStage(menu.repo, menu.path))}
                 >
                   Stage
                 </button>
               )}
               <button
-                className="ctx-item warn"
+                {...menuItem("warn")}
                 onClick={() => act(() => p.onDiscard(menu.repo, menu.path, menu.mark))}
               >
                 {menu.mark === "new" ? "Discard — deletes the file" : "Reset to last commit"}
@@ -943,7 +1044,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             <>
               <span className="ctx-rule" />
               <button
-                className="ctx-item warn"
+                {...menuItem("warn")}
                 onClick={() => act(() => p.onDelete(menu.repo, menu.path))}
               >
                 Delete
@@ -955,7 +1056,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             <>
               <span className="ctx-rule" />
               <button
-                className="ctx-item warn"
+                {...menuItem("warn")}
                 onClick={() => act(() => p.onDeleteDir(menu.repo, menu.path))}
               >
                 Delete folder
@@ -967,7 +1068,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             <>
               <span className="ctx-rule" />
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() =>
                   act(() =>
                     p.onSetOpen(
@@ -980,7 +1081,7 @@ export const FileTree = memo(function FileTree(p: Props) {
                 Expand all
               </button>
               <button
-                className="ctx-item"
+                {...menuItem()}
                 onClick={() =>
                   act(() =>
                     p.onSetOpen(dirKeys(trees[menu.repo]?.nodes ?? [], menu.repo), false),
@@ -996,7 +1097,7 @@ export const FileTree = memo(function FileTree(p: Props) {
                   order and are not part of this list. */}
               {!isWs(menu.repo) && disks.findIndex((r) => r.path === menu.repo) > 0 && (
                 <button
-                  className="ctx-item"
+                  {...menuItem()}
                   onClick={() =>
                     act(() =>
                       p.onReorderRepo(menu.repo, disks.findIndex((r) => r.path === menu.repo) - 1),
@@ -1009,7 +1110,7 @@ export const FileTree = memo(function FileTree(p: Props) {
               {!isWs(menu.repo) &&
                 disks.findIndex((r) => r.path === menu.repo) < disks.length - 1 && (
                   <button
-                    className="ctx-item"
+                    {...menuItem()}
                     onClick={() =>
                       act(() =>
                         p.onReorderRepo(menu.repo, disks.findIndex((r) => r.path === menu.repo) + 1),
@@ -1024,14 +1125,14 @@ export const FileTree = memo(function FileTree(p: Props) {
                   <span className="ctx-rule" />
                   {p.ownedWorkspaces?.has(menu.repo) ? (
                     <button
-                      className="ctx-item warn"
+                      {...menuItem("warn")}
                       onClick={() => act(() => p.onDeleteWorkspace?.(menu.repo))}
                     >
                       Delete this workspace…
                     </button>
                   ) : (
                     <button
-                      className="ctx-item warn"
+                      {...menuItem("warn")}
                       onClick={() => act(() => p.onLeaveWorkspace?.(menu.repo))}
                     >
                       Leave this workspace
@@ -1043,13 +1144,13 @@ export const FileTree = memo(function FileTree(p: Props) {
                 <>
                   <span className="ctx-rule" />
                   <button
-                    className="ctx-item"
+                    {...menuItem()}
                     onClick={() => act(() => p.onRenameRepo(menu.repo))}
                   >
                     Rename in sidebar…
                   </button>
                   <button
-                    className="ctx-item warn"
+                    {...menuItem("warn")}
                     onClick={() =>
                       act(() => {
                         void confirmed(
@@ -1086,6 +1187,12 @@ export const FileTree = memo(function FileTree(p: Props) {
               } ${over === `${r.path}::root` ? "over" : ""} ${
                 dragging?.repo === r.path && dragging.path === "" ? "lifted" : ""
               }`}
+              role="treeitem"
+              data-rove={key}
+              data-level={1}
+              data-repo={r.path}
+              data-path=""
+              data-kind="repo"
               // A workspace has no place on the shelf to be dragged to: the
               // repositories are ordered by hand, the workspaces by the
               // server's list. The heading is still a drop spot for a file
@@ -1121,7 +1228,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             </button>
             {open &&
               (nodes.length ? (
-                nodes.map((n) => row(n, r, 1))
+                <div role="group">{nodes.map((n) => row(n, r, 1))}</div>
               ) : (
                 <p className="none pad small">
                   {filtering ? "Nothing matches." : r.workspace ? "Empty." : "No markdown here."}

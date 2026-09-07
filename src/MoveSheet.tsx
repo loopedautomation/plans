@@ -6,8 +6,9 @@
  * path it lives at; moving asks where it goes, and answering that is a choice
  * from what exists rather than free text with a chance of a typo.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dropdown } from "./Dropdown";
+import { useFocusTrap } from "./focus";
 
 type Props = {
   /** The file being moved, repo-relative. */
@@ -22,6 +23,8 @@ export function MoveSheet({ relPath, folders, onCancel, onMove }: Props) {
   const name = relPath.split("/").pop() ?? relPath;
   const from = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
   const [dir, setDir] = useState(from);
+  const sheet = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheet);
 
   useEffect(() => {
     const keys = (e: KeyboardEvent) => {
@@ -43,7 +46,14 @@ export function MoveSheet({ relPath, folders, onCancel, onMove }: Props) {
 
   return (
     <div className="matter-scrim" onMouseDown={onCancel}>
-      <div className="matter-sheet" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="matter-sheet"
+        ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Move ${name}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="matter-head">
           <span className="tag">Move</span>
           <span className="tag">{name}</span>

@@ -21,6 +21,7 @@ import { FrontmatterSheet } from "./Frontmatter";
 import { SourceView } from "./SourceView";
 import { isMarkdownPath, joinFrontmatter, matterValue, splitFrontmatter, statusTone } from "./matter";
 import { displayName } from "./FileTree";
+import { useRovingFocus } from "./focus";
 import type { FindHandle } from "./find";
 import type { Settings } from "./settings";
 
@@ -43,6 +44,8 @@ type Props = {
   onTabPress: (repo: string, path: string, e: React.PointerEvent) => void;
   onTabMenu: (repo: string, path: string, e: React.MouseEvent) => void;
   onStripClickCapture: (e: React.MouseEvent) => void;
+  /** ⌘←/⌘→ on a focused tab: the drag reorder, one step at a time. */
+  onStripKey: (e: React.KeyboardEvent) => void;
   /** Painted on the header so a keystroke cannot land in the wrong document. */
   focused: boolean;
   /** Keystrokes are going into this pane's document right now. */
@@ -86,6 +89,7 @@ export function SplitPane({
   onTabPress,
   onTabMenu,
   onStripClickCapture,
+  onStripKey,
   focused,
   onFocus,
   onClose,
@@ -291,6 +295,17 @@ export function SplitPane({
     prevView.current = shown;
   }, [shown, repo, relPath]);
 
+  /** The split's strip is a tablist too, and answers to ←/→ the same way. */
+  const strip = useRef<HTMLDivElement>(null);
+  useRovingFocus(strip, {
+    orientation: "horizontal",
+    selector: ".tab-name",
+    onMove: (el) => {
+      const { repo: r, path } = el.dataset;
+      if (r && path !== undefined) onSelectTab(r, path);
+    },
+  });
+
   /*
    * ⌘F's route into this pane: App holds one handle, the pane forwards it to
    * whichever surface is showing. Null over a diff — find is not offered
@@ -338,7 +353,15 @@ export function SplitPane({
           so the two panes read as siblings, at the same height. No view
           buttons: the chrome's switch acts on whichever pane has focus. */}
       <div className="tab-row">
-        <div className="tabs" data-strip="split" role="tablist" onClickCapture={onStripClickCapture}>
+        <div
+          className="tabs"
+          data-strip="split"
+          role="tablist"
+          aria-label="Buffers in the split"
+          ref={strip}
+          onKeyDown={onStripKey}
+          onClickCapture={onStripClickCapture}
+        >
           {tabs.map((t) => {
             const on = t.repo === repo && t.path === relPath;
             const tabName = t.path.split("/").pop() ?? t.path;
@@ -351,6 +374,9 @@ export function SplitPane({
                   className="tab-name"
                   role="tab"
                   aria-selected={on}
+                  data-rove={`${t.repo}::${t.path}`}
+                  data-repo={t.repo}
+                  data-path={t.path}
                   title={t.path}
                   onClick={() => onSelectTab(t.repo, t.path)}
                   onAuxClick={(e) => {

@@ -9,6 +9,7 @@
  * saved. The reasoning is in plans/public-plan-pages.md.
  */
 import { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "./focus";
 
 type Props = {
   /** What is being shared, for the sheet's title. */
@@ -31,6 +32,7 @@ export function ShareSheet({ name, url, live, onPublish, onStop, onCopy, onClose
   const [busy, setBusy] = useState(false);
   const field = useRef<HTMLInputElement | null>(null);
   const sheet = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(sheet);
 
   // Focus lands on the sheet itself, so Escape is heard here and stops before
   // it reaches the app's own Escape — which would leave zen, not close this.
@@ -57,6 +59,9 @@ export function ShareSheet({ name, url, live, onPublish, onStop, onCopy, onClose
         className="matter-sheet share-sheet"
         data-testid="share-sheet"
         ref={sheet}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Share ${name}`}
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
