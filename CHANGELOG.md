@@ -1,5 +1,239 @@
 # looped-plans
 
+## 0.13.0
+
+### Minor Changes
+
+- 22964ac: The palette's `*` mode grows into the global search it was already halfway to
+  being. It searches every open repository at once rather than only the active
+  one — a hit is labelled with the repository it came from, and a chip in the
+  footer narrows it back to this one when that is what you meant. Searching all
+  files is the default, because a search that quietly means "these files" is the
+  one that answers "no such thing" when it meant "not here".
+
+  Results are grouped under the file they came from, and the budget is now spent
+  fairly. A search used to have one cap of sixty lines for the whole thing, so a
+  single hit-dense file could take all of it and every later file went unread —
+  sixty lines from one file, presented as a search of the repository. Each file
+  may now take five of that quota, and its heading says how many further matches
+  it is holding back. Enter on a line opens there; Enter on a heading opens the
+  file at its first hit; both arrive with the find bar already seeded.
+
+  Beside the results there is now a preview: the raw lines around the highlighted
+  hit, with the match marked, following the arrow keys as the selection moves —
+  so a hit can be judged without opening it. It is plain text rather than a live
+  editor on purpose, and it stands down on windows too narrow to hold it without
+  crushing the list.
+
+  ⌘⇧F opens the palette straight into the mode, alongside a "Search inside every
+  file" command, and the scope is also a setting on the Settings page.
+
+- 2cff909: The whole app can be worked without a mouse. The shortcut registry already
+  covered nearly every _command_; what had no keys was **navigation** — moving
+  focus between the surfaces those commands act on. Two behaviours now live once,
+  in `src/focus.ts`, and every gap is a call site of one of them.
+
+  Sheets no longer leak. Every scrim dialog — new file, rename, move, frontmatter,
+  share, sign-in, the palette and the ⌘/ sheet — is a real `role="dialog"` with
+  `aria-modal`, Tab is contained inside it, and closing puts focus back where it
+  came from instead of dropping it on `<body>`. That last half is the one that
+  compounds: a sheet opened while you were writing returns you to the document,
+  writing.
+
+  **The file tree is now one Tab stop, not one per row.** Tab used to walk every
+  row in the tree, which in a real repository is punishment rather than
+  navigation. The tree is a `role="tree"` with a roving cursor: one Tab stop, ↑/↓
+  to move, ← and → to close and open a folder (and to step in and out of one),
+  Home and End for the ends, Enter to open. This is the standard pattern and the
+  better one, but it is a change you will feel.
+
+  Both tab strips honour the `role="tablist"` they already declared: ←/→ move
+  along the strip and select as they go, and ⌘←/⌘→ reorders a focused tab — the
+  drag, one step at a time, and the first keyboard route to reordering at all.
+
+  Context menus exist for the keyboard. Shift+F10 or the menu key on a focused
+  tree row or tab opens the same menu right-click opens, focus moves into it,
+  arrows walk it, and Escape hands the row back. Rename, Move, Open to the side,
+  Delete folder and Open in Terminal were mouse-only before.
+
+  ⌘B now goes to the tree as well as opening it, and two new commands say it
+  outright: ⌘K ⌘E focuses the file tree, ⌘K ⌘T the tab strip. The pane and tree
+  dividers, which announced themselves as separators a screen reader could not
+  move, answer to arrows. The palette and the chat panel's slash list carry
+  `aria-activedescendant` and proper option roles, so arrowing through them
+  announces something.
+
+  Escape is untouched. Its five-rung ladder stays exactly where it was: the trap
+  owns Tab and nothing else.
+
+- 5157f8b: A workspace's members can be managed. The page head's Invite button is
+  Members now, and opens a sheet listing everyone in the room — face, name
+  and login, the owner marked, and who is in the workspace right now — with
+  the invite field in its foot. Any member may invite; only the owner may
+  remove someone, and a removed member is cut off at once rather than at
+  their next reconnect: their open editors close, the shelf leaves their
+  sidebar, and a line says why. The owner may also hand the workspace to
+  another member, after which they are an ordinary member and may leave.
+  Behind it, one route serves both ways out — `DELETE
+/workspaces/{id}/members/{login}` is a leave for your own login and a
+  removal for anyone else's — and a removed member's read tokens go with
+  them; share links stay the workspace's.
+
+### Patch Changes
+
+- 849dd01: A shared page has an Aa button at the head's leading edge, as the app does,
+  holding what a reader can want to change: the paper, the reading face, the
+  size and the measure. The paper switch that stood in the head has moved in
+  there. The choices are kept in that browser.
+- 52417bf: The Claude agent adapter is pinned to 0.75.1, whose bundled Claude Code is
+  one the current models accept. An older adapter answers every prompt with
+  "Claude Code 2.1.232 does not support this model".
+- 5157f8b: An agent's edit to a workspace file that never came through the app — a
+  `sed -i` in its shell, a heredoc, an agent whose adapter writes straight to
+  disk — used to land in the scratch folder and nowhere else: not in anyone's
+  editor, and gone on the next rewrite of the folder. The folder now remembers
+  what it put on disk, notices a file that no longer reads as that, and the app
+  turns the change into an edit of the shared document the moment the tool call
+  finishes — the same way a write through the client lands. A file the agent
+  makes on disk is added to the workspace the same way. The folder itself has
+  moved out of the cache directory to `~/plans/workspaces/<id>` (the same path
+  under the home folder on Windows and Linux), where a person can find it and a
+  disk cleaner will not empty it under a running agent.
+- 52417bf: GitHub-flavoured alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`,
+  `[!CAUTION]`) now render as coloured callouts with the label worn as a badge,
+  in the editor and on a shared page. The markdown is untouched: the label
+  stays in the file, so anywhere else still reads it as a quote.
+- 52417bf: Workspaces in the sidebar can be arranged: drag a heading among the other
+  workspaces, or use Move up and Move down on its menu, and the order is kept
+  in `settings.json` as `workspaceOrder`. A workspace you have not placed goes
+  after the ones you have. The heading's menu also opens the workspace's
+  members, which used to be reachable only from a file open in it.
+- 52417bf: Mermaid charts take their series colours from the paper: an xy chart's bars
+  and lines and a pie's slices use the same blue, green, plum, amber, red and
+  slate as the rest of the app, in each theme, in place of mermaid's pale
+  orange and rainbow. Axis lines and labels follow the paper's ink and rules.
+- 52417bf: The conversation list opens from the end of its button rather than its
+  start, so it no longer runs off the right edge of the window.
+- 5157f8b: In the chat, a run of tool calls and thoughts is drawn as one line that keeps
+  updating — the step happening now and how many so far — and opens to the list;
+  it is closed by default. A message typed while the agent is still working is
+  shown in the transcript where it will go, marked as queued, and becomes the
+  sent message when the turn ends, rather than a note saying something was
+  queued somewhere.
+- 52417bf: An agent in a workspace now has the conventions. Its scratch folder had none
+  — a repository gets them from a button in Settings, and a workspace's folder
+  is nobody's to press a button for — so every document it wrote there was
+  written as if there were no rules. The folder gets the skills the first time
+  it is made, and the sweep that keeps it honest leaves them alone. For Claude
+  Code the install also writes a short section into `CLAUDE.md`, which it reads
+  on every turn, saying which skill to open before which kind of work: a skill
+  under `.claude/skills/` is offered, not applied, and the writing rules were
+  being offered to a model that did not think to take them. A repository that
+  already has the conventions will show an update in Settings for this.
+- 0d73195: "Copy to a repo" moved from the page head to the workspace file's right-click
+  menu in the tree, beside Move to…, since it acts on the file rather than the
+  page.
+- 5157f8b: The palette's "Copy the agent command" is "Copy the agent planning prompt",
+  which is what it copies: the shell line that starts an agent on this plan.
+- 52417bf: A `<details>` section folds. The parser had been splitting the tag from what
+  it wrapped, so the summary stood alone and the body was always shown; the
+  opener is now a head that folds and unfolds the blocks up to `</details>`,
+  with `open` deciding the first state. The file is not changed.
+- A diagram's source folds again after editing it. The caret was still in the
+  fence, and the rule that keeps a fence being typed from vanishing was
+  refusing the fold; the button now moves the caret out first.
+- 52417bf: A mermaid fence is folded under its diagram. The picture is what a reader
+  wants; the source unfolds while the caret is in it, or from the figure's
+  `</>` button, and folds again when the caret leaves.
+- 52417bf: A `diff` fence in an agent's answer is drawn as a diff: added and removed
+  rows tinted and signed in a gutter, hunk headers set apart, rather than a
+  plain block of code with `+` and `-` in the text.
+- 1b53c43: A document can be moved from one workspace to another, from Move… on its
+  row — where the other workspaces and their folders are now in the list —
+  or by dragging it onto another workspace's heading or folder. A room
+  belongs to the workspace whose tree names it, so what travels is the text:
+  the file is made anew in the other workspace with the same markdown, the
+  old tree stops naming it, and an open tab follows.
+- 5157f8b: A comment signed with an email renders as a comment again. A workspace login
+  is an email, and the card's `@handle:` grammar stopped at the second `@`, so
+  `<!-- @ratul@example.com: … -->` was not read as a turn at all: the raw line
+  showed, unsigned, and no member was looked up for a face. Handles may now be
+  emails, the card draws the part before the `@` with the full login on hover,
+  and typing `@` completes to an email too. A new setting, "Workspace comments
+  sign as", signs a workspace comment with git's name instead of the account
+  for anyone who wants a room's comments to read like a repository's.
+- ⌘F scrolls the page to the match. ProseMirror scrolls by walking up from the
+  selection's DOM node, which while the find bar has focus is the bar's input,
+  outside the editor — so a match below the fold stayed below it. The page now
+  scrolls from the match's own element.
+- Which folders are open in the tree is remembered across launches, for
+  repositories and workspaces alike.
+- 52417bf: A footnote's definition is one line at the foot of the page, number beside
+  text, rather than the number on a line of its own. An open collapsible
+  section no longer has a blank line between its head and its body.
+- 5157f8b: "Hand off to agent" starts a chat of its own. The seeded instruction used to
+  land in whichever conversation was on screen — on top of a discussion about
+  something else, or into a turn still running — so a handoff now opens a new
+  conversation, unless the current one has nothing in it yet, in which case it
+  is used as it is.
+- 3d45d8d: New workspace, document and page ids are lowercase letters and digits with
+  the look-alikes taken out — no `0`/`o`, `1`/`l`, `-` or `_` — so an address
+  can be read aloud or pasted into a chat whole. Older ids keep working. The
+  share sheet now also gives the page's markdown address, `…/{id}.md`, and a
+  "Copy for an agent" button: the same plan as a file, for something that
+  reads files rather than pages.
+- 5157f8b: Signing in to workspaces no longer fails with "Platform secure storage
+  failure: User interaction is not allowed" on a Mac whose login keychain is
+  locked or on an old password. A keychain that refuses to answer is treated
+  the way a missing one is on Linux: the token goes to a 0600 file under the
+  app's config directory instead, and the log says so once.
+- 52417bf: A streamed answer no longer arrives with every chunk repeated. Tauri's
+  unlisten throws when it runs before the webview has recorded the listener,
+  leaving the Rust half registered, so a panel that re-subscribed soon after
+  mounting — a workspace chat, whose folder arrives a beat later — heard every
+  event once per leaked subscription. A removed listener now drops whatever
+  still reaches it, and the unlisten is retried.
+- 52417bf: A `$$` maths block opens as its rendered preview, the way a mermaid fence
+  opens as its diagram, with the source behind the block's Edit button. KaTeX's
+  stylesheet is now loaded, so the maths no longer shows twice as raw text.
+- 52417bf: A workspace file's frontmatter now sits behind the Frontmatter button, as a
+  repository file's does: the block is hidden from the page, the status, owner
+  and due chips read from it, and an edit in the sheet or the status picker
+  goes into the shared document for everyone. The Members button has left the
+  file header; Members is on the workspace's heading in the tree.
+- 69c3f54: A shared plan's link unfurls. The reader's shell now carries the page's
+  title, opening line, status and owner as Open Graph tags, and a card drawn
+  from the same facts at `/api/pages/{id}/og.png` — satori and resvg, no
+  browser on the server. A folder page unfurls as its landing file; a dead id
+  serves the same bare shell as before, so nothing is learned by probing.
+- 5e52134: A mermaid diagram that fails to parse says so in its own figure only.
+  Mermaid had also been appending a full-size "Syntax error in text" picture
+  to the page, which landed under the status bar.
+- 64acf06: A workspace plan's review lives in its frontmatter. _Request review_ in the
+  palette sets `status: review`, names the reviewers in `reviewers:` and
+  leaves a comment at the top asking them; _Approve_ adds you to `approved:`,
+  and when everyone asked has, the header offers `status: approved`. Reviewers
+  are drawn in the header with their faces; a comment thread whose latest turn
+  names you wears an amber mark; the palette lists the document's threads to
+  jump to. The tree's status dot is now verified against the file by the
+  server, so a status an agent wrote is seen without anyone opening the file.
+- 2f416fc: A workspace folder — or the whole workspace — can be shared as one page.
+  "Share this folder…" on a folder's menu and "Share this workspace…" on the
+  workspace's heading publish everything under it at one address, with the
+  files listed beside the text and a relative link between two of them a link
+  that works. One address, one Stop; a file added to the folder later is on
+  the page at the reader's next look. A file inside a shared folder is offered
+  the folder's address rather than a second id.
+- 5157f8b: Tables in a document have rules, padding and a head again, in the editor and
+  on a shared page — the editor's table styles were never loaded, so a table was
+  bare cells run together. A table is sized to fit the page first, with the
+  text in its cells wrapping, and only one whose columns cannot shrink any
+  further scrolls inside its own block — never the whole page sideways, which
+  is what made one unreadable on a phone.
+- 620bd64: The repository picker in the status bar names the workspace you are in,
+  lists workspaces beside repositories, and carries the workspace's Members
+  and Share actions; it used to show "—" for a workspace document.
+
 ## 0.12.0
 
 ### Minor Changes
