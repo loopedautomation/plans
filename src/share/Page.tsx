@@ -20,7 +20,7 @@ import {
   type TypeSettings,
 } from "../fonts";
 import { splitFrontmatter, matterValue, statusTone } from "../matter";
-import { fetchPage, pageId, type Page as Plan } from "./pages";
+import { fetchFile, fetchPage, fileAddress, pageId, type Folder, type Page as Plan } from "./pages";
 import "./page.css";
 
 /** How often the page asks whether the plan has moved on. */
@@ -31,19 +31,32 @@ type State =
   | { kind: "missing" }
   | { kind: "unreachable"; why: string }
   /** `version` counts accepted changes: it is what re-swaps the document. */
-  | { kind: "plan"; plan: Plan; version: number };
+  | { kind: "plan"; plan: Plan; version: number }
+  /** A folder: the listing, the file being read, and its text. */
+  | { kind: "folder"; folder: Folder; at: string | null; markdown: string; version: number };
+
+type Opener = { __openShared?: (next: string) => void };
 
 export function Page() {
   const [state, setState] = useState<State>({ kind: "loading" });
-  const id = pageId();
+  const [where] = useState(() => pageId());
+  const id = where?.id ?? null;
+  /**
+   * Which file of a folder is open. The address is the state — a click
+   * pushes one, the back button pops one — and this is what the poll reads
+   * so a poll that lands mid-navigation asks for the right file.
+   */
+  const at = useRef<string | null>(where?.at ?? null);
+  const [listOpen, setListOpen] = useState(false);
 
   /**
    * Ask, and keep asking.
    *
    * A page follows its source: a workspace document as the room changes it, a
-   * repository file as its author saves. Polling rather than a socket —
-   * cheap, no session, and a reader is not a collaborator. Once the plan is
-   * gone the asking stops: sharing was stopped, and that is a final answer.
+   * repository file as its author saves, a folder as files are added to it.
+   * Polling rather than a socket — cheap, no session, and a reader is not a
+   * collaborator. Once the plan is gone the asking stops: sharing was
+   * stopped, and that is a final answer.
    */
   useEffect(() => {
     if (!id) {
@@ -54,39 +67,107 @@ export function Page() {
     let timer: number | null = null;
     const ask = async () => {
       try {
-        const plan = await fetchPage(id);
+        const got = await fetchPage(id);
         if (!alive) return;
-        if (!plan) {
+        if (!got) {
           setState({ kind: "missing" });
           return;
         }
-        // Replace only when something changed, so an unchanged poll does not
-        // rebuild the document under someone who is reading it.
-        setState((prev) =>
-          prev.kind === "plan" && prev.plan.markdown === plan.markdown && prev.plan.name === plan.name
-            ? prev
-            : { kind: "plan", plan, version: (prev.kind === "plan" ? prev.version : 0) + 1 },
-        );
+        if (got.kind === "folder") {
+          // The file asked for, if it is still there; else where the folder
+          // lands. A deleted file is not a dead page — the folder is.
+          const want = at.current && got.files.includes(at.current) ? at.current : got.landing;
+          const text = want ? await fetchFile(id, want) : "";
+          if (!alive) return;
+          at.current = want;
+          setState((prev) => {
+            const same =
+              prev.kind === "folder" &&
+              prev.at === want &&
+              prev.markdown === (text ?? "") &&
+              prev.folder.name === got.name &&
+              prev.folder.files.join("\n") === got.files.join("\n");
+            if (same) return prev;
+            const version = (prev.kind === "folder" || prev.kind === "plan" ? prev.version : 0) + 1;
+            return { kind: "folder", folder: got, at: want, markdown: text ?? "", version };
+          });
+        } else {
+          // Replace only when something changed, so an unchanged poll does
+          // not rebuild the document under someone who is reading it.
+          setState((prev) =>
+            prev.kind === "plan" && prev.plan.markdown === got.markdown && prev.plan.name === got.name
+              ? prev
+              : { kind: "plan", plan: got, version: (prev.kind === "plan" ? prev.version : 0) + 1 },
+          );
+        }
         timer = window.setTimeout(() => void ask(), POLL_MS);
       } catch (e) {
         if (!alive) return;
         // The server, not the plan: say so, and try again rather than
         // claiming the plan is not shared.
         setState((prev) =>
-          prev.kind === "plan" ? prev : { kind: "unreachable", why: e instanceof Error ? e.message : String(e) },
+          prev.kind === "plan" || prev.kind === "folder"
+            ? prev
+            : { kind: "unreachable", why: e instanceof Error ? e.message : String(e) },
         );
         timer = window.setTimeout(() => void ask(), POLL_MS);
       }
     };
     void ask();
+    /*
+     * Moving within the folder: a new address, and the file it names. The
+     * poll is not waited for — the reader clicked, and a five second pause
+     * would read as a dead link — so the file is fetched here and the next
+     * poll agrees with it.
+     */
+    const open = async (next: string) => {
+      at.current = next;
+      try {
+        const text = await fetchFile(id, next);
+        if (!alive || at.current !== next) return;
+        setState((prev) =>
+          prev.kind === "folder" ? { ...prev, at: next, markdown: text ?? "", version: prev.version + 1 } : prev,
+        );
+      } catch {
+        // The next poll will say what is wrong.
+      }
+    };
+    const onPop = () => {
+      const now = pageId();
+      if (now?.id !== id) return;
+      if (now.at) {
+        void open(now.at);
+        return;
+      }
+      // Back to the folder's own address: the landing file, which the poll
+      // decides — so ask now rather than in five seconds.
+      at.current = null;
+      if (timer) clearTimeout(timer);
+      void ask();
+    };
+    window.addEventListener("popstate", onPop);
+    (window as Opener).__openShared = (next) => {
+      if (next === at.current) return;
+      history.pushState(null, "", fileAddress(id, next));
+      void open(next);
+    };
     return () => {
       alive = false;
       if (timer) clearTimeout(timer);
+      window.removeEventListener("popstate", onPop);
+      delete (window as Opener).__openShared;
     };
   }, [id]);
 
   useEffect(() => {
-    document.title = state.kind === "plan" ? state.plan.name : "Plan";
+    document.title =
+      state.kind === "plan"
+        ? state.plan.name
+        : state.kind === "folder"
+          ? state.at
+            ? `${state.folder.name} / ${state.at}`
+            : state.folder.name
+          : "Plan";
   }, [state]);
 
   if (state.kind === "loading") return <div className="share-wait">Opening…</div>;
@@ -112,16 +193,73 @@ export function Page() {
     );
   }
 
-  const { plan, version } = state;
-  const { matter, body } = splitFrontmatter(plan.markdown);
+  const folder = state.kind === "folder" ? state.folder : null;
+  const open = state.kind === "folder" ? state.at : null;
+  const text = state.kind === "folder" ? state.markdown : state.plan.markdown;
+  const name = state.kind === "folder" ? state.folder.name : state.plan.name;
+  const live = state.kind === "folder" ? true : state.plan.live;
+  const publishedAt = state.kind === "folder" ? state.folder.publishedAt : state.plan.publishedAt;
+  const docKey = `${id}:${open ?? ""}:${state.version}`;
+  const { matter, body } = splitFrontmatter(text);
   const status = matter ? matterValue(matter, "status") : null;
   const owner = matter ? (matterValue(matter, "owner") ?? matterValue(matter, "assignee")) : null;
 
+  const go = (next: string) => {
+    (window as Opener).__openShared?.(next);
+    setListOpen(false);
+  };
+
+  /**
+   * A link on a public page.
+   *
+   * Anything with a scheme opens in a new tab. A relative link resolves
+   * against the file being read; inside a shared folder it lands on the file
+   * it names, if that file is under the share. Anything else is a plan
+   * pointing at a plan on someone's disk, and does nothing at all.
+   */
+  const openLink = (href: string) => {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+      window.open(href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (!folder) return;
+    let target: string;
+    try {
+      const u = new URL(href, `http://x/${open ?? ""}`);
+      target = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+    } catch {
+      return;
+    }
+    if (folder.files.includes(target)) go(target);
+  };
+
   return (
-    <div className="share-page">
+    <div className={`share-page ${folder ? "with-files" : ""} ${listOpen ? "list-open" : ""}`}>
       <div className="page-head">
         <Look />
-        <span className="page-path">{plan.name}</span>
+        {folder && (
+          <button
+            className={`rail-btn share-files-toggle ${listOpen ? "on" : ""}`}
+            onClick={() => setListOpen((o) => !o)}
+            aria-expanded={listOpen}
+            aria-controls="share-files"
+            title="The files in this share"
+            data-testid="files-toggle"
+          >
+            Files
+          </button>
+        )}
+        <span className="page-path">
+          {folder && open ? (
+            <>
+              {name}
+              <span className="page-sep"> / </span>
+              {open}
+            </>
+          ) : (
+            name
+          )}
+        </span>
         <span className="page-actions">
           {status && (
             <span className={`status-badge tone-${statusTone(status)}`} title="status: from this plan's frontmatter">
@@ -131,42 +269,78 @@ export function Page() {
           {owner && <span className="matter-owner">@{owner}</span>}
           {/* How fresh this is. A live page is whatever the room says right
               now, so only a file's page has a "then" to report. */}
-          {!plan.live && <span className="share-when">published {ago(plan.publishedAt)}</span>}
+          {!live && <span className="share-when">published {ago(publishedAt)}</span>}
         </span>
       </div>
-      <Editor
-        docKey={`${plan.id}:${version}`}
-        // No repository to resolve relative images against, and none to
-        // invent: an image the plan points at on someone's disk says so
-        // rather than showing a broken frame.
-        repo=""
-        relPath={plan.name}
-        initialValue={body}
-        spellcheck={false}
-        imageFolder=""
-        author=""
-        // Handles keep their colours here, and faces stay off the page: a
-        // reader is anonymous, and this page never carries the member list.
-        // See plans/improve-comment-system-in-workspaces.md.
-        tintHandles
-        readOnly
-        onChange={() => {}}
-        onOpenLink={openLink}
-      />
+      <div className="share-body">
+        {folder && <Files folder={folder} open={open} onOpen={go} />}
+        <div className="share-doc">
+          {folder && !open ? (
+            <div className="share-gone">
+              <h1>Nothing here yet</h1>
+              <p>This folder is shared, and has no files in it. They will appear here as they are added.</p>
+            </div>
+          ) : (
+            <Editor
+              docKey={docKey}
+              // No repository to resolve relative images against, and none to
+              // invent: an image the plan points at on someone's disk says so
+              // rather than showing a broken frame.
+              repo=""
+              relPath={open ?? name}
+              initialValue={body}
+              spellcheck={false}
+              imageFolder=""
+              author=""
+              // Handles keep their colours here, and faces stay off the page: a
+              // reader is anonymous, and this page never carries the member list.
+              // See plans/improve-comment-system-in-workspaces.md.
+              tintHandles
+              readOnly
+              onChange={() => {}}
+              onOpenLink={openLink}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 /**
- * A link on a public page.
- *
- * Anything with a scheme opens in a new tab. A relative link is a plan
- * pointing at a plan beside it on someone's disk — there is nothing here to
- * open, and following it would land the reader on a 404 dressed as a plan, so
- * it does nothing at all.
+ * The files of a shared folder, grouped by subfolder, the open one marked.
+ * Narrow, it is a sheet behind the head's Files button; wide, a column.
  */
-function openLink(href: string) {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) window.open(href, "_blank", "noopener,noreferrer");
+function Files({ folder, open, onOpen }: { folder: Folder; open: string | null; onOpen: (at: string) => void }) {
+  const groups = new Map<string, string[]>();
+  for (const f of folder.files) {
+    const i = f.lastIndexOf("/");
+    const dir = i === -1 ? "" : f.slice(0, i);
+    const list = groups.get(dir) ?? [];
+    list.push(f);
+    groups.set(dir, list);
+  }
+  const dirs = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+  return (
+    <nav className="share-files" id="share-files" aria-label="Files in this share" data-testid="share-files">
+      {dirs.map((dir) => (
+        <div className="share-group" key={dir || "."}>
+          {dir && <div className="share-dir">{dir}/</div>}
+          {(groups.get(dir) ?? []).map((f) => (
+            <button
+              key={f}
+              className={`share-file ${f === open ? "on" : ""}`}
+              aria-current={f === open ? "page" : undefined}
+              onClick={() => onOpen(f)}
+              data-path={f}
+            >
+              {f.slice(dir ? dir.length + 1 : 0)}
+            </button>
+          ))}
+        </div>
+      ))}
+    </nav>
+  );
 }
 
 /** "today", "3 days ago" — the same voice the app's share sheet uses. */

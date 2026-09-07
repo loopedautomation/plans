@@ -1,5 +1,5 @@
 ---
-status: ready
+status: done
 ---
 # Share a workspace folder as one public page
 
@@ -97,19 +97,19 @@ promise.
 
 ## Implementation guide
 
-- [ ] `server/src/db.js` - `publishWorkspacePage` accepts a `path` ending in `/` (and `""` for the whole workspace) and normalises it; add `pageFile(page, path)` that checks the prefix; `page()` and `workspacePage()` unchanged
-- [ ] `server/src/index.js` - `readPage` answers a folder page with `{ kind: "folder", name, prefix, files, landing }` built from `rooms.tree`; new `GET /pages/{id}/{path}` route answering one file's markdown under the prefix; the reader's `ID_PATH` (`index.js:509`) allows `/{id}/…` so a deep link serves the app
-- [ ] `server/src/index.js` - the `POST /pages` name for a folder is the workspace name, or `${w.name} / ${folder}` for a subfolder
-- [ ] `server/test/server.test.js` - a folder page lists its files and answers a file under it; a path outside the prefix is 404; stopping the folder kills every path at once; a file page is unchanged
-- [ ] `src/share/pages.ts` - `pageId()` returns `{ id, at }` from `/{id}/{path}` or `?id=&at=`; `fetchPage` returns a file or a folder shape; `fetchFile(id, path)`
-- [ ] `src/share/Page.tsx` - render the sidebar for a folder page; navigate with `pushState` and `popstate`; resolve relative links inside the prefix in `openLink`; keep the file page rendering as it is
-- [ ] `src/share/page.css` - the two-column layout, the open file's mark, and the collapse to a head button below the narrow breakpoint
-- [ ] `src/FileTree.tsx` - "Share this folder…" on a workspace folder's menu and "Share this workspace…" on a workspace heading's menu, through a new `onShareFolder(repoPath, dir)` prop
-- [ ] `src/App.tsx` - a share target for a folder (kind `"workspace"`, path ending in `/`, share key for the prefix); the sheet's copy names the folder and says everything under it is public
-- [ ] `src/ShareSheet.tsx` - a line for the folder case: what is shared, and that files added later are shared too
-- [ ] `e2e/workspace.spec.ts` - share a folder from the tree, open the page as a reader, see the sidebar, follow a relative link between two files in it, add a file and see it appear, stop and see the whole set go
-- [ ] `.changeset/share-workspace-folders.md` - the change, in the changelog's voice
-- [ ] `server/README.md` - the two reads and the prefix rule, beside the page API
+- [x] `server/src/db.js` - `publishWorkspacePage` accepts a `path` ending in `/` (and `""` for the whole workspace) and normalises it; add `pageFile(page, path)` that checks the prefix; `page()` and `workspacePage()` unchanged
+- [x] `server/src/index.js` - `readPage` answers a folder page with `{ kind: "folder", name, prefix, files, landing }` built from `rooms.tree`; new `GET /pages/{id}/{path}` route answering one file's markdown under the prefix; the reader's `ID_PATH` (`index.js:509`) allows `/{id}/…` so a deep link serves the app
+- [x] `server/src/index.js` - the `POST /pages` name for a folder is the workspace name, or `${w.name} / ${folder}` for a subfolder
+- [x] `server/test/server.test.js` - a folder page lists its files and answers a file under it; a path outside the prefix is 404; stopping the folder kills every path at once; a file page is unchanged
+- [x] `src/share/pages.ts` - `pageId()` returns `{ id, at }` from `/{id}/{path}` or `?id=&at=`; `fetchPage` returns a file or a folder shape; `fetchFile(id, path)`
+- [x] `src/share/Page.tsx` - render the sidebar for a folder page; navigate with `pushState` and `popstate`; resolve relative links inside the prefix in `openLink`; keep the file page rendering as it is
+- [x] `src/share/page.css` - the two-column layout, the open file's mark, and the collapse to a head button below the narrow breakpoint
+- [x] `src/FileTree.tsx` - "Share this folder…" on a workspace folder's menu and "Share this workspace…" on a workspace heading's menu, through a new `onShareFolder(repoPath, dir)` prop
+- [x] `src/App.tsx` - a share target for a folder (kind `"workspace"`, path ending in `/`, share key for the prefix); the sheet's copy names the folder and says everything under it is public
+- [x] `src/ShareSheet.tsx` - a line for the folder case: what is shared, and that files added later are shared too
+- [x] `e2e/workspace.spec.ts` - share a folder from the tree, open the page as a reader, see the sidebar, follow a relative link between two files in it, add a file and see it appear, stop and see the whole set go
+- [x] `.changeset/share-workspace-folders.md` - the change, in the changelog's voice
+- [x] `server/README.md` - the two reads and the prefix rule, beside the page API
 
 ## Out of scope
 
@@ -126,17 +126,18 @@ promise.
   instead of minting another id, and Stop on the sheet stops the folder.
   One address per thing is easier to reason about when the time comes to
   kill it.
-  - Answer:
+  - Answer: Yes to the leaning. A file under a live folder share is offered
+    the folder's address for it, and Stop on that sheet stops the folder.
 - Is sharing a whole workspace allowed, or only a subfolder? Leaning yes:
   the empty prefix is the natural case and the first thing someone will
   try.
-  - Answer:
+  - Answer: Yes. "Share this workspace…" on the heading; stored as `/`.
 - Which file lands first when the address has no path? Leaning `README.md`,
   then `plan.md`, then the first file in tree order, with the sidebar
   showing the rest.
-  - Answer:
+  - Answer: As leaned.
 - Should a folder page expire after a period without a visit? Leaning no:
   a file page does not, and two rules for one sheet is confusing. If the
   worry is a forgotten share, the sheet could list every live share of the
   workspace so there is somewhere to find them.
-  - Answer:
+  - Answer: No expiry. A page lives until Stop, as a file's does.

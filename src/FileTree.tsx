@@ -270,6 +270,8 @@ type Props = {
   onDeleteWorkspace?: (repoPath: string) => void;
   /** Open the workspace's member list: who is in, invite, remove. */
   onMembersWorkspace?: (repoPath: string) => void;
+  /** Share a workspace folder — dir "" for the whole workspace — as one page. */
+  onShareFolder?: (repoPath: string, dir: string) => void;
   /** Open or close a whole subtree at once. */
   onSetOpen: (keys: string[], open: boolean) => void;
 };
@@ -1075,6 +1077,13 @@ export const FileTree = memo(function FileTree(p: Props) {
           {menu.kind === "dir" && (
             <>
               <span className="ctx-rule" />
+              {/* A workspace folder is shareable as one page: every file under
+                  it at one address, and one Stop for the lot. */}
+              {isWs(menu.repo) && p.onShareFolder && (
+                <button {...menuItem()} onClick={() => act(() => p.onShareFolder?.(menu.repo, menu.path))}>
+                  Share this folder…
+                </button>
+              )}
               <button
                 {...menuItem("warn")}
                 onClick={() => act(() => p.onDeleteDir(menu.repo, menu.path))}
@@ -1144,6 +1153,11 @@ export const FileTree = memo(function FileTree(p: Props) {
                   {p.onMembersWorkspace && (
                     <button {...menuItem()} onClick={() => act(() => p.onMembersWorkspace?.(menu.repo))}>
                       Members…
+                    </button>
+                  )}
+                  {p.onShareFolder && (
+                    <button {...menuItem()} onClick={() => act(() => p.onShareFolder?.(menu.repo, ""))}>
+                      Share this workspace…
                     </button>
                   )}
                   {p.ownedWorkspaces?.has(menu.repo) ? (

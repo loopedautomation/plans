@@ -174,6 +174,7 @@ links minted before pages existed working.
 | -------------- | -------------------------------------------------------------------------------- |
 | `GET /`        | The reader. With no id in the address it says so; there is no index of pages.     |
 | `GET /{id}`    | A published plan. The id is the whole of the secret — no session, no token.       |
+| `GET /{id}/…`  | One file of a shared folder, in the same reader.                                   |
 | `GET /assets/…`| The reader's bundle, content-hashed and cached for a year.                        |
 | `GET /share`   | A shim: reads the old link's token from `location.hash` and leaves for its page.  |
 | `GET /health`  | `{ ok: true }`, also at `/api/health`.                                            |
@@ -205,10 +206,12 @@ predate the move.
 | `POST /workspaces/:id/token`         | Mint a read token for this workspace, for the factory's secrets.                             |
 | `GET /w/:id/`                        | The folder: `{ name, files: [{ path, kind }] }`.                                              |
 | `GET /w/:id/<path>`                  | One file as markdown — for a member's session or the workspace's read token.                  |
-| `GET /pages/:id`                     | A published plan, to anyone: `{ id, name, source, live, publishedAt, markdown }`. No auth.     |
-| `POST /pages`                        | Publish or republish. `{ workspaceId }`, or `{ repo, path, name, markdown }`, or `{ id, … }`.   |
+| `GET /pages/:id`                     | A published plan, to anyone: `{ id, kind: "file", name, source, live, publishedAt, markdown }`. A folder page answers `{ kind: "folder", name, prefix, files, landing }`. No auth. |
+| `GET /pages/:id.md`                  | The same plan as markdown; a folder's landing file.                                           |
+| `GET /pages/:id/<path>`              | One file of a folder page as markdown, if `<path>` is under the prefix; `404` otherwise.       |
+| `POST /pages`                        | Publish or republish. `{ workspaceId, path }` — a `path` ending in `/` names a folder, `/` the whole workspace — or `{ repo, path, name, markdown }`, or `{ id, … }`. |
 | `DELETE /pages/:id`                  | Stop sharing. The publisher, or any member of the page's workspace.                          |
-| `GET /workspaces/:id/page`           | Whether this document is published, for a member. Not a listing of anyone's pages.           |
+| `GET /workspaces/:id/page`           | Whether this document is published, for a member. A file under a live folder share answers with the folder's page and `covers`, its path on it. Not a listing of anyone's pages. |
 | `POST /share/resolve`                | `{ token }` → `{ id }`: an old share link, traded for its document's page.                     |
 | `WS /api/ws/:id?token=<session>&workspace=<id>` | One live document — a tree or a file: y-websocket's sync and awareness messages.       |
 
@@ -225,6 +228,18 @@ nobody has the URL for is unreachable; a URL that leaks is answered by
 stopping the share, which is a timestamp rather than a delete, so the dead
 address stays dead. There is no session, no fragment and no token — a public
 page is public, and its address is what is shared.
+
+A page can name a folder. Its `path` is a prefix ending in `/` — `/` for the
+whole workspace — and everything under that prefix is readable at
+`/{id}/{path}`: one id, one Stop, and a relative link between two files in
+the folder is a link that works. `GET /api/pages/{id}` answers the folder
+(its files relative to the prefix, and which one a reader lands on: a
+`README.md`, then `plan.md`, then the first in tree order);
+`GET /api/pages/{id}/{path}` answers one file's markdown, and only under the
+prefix — outside it is the same `404` a stopped page gets, because a page id
+must never be a way to read what was not shared. Both read the room, so the
+folder follows the workspace as files are added and renamed. The reader
+serves `/{id}/{path}` as the same shell, so a deep link lands on its file.
 
 The source is one of two shapes. A workspace document's page keeps no copy:
 it reads the room, and there is only ever one live page per workspace, so

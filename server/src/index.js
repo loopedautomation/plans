@@ -14,7 +14,7 @@ import { stat, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { openDb } from "./db.js";
+import { normalisePagePath, openDb } from "./db.js";
 import { makeAuth, httpError, isLogin } from "./auth.js";
 import { Rooms, FIRST_FILE, treeId } from "./rooms.js";
 
@@ -99,6 +99,30 @@ export function startServer({
     const live = p.source === "workspace";
     const w = live ? await db.workspace(p.workspaceId) : null;
     if (live && !w) throw httpError(404, "this plan is not shared");
+    /*
+     * A folder page names a prefix of the workspace, and answers with what
+     * is under it right now: the files, relative to the prefix, and which
+     * of them a reader lands on. No markdown here — a file's is read at
+     * `/pages/{id}/{path}`, so the listing stays small and the folder
+     * follows the tree as people add and rename files in it.
+     */
+    if (db.isFolderPage(p)) {
+      const prefix = db.pagePrefix(p);
+      const files = (await rooms.tree(p.workspaceId))
+        .filter((e) => e.kind === "file" && e.path.startsWith(prefix))
+        .map((e) => e.path.slice(prefix.length));
+      return {
+        id: p.id,
+        kind: "folder",
+        name: p.name,
+        source: p.source,
+        live,
+        publishedAt: p.publishedAt,
+        prefix,
+        files,
+        landing: landingOf(files),
+      };
+    }
     // A workspace page names one file in the room; `plan.md` is what pages
     // made before folders name, and the file every workspace starts with.
     const at = p.path || "plan.md";
@@ -106,6 +130,7 @@ export function startServer({
     if (live && text === null) throw httpError(404, "this plan is not shared");
     return {
       id: p.id,
+      kind: "file",
       name: w ? (at === "plan.md" ? w.name : `${w.name} / ${at}`) : p.name,
       source: p.source,
       /** A live page is worth asking again for; a file's page is not. */
@@ -114,6 +139,26 @@ export function startServer({
       markdown: text,
     };
   };
+
+  /**
+   * One file of a folder page, by its path under the prefix. Outside the
+   * prefix is the same 404 a stopped page gets: a page id must never be a
+   * way to read what was not shared.
+   */
+  const readPageFile = async (id, rel) => {
+    const p = await db.page(id);
+    if (!p || !db.isFolderPage(p)) throw httpError(404, "this plan is not shared");
+    const w = await db.workspace(p.workspaceId);
+    if (!w) throw httpError(404, "this plan is not shared");
+    const full = `${db.pagePrefix(p)}${rel}`;
+    if (!db.pageFile(p, full)) throw httpError(404, "this plan is not shared");
+    const text = await rooms.markdownAt(p.workspaceId, full);
+    if (text === null) throw httpError(404, "this plan is not shared");
+    return { page: p, path: rel, markdown: text };
+  };
+
+  /** The name a folder page carries: the workspace's, or "workspace / folder". */
+  const folderPageName = (w, prefix) => (prefix ? `${w.name} / ${prefix.replace(/\/$/, "")}` : w.name);
 
   /**
    * Who may republish or stop a share: whoever published it, and — for a
@@ -327,10 +372,26 @@ export function startServer({
       return json(res, 200, await readPage(seg[1]));
     }
     // The same page as text, for an agent with curl rather than a browser.
+    // A folder page's text is its landing file's.
     if ((seg = m(/^\/pages\/([\w-]+)\.md$/)) && req.method === "GET") {
       const p = await readPage(seg[1]);
+      const text = p.kind === "folder" ? (p.landing ? (await readPageFile(p.id, p.landing)).markdown : "") : p.markdown;
       res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(p.markdown);
+      res.end(text);
+      return;
+    }
+    // One file under a folder page, as markdown. The reader and an agent
+    // read the same address; the reader has the listing for the rest.
+    if ((seg = m(/^\/pages\/([\w-]+)\/(.+)$/)) && req.method === "GET") {
+      let rel;
+      try {
+        rel = decodeURIComponent(seg[2]);
+      } catch {
+        throw httpError(404, "this plan is not shared");
+      }
+      const { markdown } = await readPageFile(seg[1], rel);
+      res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(markdown);
       return;
     }
     if (req.method === "POST" && path === "/pages") {
@@ -348,7 +409,14 @@ export function startServer({
       }
       if (b.workspaceId) {
         const { w } = await mine(req, String(b.workspaceId));
-        const at = String(b.path ?? "plan.md").trim().slice(0, 500) || "plan.md";
+        const given = normalisePagePath(String(b.path ?? "plan.md").slice(0, 500));
+        // A path ending in `/` names a folder — `/` the whole workspace —
+        // and everything under it is public while the share is on.
+        if (given.endsWith("/")) {
+          const prefix = given === "/" ? "" : given;
+          return json(res, 201, await db.publishWorkspacePage(w.id, given, folderPageName(w, prefix), login));
+        }
+        const at = given || "plan.md";
         const name = at === "plan.md" ? w.name : `${w.name} / ${at}`;
         return json(res, 201, await db.publishWorkspacePage(w.id, at, name, login));
       }
@@ -383,7 +451,14 @@ export function startServer({
       // listing of anyone's pages, just the state of this one.
       const { w } = await mine(req, seg[1]);
       const at = new URL(req.url, "http://x").searchParams.get("path") || "plan.md";
-      return json(res, 200, await db.workspacePage(w.id, at));
+      const own = await db.workspacePage(w.id, at);
+      if (own) return json(res, 200, own);
+      // Under a live folder share, a file is already at an address: the
+      // folder's, with the file's path after it. Offered rather than a
+      // second id, so there is one thing to stop.
+      const covering = at.endsWith("/") ? null : await db.coveringPage(w.id, at);
+      if (!covering) return json(res, 200, null);
+      return json(res, 200, { ...covering, covers: at.slice(db.pagePrefix(covering).length) });
     }
 
 
@@ -516,8 +591,16 @@ function viewerPage() {
  * plan were not shared.
  */
 const PUBLIC = fileURLToPath(new URL("../public/", import.meta.url));
-const ID_PATH = /^\/[A-Za-z0-9_-]{1,64}$/;
+// `/{id}` and, for a folder page, `/{id}/{path}`: the shell reads both out of
+// its own address. The deep form asks for an id-length first segment, so a
+// stray `/src/db.js` is a 404 and not a shell; an id has never been shorter.
+const ID_PATH = /^\/(?:[A-Za-z0-9_-]{1,64}|[A-Za-z0-9_-]{12,64}\/[^\0]+)$/;
 const RAW_PATH = /^\/[A-Za-z0-9_-]{1,64}\.md$/;
+
+/** Which file a folder page opens on: a README, then plan.md, then the first. */
+function landingOf(files) {
+  return files.find((f) => /^readme\.md$/i.test(f)) ?? files.find((f) => f === "plan.md") ?? files[0] ?? null;
+}
 const TYPES = {
   html: "text/html; charset=utf-8",
   js: "text/javascript; charset=utf-8",

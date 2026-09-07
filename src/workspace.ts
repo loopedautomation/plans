@@ -84,11 +84,17 @@ export type Page = {
   source: "workspace" | "repository";
   workspaceId: string | null;
   repo: string | null;
+  /** A file's path; a folder's ends in `/`, and the whole workspace is `/`. */
   path: string | null;
   name: string;
   markdown: string;
   publishedBy: string;
   publishedAt: number;
+  /**
+   * Set when the page asked about is a folder's that covers the file: the
+   * file's path under the folder, which is where it reads on that page.
+   */
+  covers?: string;
 };
 
 export type DeviceStart = {
@@ -240,10 +246,17 @@ export const workspace = {
     forWorkspace: (id: string, path: string) =>
       call<Page | null>(`/workspaces/${id}/page?path=${encodeURIComponent(path)}`),
   },
-  /** Where a published plan lives. The id is the whole of the secret. */
-  pageUrl: (id: string) => `${serverUrl()}/${id}`,
+  /**
+   * Where a published plan lives. The id is the whole of the secret; a file
+   * inside a shared folder is the folder's address with the file after it.
+   */
+  pageUrl: (id: string, at?: string | null) =>
+    at ? `${serverUrl()}/${id}/${at.split("/").map(encodeURIComponent).join("/")}` : `${serverUrl()}/${id}`,
   /** The same page as markdown — what an agent fetches, unrendered. */
-  rawPageUrl: (id: string) => `${serverUrl()}/${id}.md`,
+  rawPageUrl: (id: string, at?: string | null) =>
+    at
+      ? `${serverUrl()}/api/pages/${id}/${at.split("/").map(encodeURIComponent).join("/")}`
+      : `${serverUrl()}/${id}.md`,
 
 };
 

@@ -773,6 +773,19 @@ export default function App() {
   /** Whether the share sheet is open for whatever the page is showing. */
   const [sharing, setSharing] = useState(false);
   /**
+   * A folder being shared from the tree, rather than the open buffer: the
+   * sheet answers for it while it is set. `prefix` is "" for the whole
+   * workspace and ends in `/` otherwise, which is also how the server keys
+   * the page.
+   */
+  const [folderShare, setFolderShare] = useState<{ id: string; prefix: string; name: string } | null>(null);
+  /**
+   * The folder page an open workspace file is already readable through, if
+   * one is live. Asked when the sheet opens; offered instead of a second id,
+   * so there is one thing to stop.
+   */
+  const [covered, setCovered] = useState<{ id: string; at: string; folder: string } | null>(null);
+  /**
    * The pages this machine has published, by `repo path` — a file's, and a
    * workspace document's under its own key. Held here so the page head can
    * show a mark without asking the server on every render.
@@ -2515,8 +2528,46 @@ export default function App() {
     };
   }, [activePath, activeRepoOrPath, workspaces]);
 
+  /**
+   * What the share sheet is about: a folder picked in the tree, or the open
+   * buffer. A folder's key is its workspace and prefix, so a subfolder and
+   * the whole workspace are remembered apart.
+   */
+  const sheetTarget = useMemo(() => {
+    if (!folderShare) return shareTarget;
+    return {
+      kind: "workspace" as const,
+      key: shareKey("workspace", `${folderShare.id}/${folderShare.prefix || "/"}`),
+      id: folderShare.id,
+      path: folderShare.prefix || "/",
+      name: folderShare.name,
+      folder: true,
+    };
+  }, [folderShare, shareTarget]);
+
   /** The page this buffer has, if this machine published one. */
-  const sharedPageId = shareTarget ? (pages[shareTarget.key] ?? null) : null;
+  const sharedPageId = sheetTarget ? (pages[sheetTarget.key] ?? null) : null;
+
+  // A workspace file with no page of its own may sit under a shared folder:
+  // ask when the sheet opens, and forget when it closes.
+  useEffect(() => {
+    if (!sharing || folderShare || !shareTarget || shareTarget.kind !== "workspace" || sharedPageId) {
+      setCovered(null);
+      return;
+    }
+    let alive = true;
+    const { id, path } = shareTarget;
+    void workspace.pages
+      .forWorkspace(id, path)
+      .then((p) => {
+        if (!alive) return;
+        setCovered(p?.covers !== undefined ? { id: p.id, at: p.covers, folder: p.name } : null);
+      })
+      .catch(() => alive && setCovered(null));
+    return () => {
+      alive = false;
+    };
+  }, [sharing, folderShare, shareTarget, sharedPageId]);
 
   const rememberPage = useCallback((key: string, id: string | null) => {
     setPages((prev) => {
@@ -2539,6 +2590,7 @@ export default function App() {
    * and the save that lands a moment later republishes them.
    */
   const publish = useCallback(async () => {
+    const shareTarget = sheetTarget;
     if (!shareTarget) return;
     try {
       const page =
@@ -2554,7 +2606,7 @@ export default function App() {
               source,
             );
       rememberPage(shareTarget.key, page.id);
-      track("plan_published", { source: shareTarget.kind });
+      track("plan_published", { source: shareTarget.kind, folder: "folder" in shareTarget });
       const url = workspace.pageUrl(page.id);
       await navigator.clipboard.writeText(url).then(
         () => notify("Link copied — anyone with it can read this plan"),
@@ -2567,40 +2619,82 @@ export default function App() {
         "error",
       );
     }
-  }, [shareTarget, source, rememberPage, notify]);
+  }, [sheetTarget, source, rememberPage, notify]);
+
+  /**
+   * The address the sheet shows: the page's own, or — for a file under a
+   * shared folder — the folder page's with the file's path after it.
+   */
+  const sheetUrl = sharedPageId
+    ? workspace.pageUrl(sharedPageId)
+    : covered
+      ? workspace.pageUrl(covered.id, covered.at)
+      : null;
+  const sheetRaw = sharedPageId
+    ? workspace.rawPageUrl(sharedPageId)
+    : covered
+      ? workspace.rawPageUrl(covered.id, covered.at)
+      : null;
 
   const stopSharing = useCallback(async () => {
-    if (!shareTarget || !sharedPageId) return;
+    const shareTarget = sheetTarget;
+    // A file read through a folder's page: stopping it is stopping the
+    // folder, which is the one thing there is to stop.
+    const id = sharedPageId ?? covered?.id ?? null;
+    if (!shareTarget || !id) return;
     try {
-      await workspace.pages.stop(sharedPageId);
+      await workspace.pages.stop(id);
       rememberPage(shareTarget.key, null);
+      if (covered && !sharedPageId) {
+        // Whatever this machine remembered the folder as, it is gone.
+        setPages((prev) => {
+          const next = Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== id));
+          saveSharedPages(next);
+          return next;
+        });
+        setCovered(null);
+      }
       track("plan_unpublished");
       notify("Stopped sharing — that address is dead");
       setSharing(false);
+      setFolderShare(null);
     } catch (e) {
       notify(
         e instanceof Error ? e.message : "Could not stop sharing",
         "error",
       );
     }
-  }, [shareTarget, sharedPageId, rememberPage, notify]);
+  }, [sheetTarget, sharedPageId, covered, rememberPage, notify]);
 
   const copyPageLink = useCallback(async () => {
-    if (!sharedPageId) return;
-    await navigator.clipboard.writeText(workspace.pageUrl(sharedPageId)).then(
+    if (!sheetUrl) return;
+    await navigator.clipboard.writeText(sheetUrl).then(
       () => notify("Link copied"),
       () => notify("Could not write to the clipboard", "error"),
     );
-  }, [sharedPageId, notify]);
+  }, [sheetUrl, notify]);
 
   /** The page's markdown address: what to hand an agent, which reads files. */
   const copyRawPageLink = useCallback(async () => {
-    if (!sharedPageId) return;
-    await navigator.clipboard.writeText(workspace.rawPageUrl(sharedPageId)).then(
+    if (!sheetRaw) return;
+    await navigator.clipboard.writeText(sheetRaw).then(
       () => notify("Markdown address copied — an agent can fetch it as a file"),
       () => notify("Could not write to the clipboard", "error"),
     );
-  }, [sharedPageId, notify]);
+  }, [sheetRaw, notify]);
+
+  /** Share a workspace folder, or the whole workspace, from the tree. */
+  const shareFolder = useCallback(
+    (repoPath: string, dir: string) => {
+      const id = wsIdOf(repoPath);
+      if (!id) return;
+      const ws = workspaces.find((w) => w.id === id);
+      const prefix = dir ? `${dir.replace(/\/+$/, "")}/` : "";
+      setFolderShare({ id, prefix, name: prefix ? `${ws?.name ?? "Workspace"} / ${dir}` : (ws?.name ?? "Workspace") });
+      setSharing(true);
+    },
+    [workspaces],
+  );
 
   /**
    * Rewrite the selected passage, by asking the agent to.
@@ -7160,6 +7254,7 @@ export default function App() {
               onLeaveWorkspace={(repo) => void leaveWorkspace(wsIdOf(repo)!)}
               onDeleteWorkspace={(repo) => void deleteWorkspace(wsIdOf(repo)!)}
               onMembersWorkspace={(repo) => setWsMembers(wsIdOf(repo)!)}
+              onShareFolder={account ? shareFolder : undefined}
               onRename={shelfRename}
               onMoveTo={(repo, path) => setMoving({ repo, path })}
               onSetOpen={setOpen}
@@ -8161,17 +8256,22 @@ export default function App() {
           );
         })()}
 
-      {sharing && shareTarget && (
+      {sharing && sheetTarget && (
         <ShareSheet
-          name={shareTarget.name}
-          url={sharedPageId ? workspace.pageUrl(sharedPageId) : null}
-          raw={sharedPageId ? workspace.rawPageUrl(sharedPageId) : null}
-          live={shareTarget.kind === "workspace"}
+          name={sheetTarget.name}
+          url={sheetUrl}
+          raw={sheetRaw}
+          live={sheetTarget.kind === "workspace"}
+          folder={"folder" in sheetTarget ? (folderShare?.prefix ? `${folderShare.prefix}` : "the whole workspace") : null}
+          through={covered && !sharedPageId ? covered.folder : null}
           onPublish={publish}
           onStop={stopSharing}
           onCopy={copyPageLink}
           onCopyRaw={copyRawPageLink}
-          onClose={() => setSharing(false)}
+          onClose={() => {
+            setSharing(false);
+            setFolderShare(null);
+          }}
         />
       )}
 

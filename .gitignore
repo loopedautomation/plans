@@ -30,3 +30,6 @@ server/public
 test-results/
 
 
+
+# Forks working in worktrees
+.claude/worktrees/

@@ -1023,3 +1023,85 @@ test("a review is requested, seen, approved and carried into a repository, all i
   expect((alice as any).__faults).toEqual([]);
   expect((bob as any).__faults).toEqual([]);
 });
+
+test("a workspace folder is shared as one page, with the files beside the text", async ({ browser }) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Shelf", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Shelf");
+  const token = await session("alice");
+  const key = { headers: { Authorization: `Bearer ${token}` } };
+  const list = await (await fetch(`${base}/workspaces`, key)).json();
+  const id = list.find((w: { name: string }) => w.name === "Shelf").id;
+  const dir = `/scratch/${id}`;
+
+  // Two files in a folder, one linking to the other, written the way an
+  // agent writes them.
+  const replies = (page: Page) =>
+    page.evaluate(() => (window as any).__fake.fsReplies as { requestId: string; content: string | null }[]);
+  const write = async (requestId: string, path: string, content: string) => {
+    await alice.evaluate(
+      ([repo, ws, requestId, path, content]) =>
+        (window as any).__fake.emit("agent-fs", { repo, requestId, op: "write", workspace: ws, path, content }),
+      [dir, id, requestId, path, content] as const,
+    );
+    await expect.poll(async () => (await replies(alice)).find((r) => r.requestId === requestId)?.content).toBe("");
+  };
+  await write("f1", "diet/README.md", "# Diet\n\nSee [meals](meals.md).\n");
+  await write("f2", "diet/meals.md", "# Meals\n\nBeans.\n");
+  await expect(alice.locator(".row.dir", { hasText: "diet" })).toBeVisible();
+
+  // Shared from the folder's menu: one page, one address.
+  await menu(alice, alice.locator(".row.dir", { hasText: "diet" }), "Share this folder…");
+  await expect(alice.getByTestId("share-sheet")).toContainText("everything under diet/");
+  await alice.getByTestId("publish").click();
+  const url = await alice.getByTestId("share-link").inputValue();
+  await expect(alice.getByTestId("share-sheet")).toContainText("files added later".replace("files added later", "adds tomorrow"));
+  await alice.keyboard.press("Escape");
+  const pid = idOf(url);
+
+  // The reader: the files beside the text, the README first.
+  const reader = await readerFor(browser, pid);
+  await expect(reader.locator(".milkdown h1")).toHaveText("Diet");
+  await expect(reader.getByTestId("share-files").locator(".share-file")).toHaveCount(2);
+  await expect(reader.locator(".share-file.on")).toHaveText("README.md");
+
+  // A relative link between two files in the share is a link that works,
+  // and the address is the state: back goes back.
+  await reader.locator(".milkdown a", { hasText: "meals" }).click();
+  await expect(reader.locator(".milkdown h1")).toHaveText("Meals");
+  await expect(reader.locator(".share-file.on")).toHaveText("meals.md");
+  expect(reader.url()).toContain("at=meals.md");
+  await reader.goBack();
+  await expect(reader.locator(".milkdown h1")).toHaveText("Diet");
+  // The sidebar opens a file too.
+  await reader.locator(".share-file", { hasText: "meals.md" }).click();
+  await expect(reader.locator(".milkdown h1")).toHaveText("Meals");
+
+  // A file added to the folder appears on the next poll, unasked.
+  await write("f3", "diet/snacks.md", "# Snacks\n");
+  await expect(reader.locator(".share-file", { hasText: "snacks.md" })).toBeVisible({ timeout: 15_000 });
+  // And answers at the folder's address, as text, for an agent.
+  expect(await (await fetch(`${base}/api/pages/${pid}/snacks.md`)).text()).toContain("# Snacks");
+  // Outside the folder is not shared.
+  expect((await fetch(`${base}/api/pages/${pid}/plan.md`)).status).toBe(404);
+
+  // A file inside the share is offered the folder's address, not a second id.
+  await alice.locator(".row.dir", { hasText: "diet" }).click();
+  await row(alice, "meals").click();
+  await expect(editor(alice).locator("h1")).toHaveText("Meals");
+  await alice.getByTestId("share-plan").click();
+  await expect(alice.getByTestId("share-sheet")).toContainText("shared as a folder");
+  await expect(alice.getByTestId("share-link")).toHaveValue(`${url}/meals.md`);
+  await alice.keyboard.press("Escape");
+
+  // Stopped from the folder's sheet, and every path dies at once.
+  await menu(alice, alice.locator(".row.dir", { hasText: "diet" }), "Share this folder…");
+  await expect(alice.getByTestId("share-link")).toHaveValue(url);
+  await alice.getByTestId("stop-sharing").click();
+  await expect(alice.getByTestId("share-sheet")).toHaveCount(0);
+  await reader.reload();
+  await expect(reader.locator(".share-gone")).toContainText("This plan is not shared");
+  expect((await fetch(`${base}/api/pages/${pid}/meals.md`)).status).toBe(404);
+  expect((await fetch(`${base}/api/pages/${pid}`)).status).toBe(404);
+});
