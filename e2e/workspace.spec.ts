@@ -1105,3 +1105,19 @@ test("a workspace folder is shared as one page, with the files beside the text",
   expect((await fetch(`${base}/api/pages/${pid}/meals.md`)).status).toBe(404);
   expect((await fetch(`${base}/api/pages/${pid}`)).status).toBe(404);
 });
+
+test("the status bar's picker names the workspace you are in, and carries its controls", async ({ browser }) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Picker", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Picker");
+  const pick = alice.locator('[aria-label="Repository"]');
+  // Named, not "—".
+  await expect(pick).toContainText("Picker");
+  await pick.click();
+  await expect(alice.locator(".dd-item", { hasText: "Members…" })).toBeVisible();
+  await alice.locator(".dd-item", { hasText: "Members…" }).click();
+  await expect(alice.locator(".members-sheet")).toBeVisible();
+  await alice.keyboard.press("Escape");
+  await expect(alice.locator(".members-sheet")).toHaveCount(0);
+});

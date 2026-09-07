@@ -6994,13 +6994,23 @@ export default function App() {
               Plans
             </span>
 
-            {repos.length > 0 ? (
+            {repos.length > 0 || workspaces.length > 0 ? (
               <>
+                {/*
+                  * Repositories and workspaces in one picker. In a workspace
+                  * the buffer's repository is the app's own, which used to
+                  * leave the picker showing "—"; the workspace is what you
+                  * are in, so it shows by name, and the workspace's own
+                  * controls sit under the same menu.
+                  */}
                 <Dropdown
                   ariaLabel="Repository"
-                  value={activeRepoPath ?? ""}
+                  value={activeWsId ? wsShelfPath(activeWsId) : (activeRepoPath ?? "")}
                   onChange={(v) => {
                     if (v === "__add") void addRepo();
+                    else if (v === "__members" && activeWsId) setWsMembers(activeWsId);
+                    else if (v === "__share" && activeWsId) shareFolder(wsShelfPath(activeWsId), "");
+                    else if (wsIdOf(v)) void openWorkspaceFile(wsIdOf(v)!, FIRST_WS_FILE);
                     else setActiveRepoPath(v);
                   }}
                   choices={[
@@ -7009,10 +7019,24 @@ export default function App() {
                       label: r.name,
                       note: r.branch,
                     })),
+                    ...workspaces.map((w, i) => ({
+                      value: wsShelfPath(w.id),
+                      label: w.name,
+                      note: "workspace",
+                      apart: i === 0 && repos.length > 0,
+                    })),
+                    ...(activeWsId
+                      ? [
+                          { value: "__members", label: "Members…", apart: true, always: true },
+                          ...(account
+                            ? [{ value: "__share", label: "Share this workspace…", always: true }]
+                            : []),
+                        ]
+                      : []),
                     {
                       value: "__add",
                       label: "Add a repository…",
-                      apart: true,
+                      apart: !activeWsId,
                       always: true,
                     },
                   ]}
