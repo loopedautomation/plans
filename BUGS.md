@@ -11,6 +11,7 @@ Remember to add changesets for any patched bugs - fixed bugs belong in the chang
 
 ## Open
 
+<br />
 
 ## Watch for
 
@@ -30,6 +31,48 @@ Not bugs yet — places the same class of mistake would land next.
   green test proves the harness agrees with the code, not that the app works.
 
 ## Fixed
+
+### Sign-in failed on a Mac with a keychain
+
+"Platform secure storage failure: User interaction is not allowed" is the
+`keyring` crate passing on keychain error -25308: the login keychain is
+locked, or still on the password from before the account's was changed, and
+the read or write it was asked for would need a dialog it cannot show. The
+Linux file fallback was gated off on macOS on the grounds that a Mac always
+has a keychain — true, and beside the point, since having one and being
+able to talk to it are different facts. The fallback now applies everywhere
+the keychain answers with a platform failure. The pattern: "this platform
+always has X" is a claim about installation, not about availability.
+
+### The agent's edits to a workspace stayed on disk
+
+The agent's Read and Write go through the client filesystem, which answers
+them from the room — but nothing said the agent had to use them. A `sed -i`
+in its shell, a heredoc, or an adapter that writes straight to disk landed
+in the scratch folder and nowhere else, and the next rewrite of the folder
+from the rooms put the old text back. Every test passed because the tests
+drove the client path, which was the one path that worked. The folder now
+remembers what it wrote, and a file that no longer reads as that is reported
+back and turned into a room edit when the tool call finishes. The pattern: a
+copy handed to something with a shell is a copy that will be edited, and the
+sync has to run both ways or the copy is a trap.
+
+### Tables were bare cells
+
+The editor's own table styles were never loaded — Crepe's theme is not
+imported, only ours — so a table had no rules, no padding and no head, and a
+wide one pushed the whole page sideways on a phone. Found by looking for the
+rule that styled `th` and finding there was none.
+
+### A workspace comment showed its raw line and no face
+
+`<!-- @ratul@example.com: … -->` rendered as the text `@ratul@example.com:
+…`, unsigned. The `@handle:` grammar stopped at the second `@`, so a login
+that is an email never matched as a turn and the member lookup — the whole
+point of signing with the login — never ran. Every test passed because the
+dev sign-in path takes a bare word and the fixtures were `alice` and `bob`.
+The pattern: the test identity has to be shaped like the production one, or
+the parser is only ever tested against the easy case.
 
 ### The repositories you opened in one build were missing from another
 

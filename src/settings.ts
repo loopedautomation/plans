@@ -144,6 +144,17 @@ export type Settings = {
    */
   searchScope: "repo" | "all";
   /**
+   * Who signs a comment in a workspace file.
+   *
+   * The account by default: the login is the handle the server enforces
+   * membership with, the one that names exactly one member, and the one the
+   * card can draw a face against. "git" signs with `git config user.name`
+   * instead, the way a repository file always does — for a room whose
+   * comments are meant to read the same as the ones in the repository they
+   * will be copied into. A repository file signs as git either way.
+   */
+  commentSigner: "account" | "git";
+  /**
    * What orders the files in the tree.
    *
    * By name is the order a tree is read in, and the one to fall back to. By
@@ -244,6 +255,7 @@ export const DEFAULTS: Settings = {
   rewritePrompt: REWRITE_PROMPT,
   chatScope: "repo" as const,
   searchScope: "all" as const,
+  commentSigner: "account" as const,
   treeSort: "name" as const,
   imageFolder: "assets",
   sourceLineNumbers: true,

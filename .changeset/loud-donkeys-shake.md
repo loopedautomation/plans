@@ -1,7 +1,6 @@
 ---
 "looped-plans": minor
 ---
-
 The whole app can be worked without a mouse. The shortcut registry already
 covered nearly every *command*; what had no keys was **navigation** — moving
 focus between the surfaces those commands act on. Two behaviours now live once,
@@ -38,4 +37,4 @@ move, answer to arrows. The palette and the chat panel's slash list carry
 announces something.
 
 Escape is untouched. Its five-rung ladder stays exactly where it was: the trap
-owns Tab and nothing else.
+owns Tab and nothing else.                        

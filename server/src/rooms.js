@@ -164,8 +164,11 @@ export class Rooms {
     return this.markdown(entry.doc);
   }
 
-  async join(id, workspaceId, kind, ws) {
+  async join(id, workspaceId, kind, ws, login = null) {
     ws.binaryType = "arraybuffer";
+    // Remembered so a removal can find this person's sockets; membership
+    // was checked before the upgrade and is not checked again.
+    ws.login = login;
     /** Which awareness clients this socket spoke for, to clear on close. */
     const controlled = new Set();
     /**
@@ -274,6 +277,20 @@ export class Rooms {
       room.awareness.destroy();
       room.doc.destroy();
       this.rooms.delete(id);
+    }
+  }
+
+  /**
+   * One person removed from a workspace: every socket of theirs into its
+   * rooms closes with a code the client reads as "you were removed" —
+   * distinct from 4001, which is the room itself being gone. The rooms
+   * stay up for everyone else, and their leaving is handled by the close
+   * event like any other disconnect.
+   */
+  kick(workspaceId, login) {
+    for (const room of this.rooms.values()) {
+      if (room.workspaceId !== workspaceId) continue;
+      for (const c of [...room.conns]) if (c.login === login) c.close(4003, "removed from the workspace");
     }
   }
 

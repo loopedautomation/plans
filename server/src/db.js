@@ -203,6 +203,12 @@ export async function openDb(url = process.env.DATABASE_URL ?? "") {
       await c.query("DELETE FROM members WHERE workspace_id = $1", [id]);
       await c.query("DELETE FROM workspaces WHERE id = $1", [id]);
     },
+    /** Hand the workspace on. `created_by` keeps its name in the schema;
+     *  it is the owner, and the API calls it that. */
+    setOwner: (id, login) => c.query("UPDATE workspaces SET created_by = $1 WHERE id = $2", [login, id]),
+    /** The read tokens one person minted for one workspace, on their way out. */
+    deleteReadTokens: (id, login) =>
+      c.query("DELETE FROM read_tokens WHERE workspace_id = $1 AND created_by = $2", [id, login]),
     isMember: async (id, login) =>
       !!(await one("SELECT 1 AS ok FROM members WHERE workspace_id = $1 AND login = $2", [id, login])),
 

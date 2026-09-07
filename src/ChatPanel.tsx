@@ -34,7 +34,10 @@ import { Dropdown } from "./Dropdown";
  * saying "running".
  */
 type Msg =
-  | { role: "user" | "assistant" | "thought"; text: string }
+  | { role: "assistant"; text: string }
+  | { role: "thought"; text: string }
+  /** `queued`: typed mid-turn and waiting for the turn to end before it is sent. */
+  | { role: "user"; text: string; queued?: boolean }
   | {
       role: "tool";
       callId: string;
@@ -380,6 +383,76 @@ function titleOf(t: Thread): string {
   return text.length > 42 ? `${text.slice(0, 42)}…` : text;
 }
 
+/** A tool call or a thought: what the agent did on the way to an answer. */
+type Step = Extract<Msg, { role: "tool" | "thought" }>;
+
+/**
+ * The transcript with its steps run together.
+ *
+ * A turn is prose, then a run of tool calls and thoughts, then prose. The
+ * run is one thing to a reader — "it is working" — so it is drawn as one
+ * line that keeps updating, and opens to the list. `gi` in the render is
+ * the index of the group's first message, which keeps a group's key stable
+ * as steps are appended to it and lets the last group know it is last.
+ */
+function groupSteps(messages: Msg[]): { at: number; item: Msg | Step[] }[] {
+  const out: { at: number; item: Msg | Step[] }[] = [];
+  let run: Step[] | null = null;
+  messages.forEach((m, at) => {
+    if (m.role === "tool" || m.role === "thought") {
+      if (!run) {
+        run = [];
+        out.push({ at, item: run });
+      }
+      run.push(m);
+    } else {
+      run = null;
+      out.push({ at, item: m });
+    }
+  });
+  return out;
+}
+
+/** The face of a step: its title, or "thinking" for a thought. */
+function stepTitle(s: Step): string {
+  return s.role === "tool" ? s.title : "thinking";
+}
+
+/**
+ * A run of steps: one line saying what is happening now, that opens to
+ * everything that happened. Closed by default — the steps are available,
+ * not in the way — and a `<details>` rather than state so a reader who
+ * opened one keeps it open while it grows.
+ */
+function Steps({ steps, live }: { steps: Step[]; live: boolean }) {
+  const now = steps[steps.length - 1];
+  const status = now.role === "tool" ? (now.status ?? "pending") : live ? "in_progress" : "completed";
+  return (
+    <details className="chat-steps">
+      <summary className={`chat-steps-now ${status}`}>
+        <span className="chat-tool-dot" aria-hidden />
+        <span className="chat-steps-title">{stepTitle(now)}</span>
+        {now.role === "tool" && now.locations?.length ? <span className="chat-where"> {now.locations.join(", ")}</span> : null}
+        <span className="chat-steps-count">{steps.length === 1 ? "1 step" : `${steps.length} steps`}</span>
+      </summary>
+      {steps.map((s, i) =>
+        s.role === "tool" ? (
+          <div key={i} className={`chat-tool ${s.status ?? "pending"}`}>
+            <span className="chat-tool-dot" aria-hidden />
+            {s.title}
+            {s.locations?.length ? <span className="chat-where"> {s.locations.join(", ")}</span> : null}
+          </div>
+        ) : (
+          <details key={i} className="chat-thought">
+            <summary>thinking</summary>
+            {s.text}
+          </details>
+        ),
+      )}
+    </details>
+  );
+}
+
 function load(key: string): Thread {
   try {
     const raw = localStorage.getItem(key);
@@ -391,7 +464,7 @@ function load(key: string): Thread {
        * process it belonged to is gone. Left alone, the transcript would show
        * live-looking buttons wired to nothing.
        */
-      t.messages = (t.messages ?? []).map((m) =>
+      t.messages = (t.messages ?? []).filter((m) => !(m.role === "user" && m.queued)).map((m) =>
         m.role === "tool" && (m.status === "pending" || m.status === "in_progress")
           ? { ...m, status: "interrupted" }
           : (m.role === "permission" || m.role === "question") && m.answered === undefined
@@ -677,7 +750,7 @@ export function ChatPanel({
       const q = pending.current.get(k);
       const next = q?.shift();
       if (q && !q.length) pending.current.delete(k);
-      if (next) void sendRef.current?.(next);
+      if (next) void sendRef.current?.(next, false, k);
     });
 
     // Session-scoped: no turn to match, so the repo is the filter.
@@ -812,6 +885,7 @@ export function ChatPanel({
       const q = pending.current.get(k);
       if (q?.length) {
         pending.current.delete(k);
+        commit(k, (t) => ({ ...t, messages: t.messages.filter((m) => !(m.role === "user" && m.queued)) }));
         say(k, "note", `${q.length === 1 ? "a queued message was" : `${q.length} queued messages were`} dropped with the session`, false);
       }
       if (!e.payload.message) return;
@@ -882,7 +956,9 @@ export function ChatPanel({
         const q = pending.current.get(k) ?? [];
         q.push(text);
         pending.current.set(k, q);
-        say(k, "note", "queued — sends when this turn finishes", false);
+        // Shown where it will go, marked as waiting: a message that was
+        // taken and cannot be seen looks exactly like one that was lost.
+        commit(k, (cur) => ({ ...cur, messages: [...cur.messages, { role: "user", text, queued: true }] }));
         return;
       }
       /*
@@ -917,11 +993,15 @@ export function ChatPanel({
       const here = k === keyRef.current;
       const moved = here && relPath && relPath !== t.plan;
       const where = moved ? `The plan I am looking at is ${relPath}.\n\n` : "";
-      commit(k, (cur) => ({
-        ...cur,
-        plan: (here ? relPath : null) ?? cur.plan ?? null,
-        messages: [...cur.messages, { role: "user", text }],
-      }));
+      commit(k, (cur) => {
+        const messages = [...cur.messages];
+        // A dequeued message is already in the transcript, waiting; it is
+        // sent now, so it stops saying so. A fresh one is appended.
+        const waiting = at ? messages.findIndex((m) => m.role === "user" && m.queued && m.text === text) : -1;
+        if (waiting >= 0) messages[waiting] = { role: "user", text };
+        else messages.push({ role: "user", text });
+        return { ...cur, plan: (here ? relPath : null) ?? cur.plan ?? null, messages };
+      });
       mark(k, true);
       // The length and whether a button wrote it — never the message itself.
       track("chat_message_sent", { seeded, chars: text.length });
@@ -1165,16 +1245,14 @@ export function ChatPanel({
               : "Ask for anything about this repository."}
           </div>
         )}
-        {thread.messages.map((m, i) => {
-          if (m.role === "tool") {
-            return (
-              <div key={i} className={`chat-tool ${m.status ?? "pending"}`}>
-                <span className="chat-tool-dot" aria-hidden />
-                {m.title}
-                {m.locations?.length ? <span className="chat-where"> {m.locations.join(", ")}</span> : null}
-              </div>
-            );
+        {groupSteps(thread.messages).map(({ at, item }) => {
+          if (Array.isArray(item)) {
+            // Live while the turn runs and nothing has come after it.
+            const last = at + item.length === thread.messages.length;
+            return <Steps key={`s${at}`} steps={item} live={thinking && last} />;
           }
+          const m = item;
+          const i = at;
           if (m.role === "permission") {
             // Answered questions freeze into a statement: a button you can
             // press again after the agent has moved on is a lie.
@@ -1213,14 +1291,6 @@ export function ChatPanel({
               />
             );
           }
-          if (m.role === "thought") {
-            return (
-              <details key={i} className="chat-thought">
-                <summary>thinking</summary>
-                {m.text}
-              </details>
-            );
-          }
           if (m.role === "note") {
             return (
               <div key={i} className="chat-tool">
@@ -1228,11 +1298,14 @@ export function ChatPanel({
               </div>
             );
           }
+          // Steps were grouped above; nothing of theirs reaches here.
+          if (m.role === "tool" || m.role === "thought") return null;
           return (
-            <div key={i} className={`chat-msg ${m.role}`}>
+            <div key={i} className={`chat-msg ${m.role}${m.role === "user" && m.queued ? " queued" : ""}`}>
               {/* Only the agent's prose is rendered: what you typed is shown
                   as you typed it, asterisks and all. */}
               {m.role === "assistant" ? <Markdown text={m.text} /> : m.text}
+              {m.role === "user" && m.queued ? <span className="chat-queued">queued</span> : null}
             </div>
           );
         })}

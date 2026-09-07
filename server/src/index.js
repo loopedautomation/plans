@@ -52,7 +52,7 @@ export function startServer({
     // server — so every answer carries the headers that let it read them.
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
     if (req.method === "OPTIONS") {
       res.writeHead(204).end();
       return;
@@ -209,11 +209,53 @@ export function startServer({
       await db.deleteWorkspace(w.id);
       return json(res, 200, { ok: true });
     }
-    if ((seg = m(/^\/workspaces\/([\w-]+)\/members\/me$/)) && req.method === "DELETE") {
+    /*
+     * Ownership moves; the owner does not leave. Deleting a workspace needs
+     * an owner, so the way out for whoever made it is to hand it to another
+     * member first and then leave like anyone else. Owner only, and the
+     * target has to be in the room already: handing a workspace to a
+     * stranger would be an invite and a handover in one, and a typo in it
+     * would lock everyone out of deleting the room.
+     */
+    if ((seg = m(/^\/workspaces\/([\w-]+)$/)) && req.method === "PATCH") {
       const { login, w } = await mine(req, seg[1]);
-      if (w.createdBy === login) throw httpError(400, "you made this workspace; delete it instead");
-      await db.removeMember(w.id, login);
-      return json(res, 200, { ok: true });
+      const { owner } = await body(req);
+      if (w.createdBy !== login) throw httpError(403, "only whoever owns this workspace can hand it on");
+      const to = String(owner ?? "").trim().toLowerCase();
+      if (!isLogin(to)) throw httpError(400, "not an email");
+      if (!(await db.isMember(w.id, to))) throw httpError(400, "invite them first");
+      await db.setOwner(w.id, to);
+      return json(res, 200, await db.workspace(w.id));
+    }
+    /*
+     * One route for both ways out of a workspace. `me`, or your own login,
+     * is leaving; anyone else's login is a removal, which is the owner's
+     * alone — any member may invite, only the owner may take away. The
+     * owner is refused on either path: a room with nobody to delete it
+     * would be a room that exists forever, and the handover above is the
+     * way out. A removed member is cut off now, not at their next
+     * reconnect: membership is checked when a socket opens and never
+     * again, so without the kick they would keep writing into the room.
+     * Their read tokens go with them — a token minted in their name is
+     * their access, and a share link is the workspace's (see the share
+     * routes below), so those stay.
+     */
+    if ((seg = m(/^\/workspaces\/([\w-]+)\/members\/([^/]+)$/)) && req.method === "DELETE") {
+      const { login, w } = await mine(req, seg[1]);
+      const raw = decodeURIComponent(seg[2]);
+      const target = raw === "me" ? login : raw.trim().toLowerCase();
+      if (target === w.createdBy) {
+        throw httpError(
+          target === login ? 400 : 403,
+          target === login ? "you own this workspace; hand it on or delete it instead" : "the owner cannot be removed",
+        );
+      }
+      if (target !== login && w.createdBy !== login) throw httpError(403, "only whoever owns this workspace can remove a member");
+      if (!(await db.isMember(w.id, target))) throw httpError(404, "not a member");
+      await db.removeMember(w.id, target);
+      await db.deleteReadTokens(w.id, target);
+      rooms.kick(w.id, target);
+      return json(res, 200, target === login ? { ok: true } : await db.workspace(w.id));
     }
     if ((seg = m(/^\/workspaces\/([\w-]+)\/members$/)) && req.method === "POST") {
       const { w } = await mine(req, seg[1]);
@@ -410,7 +452,7 @@ export function startServer({
         return;
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
-        void rooms.join(at.id, at.workspaceId, at.kind, ws);
+        void rooms.join(at.id, at.workspaceId, at.kind, ws, login);
       });
     })().catch((e) => {
       console.error(e);

@@ -17,7 +17,8 @@ type Field = HTMLInputElement | HTMLTextAreaElement;
 function mentionAt(field: Field): { start: number; query: string } | null {
   const caret = field.selectionStart ?? field.value.length;
   const before = field.value.slice(0, caret);
-  const m = before.match(/(^|\s)@([A-Za-z0-9_.-]*)$/);
+  // A login may be an email, so a second `@` continues the word.
+  const m = before.match(/(^|\s)@([A-Za-z0-9_.+-]*(?:@[A-Za-z0-9.-]*)?)$/);
   if (!m) return null;
   return { start: caret - m[2].length - 1, query: m[2] };
 }

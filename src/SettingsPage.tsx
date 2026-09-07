@@ -513,6 +513,16 @@ export function SettingsPage({
             ]}
             onChange={(v) => onChange({ searchScope: v as "repo" | "all" })}
           />
+          <Choice
+            label="Workspace comments sign as"
+            hint="A comment in a shared workspace is signed with your account's login, which names a member and draws their face; git's name is what a repository file uses."
+            value={s.commentSigner}
+            options={[
+              { value: "account", label: "Your account" },
+              { value: "git", label: "git's name" },
+            ]}
+            onChange={(v) => onChange({ commentSigner: v as "account" | "git" })}
+          />
           {s.chatPlace === "side" ? (
             <Slider
               label="Chat width"

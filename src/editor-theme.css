@@ -45,6 +45,67 @@
   color: var(--ink);
 }
 
+/*
+ * Tables.
+ *
+ * Crepe's theme is not loaded, so without this a table is bare cells with no
+ * rules, no padding and no head — which reads as a paragraph that lost its
+ * spaces. The rules are hairlines in the page's own ink, the head is set off
+ * by weight and a rule rather than a fill, and a table wider than the measure
+ * scrolls inside its own block rather than pushing the page sideways, which
+ * is what made one unreadable on a phone.
+ */
+.editor-host .milkdown .ProseMirror .milkdown-table-block,
+.editor-host .milkdown .ProseMirror .tableWrapper {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1.1em 0;
+  -webkit-overflow-scrolling: touch;
+}
+/*
+ * Sized to fit first. `auto` lets the browser share the measure between the
+ * columns and wrap the text in them, so a table with a few long cells stays
+ * within the page; only when the columns cannot shrink any further — many
+ * of them, or one word too long — does it grow past the measure and scroll
+ * inside its block. `max-content` did the opposite: every cell on one line,
+ * every table wider than the page, and a scroll with no bar to say so.
+ */
+.editor-host .milkdown .ProseMirror table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  width: auto;
+  min-width: min(100%, 24em);
+  max-width: none;
+  font-size: 0.92em;
+  line-height: 1.45;
+}
+.editor-host .milkdown .ProseMirror .milkdown-table-block table { margin: 0; }
+.editor-host .milkdown .ProseMirror th,
+.editor-host .milkdown .ProseMirror td {
+  border: 1px solid var(--rule);
+  padding: 0.4em 0.75em;
+  text-align: left;
+  vertical-align: top;
+  min-width: 4em;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.editor-host .milkdown .ProseMirror th {
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 2px solid var(--ink-3);
+  background: var(--shade);
+}
+.editor-host .milkdown .ProseMirror tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--shade) 45%, transparent); }
+.editor-host .milkdown .ProseMirror th p,
+.editor-host .milkdown .ProseMirror td p { margin: 0; }
+@media (max-width: 620px) {
+  .editor-host .milkdown .ProseMirror table { font-size: 0.86em; }
+  .editor-host .milkdown .ProseMirror th,
+  .editor-host .milkdown .ProseMirror td { padding: 0.35em 0.5em; min-width: 3.5em; }
+}
+
 /* Headings sit in the same face but earn their rank through weight and space,
    not size alone — a plan is mostly h1/h2 and shouldn't shout. */
 .editor-host .milkdown .ProseMirror h1,

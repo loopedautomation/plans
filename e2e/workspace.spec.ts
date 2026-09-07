@@ -111,6 +111,16 @@ async function answer(page: Page, value: string, confirm: string) {
   await page.locator(".matter-sheet .act", { hasText: confirm }).click();
 }
 
+/** Invite someone from the page head's members sheet, and close it again. */
+async function invite(page: Page, login: string) {
+  await page.getByTestId("members").click();
+  await page.locator(".members-sheet .member-invite").fill(login);
+  await page.locator(".members-sheet .act", { hasText: "Invite" }).click();
+  await expect(page.locator(`.members-sheet .member[data-login="${login.toLowerCase()}"]`)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".members-sheet")).toHaveCount(0);
+}
+
 /** The workspace the signed-in person has, for the endpoints below. */
 async function only(token: string) {
   const list = await (await fetch(`${base}/workspaces`, { headers: { Authorization: `Bearer ${token}` } })).json();
@@ -142,8 +152,7 @@ test("a workspace is a folder in the tree, and both people see every change", as
   const bob = await boot(browser, "bob");
   await expect(bob.locator(".ws-hint")).toContainText("None yet");
 
-  await alice.locator(".page-actions .rail-btn", { hasText: "Invite" }).click();
-  await answer(alice, "bob", "Invite");
+  await invite(alice, "bob");
 
   // The invite reaches bob on his next look at the list, and what he gets is
   // the folder — drawn from the tree, without a socket into it yet.
@@ -261,14 +270,16 @@ test("a workspace is a folder in the tree, and both people see every change", as
 test("two accounts make a two-voice thread, signed by login, and it travels into a repository verbatim", async ({
   browser,
 }) => {
+  // Bob's login is an email, the shape the real sign-in hands out; a bare
+  // word is the dev path's shortcut, and the handle grammar once only knew
+  // the shortcut.
   const alice = await boot(browser, "alice");
   await alice.locator(".ws-new").click();
   await answer(alice, "Threads", "Create");
   await expect(editor(alice).locator("h1")).toHaveText("Threads");
-  await alice.locator(".page-actions .rail-btn", { hasText: "Invite" }).click();
-  await answer(alice, "bob", "Invite");
+  await invite(alice, "bob@example.com");
 
-  const bob = await boot(browser, "bob");
+  const bob = await boot(browser, "bob@example.com");
   await expect(heading(bob, "Threads")).toBeVisible();
   await heading(bob, "Threads").click();
   await row(bob, "plan").click();
@@ -288,9 +299,9 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   // `@` completes to a member's handle.
   await ask.press("@");
   await ask.press("b");
-  await expect(alice.locator(".mentions-item")).toHaveText(["@bob"]);
+  await expect(alice.locator(".mentions-item")).toHaveText(["@bob@example.com"]);
   await ask.press("Enter");
-  await expect(ask).toHaveValue("Is this the right order? Ask @bob ");
+  await expect(ask).toHaveValue("Is this the right order? Ask @bob@example.com ");
   await alice.locator(".matter-sheet .act").click();
   await expect(alice.locator(".md-comment")).toHaveCount(1);
 
@@ -310,9 +321,11 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   // Alice's card: two turns, each a member with the face their cursor wears.
   await expect(alice.locator(".md-comment-mark")).toHaveText("comment +2");
   await alice.locator(".md-comment-mark").click();
+  // The email is drawn short, and kept whole on hover.
   await expect(alice.locator(".md-comment-handle")).toHaveText(["@alice", "@bob"]);
+  await expect(alice.locator(".md-comment-handle").nth(1)).toHaveAttribute("title", "@bob@example.com");
   await expect(alice.locator(".md-comment-who .avatar")).toHaveText(["A", "B"]);
-  await expect(alice.locator(".md-comment-who .avatar").nth(1)).toHaveAttribute("title", "bob");
+  await expect(alice.locator(".md-comment-who .avatar").nth(1)).toHaveAttribute("title", "bob@example.com");
   await alice.keyboard.press("Escape");
 
   // On the public page the handles keep their colours and lose the faces:
@@ -329,14 +342,81 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   await expect(reader.locator(".md-comment-who .avatar")).toHaveCount(0);
 
   // Copied into a repository, the thread is the same lines of the same file.
-  await alice.locator(".page-actions .rail-btn", { hasText: "Copy to repository" }).click();
+  await alice.locator(".page-actions .rail-btn", { hasText: "Copy to a repo" }).click();
   await alice.locator(".matter-sheet .act", { hasText: "Copy" }).click();
   await expect(alice.locator(".page-path")).not.toContainText("Threads ·");
   const copied = await alice.evaluate(() => {
     const repo = (window as any).__fake.repos[0];
-    return Object.values(repo.files as Record<string, string>).find((f) => f.includes("@bob:")) ?? "";
+    return Object.values(repo.files as Record<string, string>).find((f) => f.includes("@bob@example.com:")) ?? "";
   });
-  expect(copied).toContain("<!--\n@alice: Is this the right order? Ask @bob\n@bob: Yes, the room first. @alice\n-->");
+  expect(copied).toContain(
+    "<!--\n@alice: Is this the right order? Ask @bob@example.com\n@bob@example.com: Yes, the room first. @alice\n-->",
+  );
+
+  expect((alice as any).__faults).toEqual([]);
+  expect((bob as any).__faults).toEqual([]);
+});
+
+test("the owner removes a member, whose editor closes; hands the workspace on; and then may leave", async ({
+  browser,
+}) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Doors", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Doors");
+  await invite(alice, "bob");
+  await invite(alice, "cara@example.com");
+
+  const bob = await boot(browser, "bob");
+  await heading(bob, "Doors").click();
+  await row(bob, "plan").click();
+  await expect(editor(bob).locator("h1")).toHaveText("Doors");
+
+  // Bob's sheet: everyone listed, the owner first and marked, alice here,
+  // and no way to remove anyone — only to leave.
+  await bob.getByTestId("members").click();
+  const rows = bob.locator(".members-sheet .member");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toHaveAttribute("data-login", "alice");
+  await expect(rows.first().locator(".member-note")).toHaveText(["owner", "here"]);
+  await expect(bob.locator(".members-sheet .rail-btn", { hasText: "Remove" })).toHaveCount(0);
+  await expect(bob.locator(".members-sheet .rail-btn", { hasText: "Leave" })).toHaveCount(1);
+  await bob.keyboard.press("Escape");
+
+  // Alice removes cara, who was only ever invited, then bob, who is in the
+  // room: the shelf leaves his sidebar, his editor with it, and a line says
+  // why.
+  alice.on("dialog", (d) => void d.accept());
+  await alice.getByTestId("members").click();
+  await alice.locator('.members-sheet .member[data-login="cara@example.com"] .rail-btn', { hasText: "Remove" }).click();
+  await expect(alice.locator(".members-sheet .member")).toHaveCount(2);
+  await alice.locator('.members-sheet .member[data-login="bob"] .rail-btn', { hasText: "Remove" }).click();
+  await expect(alice.locator(".members-sheet .member")).toHaveCount(1);
+  await alice.keyboard.press("Escape");
+  await expect(heading(bob, "Doors")).toHaveCount(0);
+  await expect(bob.locator(".toast")).toContainText("removed from");
+  await expect(bob.locator(".page-path")).toHaveText("");
+
+  // Invited back, bob is made the owner; alice is then an ordinary member
+  // and walks out through her own row.
+  await invite(alice, "bob");
+  await bob.reload();
+  await expect(heading(bob, "Doors")).toBeVisible();
+  await alice.getByTestId("members").click();
+  await alice.locator('.members-sheet .member[data-login="bob"] .rail-btn', { hasText: "Make owner" }).click();
+  await expect(alice.locator('.members-sheet .member[data-login="bob"] .member-note').first()).toHaveText("owner");
+  await expect(alice.locator(".members-sheet .rail-btn", { hasText: "Remove" })).toHaveCount(0);
+  await alice.locator('.members-sheet .member[data-login="alice"] .rail-btn', { hasText: "Leave" }).click();
+  await expect(alice.locator(".members-sheet")).toHaveCount(0);
+  await expect(heading(alice, "Doors")).toHaveCount(0);
+
+  // Bob owns it now — on his next look at the list, as with an invite —
+  // and the shelf's menu offers Delete rather than Leave.
+  await bob.reload();
+  await expect(heading(bob, "Doors")).toBeVisible();
+  await heading(bob, "Doors").click({ button: "right" });
+  await expect(bob.locator(".ctx .ctx-item", { hasText: "Delete this workspace" })).toBeVisible();
+  await bob.keyboard.press("Escape");
 
   expect((alice as any).__faults).toEqual([]);
   expect((bob as any).__faults).toEqual([]);
@@ -614,8 +694,7 @@ test("an agent in a workspace reads what was just typed and writes into everyone
 
   // Bob is in the room too, with the same file open.
   const bob = await boot(browser, "bob");
-  await alice.locator(".page-actions .rail-btn", { hasText: "Invite" }).click();
-  await answer(alice, "bob", "Invite");
+  await invite(alice, "bob");
   await bob.reload();
   await expect(bob.getByTestId("account")).toHaveText("bob");
   await heading(bob, "Agents").click();
@@ -667,6 +746,31 @@ test("an agent in a workspace reads what was just typed and writes into everyone
   await expect(editor(bob)).toContainText("Ship it.");
   // The headless editor is gone once its one write has landed.
   await expect(alice.locator(".editor-host.headless")).toHaveCount(0);
+
+  /*
+   * A write that never came through the client: the agent's shell edited the
+   * file on disk. The Rust side finds it on the next write of the folder and
+   * answers with it; the app looks the moment a tool call finishes, and turns
+   * what it finds into an edit of the room — so bob sees a `sed -i` the same
+   * way he saw the client write.
+   */
+  await alice.evaluate(
+    ([repo, ws]) => {
+      const f = (window as any).__fake;
+      f.scratchOutside[ws] = [
+        { path: "plan.md", text: "# Agents\n\nThe agent used sed.\n" },
+        { path: "notes/made-by-shell.md", text: "# Shell\n\nWritten with a heredoc.\n" },
+      ];
+      f.emit("agent-tool", { repo, chat: "c1", turn: 1, callId: "t9", title: "Bash", status: "completed" });
+    },
+    [dir, id] as const,
+  );
+  await expect(editor(alice)).toContainText("The agent used sed.");
+  await row(bob, "plan").click();
+  await expect(editor(bob)).toContainText("The agent used sed.", { timeout: 10_000 });
+  await expect(editor(bob)).not.toContainText("The agent wrote this.");
+  await expect(row(bob, "made-by-shell")).toBeVisible();
+  await expect.poll(() => scratch(alice, "notes/made-by-shell.md")).toContain("Written with a heredoc.");
 
   expect((alice as any).__faults).toEqual([]);
   expect((bob as any).__faults).toEqual([]);

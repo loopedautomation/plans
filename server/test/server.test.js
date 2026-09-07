@@ -154,6 +154,70 @@ test("a workspace belongs to whoever made it, and to whom they invite", async ()
   assert.equal((await call("/workspaces", { token: bob })).value[0].id, id);
 });
 
+test("the owner removes a member, a member removes only themselves, and nobody removes the owner", async () => {
+  const alice = await signIn("alice");
+  const bob = await signIn("bob");
+  const cara = await signIn("cara");
+  const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Doors" } })).value;
+  for (const login of ["bob", "cara"]) {
+    await call(`/workspaces/${id}/members`, { method: "POST", token: alice, body: { login } });
+  }
+
+  // Bob is in, with the file open, and a read token in his name.
+  const open = await openPlan(id, bob);
+  assert.equal((await call(`/workspaces/${id}/token`, { method: "POST", token: bob })).status, 201);
+  const closed = new Promise((r) => open.ws.once("close", (code) => r(code)));
+
+  // A member cannot remove another, nor the owner.
+  assert.equal((await call(`/workspaces/${id}/members/cara`, { method: "DELETE", token: bob })).status, 403);
+  assert.equal((await call(`/workspaces/${id}/members/alice`, { method: "DELETE", token: bob })).status, 403);
+  // The owner cannot remove themselves by either address.
+  assert.equal((await call(`/workspaces/${id}/members/me`, { method: "DELETE", token: alice })).status, 400);
+  assert.equal((await call(`/workspaces/${id}/members/alice`, { method: "DELETE", token: alice })).status, 400);
+
+  // The owner removes bob: gone from the list, his socket closed with the
+  // removal's own code, and the room does not admit him again.
+  const r = await call(`/workspaces/${id}/members/bob`, { method: "DELETE", token: alice });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.value.members, ["alice", "cara"]);
+  assert.equal(await closed, 4003);
+  assert.equal((await call(`/workspaces/${id}`, { token: bob })).status, 404);
+  await assert.rejects(connect(open.docId, bob, id).open, /HTTP 401/);
+  // Removing someone who is not there is a 404, not a silent success.
+  assert.equal((await call(`/workspaces/${id}/members/bob`, { method: "DELETE", token: alice })).status, 404);
+
+  // Carol walks out by her own login; the alias still works for it.
+  assert.equal((await call(`/workspaces/${id}/members/cara`, { method: "DELETE", token: cara })).status, 200);
+  assert.deepEqual((await call(`/workspaces/${id}`, { token: alice })).value.members, ["alice"]);
+  await call(`/workspaces/${id}/members`, { method: "POST", token: alice, body: { login: "cara" } });
+  assert.equal((await call(`/workspaces/${id}/members/me`, { method: "DELETE", token: cara })).status, 200);
+  assert.deepEqual((await call(`/workspaces/${id}`, { token: alice })).value.members, ["alice"]);
+});
+
+test("any member may invite; only the owner hands the workspace on, and then may leave", async () => {
+  const alice = await signIn("alice");
+  const bob = await signIn("bob");
+  const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Keys" } })).value;
+  await call(`/workspaces/${id}/members`, { method: "POST", token: alice, body: { login: "bob" } });
+
+  // Bob, a member, invites cara.
+  const invited = await call(`/workspaces/${id}/members`, { method: "POST", token: bob, body: { login: "cara" } });
+  assert.deepEqual(invited.value.members, ["alice", "bob", "cara"]);
+
+  // Only the owner hands on, and only to a member.
+  assert.equal((await call(`/workspaces/${id}`, { method: "PATCH", token: bob, body: { owner: "bob" } })).status, 403);
+  assert.equal((await call(`/workspaces/${id}`, { method: "PATCH", token: alice, body: { owner: "dee" } })).status, 400);
+  const handed = await call(`/workspaces/${id}`, { method: "PATCH", token: alice, body: { owner: "Bob" } });
+  assert.equal(handed.status, 200);
+  assert.equal(handed.value.createdBy, "bob");
+
+  // Now alice is an ordinary member: she cannot delete, and she can leave.
+  assert.equal((await call(`/workspaces/${id}`, { method: "DELETE", token: alice })).status, 403);
+  assert.equal((await call(`/workspaces/${id}/members/me`, { method: "DELETE", token: alice })).status, 200);
+  assert.deepEqual((await call(`/workspaces/${id}`, { token: bob })).value.members, ["bob", "cara"]);
+  assert.equal((await call(`/workspaces/${id}`, { method: "DELETE", token: bob })).status, 200);
+});
+
 test("a workspace names its members as people: login, name and face", async () => {
   const alice = await signIn("alice");
   const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Faces" } })).value;

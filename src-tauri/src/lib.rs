@@ -1252,8 +1252,17 @@ fn keychain_entry() -> R<keyring::Entry> {
 /// gnome-keyring or KWallet running (Omarchy, most window-manager setups,
 /// any container) has no one on the other end. The crate reports that as
 /// `NoStorageAccess` or as `PlatformFailure`, depending on whether the bus
-/// itself or the service is what is missing. Every other error - a locked
-/// collection, a bad attribute - is the keychain speaking, and is passed on.
+/// itself or the service is what is missing.
+///
+/// macOS always has a keychain, and it can still be one nobody can talk to:
+/// a login keychain that is locked, or left on an old password after the
+/// account's changed, answers every read and write with "user interaction
+/// is not allowed" (-25308), which `keyring` reports as `PlatformFailure`.
+/// Signing in used to fail on that with nothing to be done about it in the
+/// app. It is the same state as no keychain, and gets the same answer.
+///
+/// Every other error - a bad attribute, a refused entry - is the keychain
+/// speaking, and is passed on.
 fn keychain_unavailable(e: &keyring::Error) -> bool {
     matches!(
         e,
@@ -1261,11 +1270,11 @@ fn keychain_unavailable(e: &keyring::Error) -> bool {
     )
 }
 
-/// Only Linux falls back to a file. macOS and Windows always have a
-/// keychain, and a keychain error there is a fault worth surfacing rather
-/// than a state to route around.
+/// Every platform falls back to the file when the keychain cannot be talked
+/// to. It used to be Linux alone, on the grounds that macOS and Windows
+/// always have a keychain - which is true, and does not mean it answers.
 fn token_file_allowed() -> bool {
-    cfg!(target_os = "linux")
+    true
 }
 
 /// Said once per process, the first time the file stands in for the

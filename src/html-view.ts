@@ -24,9 +24,29 @@ import { attachMentions } from "./mentions";
 
 const COMMENT = /^\s*<!--([\s\S]*?)-->\s*$/;
 
+/**
+ * What a handle may look like: `@name`, or `@name@host.tld` — a workspace's
+ * login is an email, so the second `@` is part of the name, not the end of
+ * it. Read as far as the first `@` used to mean `@ratul@example.com: …`
+ * matched nothing as a turn, and the card showed the raw line, unsigned.
+ */
+const HANDLE = "[A-Za-z0-9_.+-]+(?:@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)?";
+const AUTHOR = new RegExp(`@(${HANDLE})`);
+const TURN = new RegExp(`^@(${HANDLE}):\\s*(.*)$`);
+
 /** Author written into the comment as `@name`, if there is one. */
 export function commentAuthor(body: string): string | null {
-  return body.match(/@([A-Za-z0-9_.-]+)/)?.[1] ?? null;
+  return body.match(AUTHOR)?.[1] ?? null;
+}
+
+/**
+ * The handle as it is drawn: an email keeps only what is before its `@`.
+ * The file carries the whole login — that is what the member lookup and
+ * the reply use — and the full form stays on the element's title.
+ */
+export function shortHandle(handle: string): string {
+  const at = handle.indexOf("@");
+  return at > 0 ? handle.slice(0, at) : handle;
 }
 
 /**
@@ -42,7 +62,7 @@ export function commentTurns(body: string): CommentTurn[] {
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-  const parsed = lines.map((l) => l.match(/^@([A-Za-z0-9_.-]+):\s*(.*)$/));
+  const parsed = lines.map((l) => l.match(TURN));
   if (lines.length > 0 && parsed.every(Boolean)) {
     return parsed.map((m) => ({ who: m![1], text: m![2] }));
   }
@@ -114,7 +134,8 @@ function commentCard(
       // is a hash of the handle and says nothing about who holds it.
       meta.appendChild(handleDom(t.who, colorFor(t.who)));
     } else {
-      meta.textContent = t.who ? `@${t.who}` : "comment";
+      meta.textContent = t.who ? `@${shortHandle(t.who)}` : "comment";
+      if (t.who) meta.title = `@${t.who}`;
     }
     const text = document.createElement("span");
     text.className = "md-comment-text";
@@ -128,7 +149,7 @@ function commentCard(
   reply.className = "md-comment-reply";
   const field = document.createElement("input");
   field.type = "text";
-  field.placeholder = htmlContext.author ? `Reply as @${htmlContext.author}` : "Reply";
+  field.placeholder = htmlContext.author ? `Reply as @${shortHandle(htmlContext.author)}` : "Reply";
   field.className = "md-comment-field";
   const mentions = attachMentions(field, () => Object.keys(htmlContext.profiles ?? {}));
   const send = document.createElement("button");
@@ -204,7 +225,8 @@ function handleDom(handle: string, color: string): HTMLElement {
   const el = document.createElement("span");
   el.className = "md-comment-handle";
   el.style.color = color;
-  el.textContent = `@${handle}`;
+  el.textContent = `@${shortHandle(handle)}`;
+  el.title = `@${handle}`;
   return el;
 }
 

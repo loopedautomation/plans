@@ -110,6 +110,13 @@ export function installFakeBackend(
      * is that the tree follows the rooms and that the chat runs in it.
      */
     scratch: {} as Record<string, { path: string; kind: string; text?: string }[]>,
+    /**
+     * Edits made in a scratch folder from outside — an agent's shell writing
+     * a file — as the Rust side would find them on the next write of the
+     * tree. A test plants one; the app is expected to turn it into an edit
+     * of the room. Handed over once, as the real one reports each change once.
+     */
+    scratchOutside: {} as Record<string, { path: string; text: string }[]>,
     /** Answers to the agent's reads and writes of workspace files. */
     fsReplies: [] as { requestId: string; content: string | null }[],
     /** URLs handed to the platform to open in a browser. */
@@ -232,7 +239,9 @@ export function installFakeBackend(
     },
     workspace_scratch: ({ id, files }) => {
       state.scratch[id] = files;
-      return `/scratch/${id}`;
+      const changed = state.scratchOutside[id] ?? [];
+      delete state.scratchOutside[id];
+      return { dir: `/scratch/${id}`, changed };
     },
     workspace_scratch_forget: ({ id }) => {
       delete state.scratch[id];

@@ -481,13 +481,17 @@ export const api = {
   /**
    * Write a workspace's tree into its scratch folder and answer with the
    * folder, which is the working directory a chat in that workspace starts
-   * its agent in. Called again on every change, with the whole tree.
+   * its agent in, and with every file found changed on disk since the last
+   * write — an agent's shell edit, which belongs in the room. Called again
+   * on every change, with the whole tree.
    */
   workspaceScratch: (id: string, files: ScratchFile[]) =>
-    invoke<string>("workspace_scratch", { id, files }),
+    invoke<ScratchOut>("workspace_scratch", { id, files }),
   /** Stop routing the folder's reads and writes to the room. */
   workspaceScratchForget: (id: string) => invoke<null>("workspace_scratch_forget", { id }),
 };
 
 /** One line of a workspace's tree, as the scratch folder is written from it. */
 export type ScratchFile = { path: string; kind: "file" | "folder"; text?: string };
+/** A write of the tree's answer: the folder, and what was changed there from outside. */
+export type ScratchOut = { dir: string; changed: { path: string; text: string }[] };

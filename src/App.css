@@ -1927,6 +1927,72 @@ diffs-container {
   white-space: nowrap;
 }
 
+/* --- members ------------------------------------------------------------ */
+
+.members-sheet:focus { outline: 0; }
+.members-sheet .name-path {
+  white-space: normal;
+  line-height: 1.5;
+}
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 16px;
+}
+.member-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.member-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-login {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-note {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.member-note.on { color: var(--accent); border-color: var(--accent); }
+.member-acts {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.member-invite {
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+  padding: 12px 16px;
+}
+
 /* --- dragging the sidebar's edge ---------------------------------------- */
 
 .files-edge {
@@ -2108,6 +2174,23 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
 .source .cm-scroller::-webkit-scrollbar-thumb:hover { background-color: var(--ink-3); background-clip: content-box; }
 .editor-host::-webkit-scrollbar-track,
 .source .cm-scroller::-webkit-scrollbar-track { background: transparent; }
+
+/* And a table wider than the page, which scrolls inside its own block: a bar
+   along the bottom, or a table cut at the right edge looks like a table that
+   ends there. */
+.editor-host .milkdown-table-block {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+.editor-host .milkdown-table-block::-webkit-scrollbar { width: 0; height: 9px; display: block; }
+.editor-host .milkdown-table-block::-webkit-scrollbar-thumb {
+  background: var(--rule-strong);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.editor-host .milkdown-table-block::-webkit-scrollbar-thumb:hover { background-color: var(--ink-3); background-clip: content-box; }
+.editor-host .milkdown-table-block::-webkit-scrollbar-track { background: transparent; }
 
 /* The page and the source both stay mounted; the one you are not looking at
    is set aside rather than torn down, so switching is instant. */
@@ -2640,6 +2723,54 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
 .chat-tool.failed .chat-tool-dot { background: var(--diff-del); }
 .chat-tool.interrupted .chat-tool-dot { background: transparent; box-shadow: inset 0 0 0 1px var(--ink-3); }
 .chat-tool .chat-where { color: var(--ink-3); opacity: 0.75; }
+
+/*
+ * A run of steps, as one line.
+ *
+ * Tool calls and thoughts arrive in runs, and a run is one thing to a reader:
+ * the agent is working, and this is what it is doing right now. So the run
+ * is a summary line that keeps updating — the latest step, the count — and
+ * opens to the list. The marker is the count; the browser's own triangle
+ * would be a second one.
+ */
+.chat-steps { display: flex; flex-direction: column; gap: 4px; }
+.chat-steps > summary { list-style: none; }
+.chat-steps > summary::-webkit-details-marker { display: none; }
+.chat-steps-now {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.chat-steps-now .chat-tool-dot { align-self: center; }
+.chat-steps-now.pending .chat-tool-dot,
+.chat-steps-now.in_progress .chat-tool-dot { background: var(--git-mod); }
+.chat-steps-now.completed .chat-tool-dot { background: var(--git-new); }
+.chat-steps-now.failed .chat-tool-dot { background: var(--diff-del); }
+.chat-steps-now.interrupted .chat-tool-dot { background: transparent; box-shadow: inset 0 0 0 1px var(--ink-3); }
+.chat-steps-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-steps-count { margin-left: auto; flex: none; opacity: 0.7; }
+.chat-steps-count::after { content: " ▸"; }
+.chat-steps[open] .chat-steps-count::after { content: " ▾"; }
+/* Opened, the list is the steps; the summary keeps its place as the head. */
+.chat-steps[open] > .chat-tool,
+.chat-steps[open] > .chat-thought { margin-left: 10px; }
+
+/* A message taken but not yet sent: it is where it will go, and says so. */
+.chat-msg.user.queued { opacity: 0.7; border-style: dashed; }
+.chat-queued {
+  display: block;
+  margin-top: 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
 
 /* Reasoning, folded away: it is available, not in the way. */
 .chat-thought {

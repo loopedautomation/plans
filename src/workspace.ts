@@ -203,6 +203,11 @@ export const workspace = {
   invite: (id: string, login: string) => call<Workspace>(`/workspaces/${id}/members`, { body: { login } }),
   /** Walk out of a workspace someone else made. */
   leave: (id: string) => call<{ ok: true }>(`/workspaces/${id}/members/me`, { method: "DELETE" }),
+  /** Put someone out of a workspace you own. Their open editors close at once. */
+  removeMember: (id: string, login: string) =>
+    call<Workspace>(`/workspaces/${id}/members/${encodeURIComponent(login)}`, { method: "DELETE" }),
+  /** Make another member the owner; you become an ordinary member who can leave. */
+  handOver: (id: string, login: string) => call<Workspace>(`/workspaces/${id}`, { method: "PATCH", body: { owner: login } }),
   /** Delete a workspace you made: its files, its members, its pages. */
   remove: (id: string) => call<{ ok: true }>(`/workspaces/${id}`, { method: "DELETE" }),
   /**
@@ -245,7 +250,7 @@ export const workspace = {
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
 
-export type Presence = { name: string; color: string; avatar?: string | null };
+export type Presence = { name: string; color: string; avatar?: string | null; login?: string };
 
 /** Someone in a room, and — on a workspace's tree room — which file they are in. */
 export type Present = Presence & { at: string | null };
@@ -281,6 +286,12 @@ export type Room = {
   onSynced: (fn: () => void) => () => void;
   onStatus: (fn: (s: "connecting" | "open" | "closed") => void) => () => void;
   status: "connecting" | "open" | "closed";
+  /**
+   * Why the room will not come back, once it will not: the workspace was
+   * deleted, or this person was removed from it. Set before the closed
+   * status is announced, so a status listener can read it.
+   */
+  gone: "deleted" | "removed" | null;
   close: () => void;
 };
 
@@ -323,6 +334,7 @@ export function openRoom(id: string, workspaceId: string, session: string, me: P
     awareness,
     synced: false,
     status: "connecting",
+    gone: null,
     onSynced: (fn) => (syncedFns.add(fn), () => syncedFns.delete(fn)),
     onStatus: (fn) => (statusFns.add(fn), () => statusFns.delete(fn)),
     close: () => {
@@ -404,8 +416,11 @@ export function openRoom(id: string, workspaceId: string, session: string, me: P
 
     sock.onclose = (ev: CloseEvent) => {
       if (ws === sock) ws = null;
-      // 4001 is the server saying the workspace is gone: nothing to come back to.
-      if (ev.code === 4001) closed = true;
+      // 4001 is the server saying the workspace is gone, 4003 that we were
+      // removed from it: either way there is nothing to come back to.
+      if (ev.code === 4001) room.gone = "deleted";
+      if (ev.code === 4003) room.gone = "removed";
+      if (room.gone) closed = true;
       setStatus("closed");
       if (closed) return;
       // Others' cursors are stale the moment the line drops.

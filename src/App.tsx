@@ -96,8 +96,14 @@ import {
 } from "./workspace";
 import { Workspaces } from "./Workspaces";
 import { Avatar, Faces } from "./Avatar";
-import { shareKey, sharedPages, saveSharedPages, type SharedPages } from "./shared";
+import {
+  shareKey,
+  sharedPages,
+  saveSharedPages,
+  type SharedPages,
+} from "./shared";
 import { ShareSheet } from "./ShareSheet";
+import { MembersSheet } from "./MembersSheet";
 import { SignInSheet } from "./SignInSheet";
 import { MoveSheet } from "./MoveSheet";
 import { TextPrompt } from "./TextPrompt";
@@ -106,7 +112,13 @@ import { FindBar } from "./FindBar";
 import { nearestMatchIndex, type FindHandle } from "./find";
 import { UpdateBanner } from "./UpdateBanner";
 import { RELEASE_SECTIONS, RELEASE_VERSION } from "./release-notes";
-import { checkForUpdate, installUpdate, isNewer, runningVersion, type Available } from "./update";
+import {
+  checkForUpdate,
+  installUpdate,
+  isNewer,
+  runningVersion,
+  type Available,
+} from "./update";
 import { PerfHud } from "./PerfHud";
 import { start, tick, timed, trace } from "./perf";
 import { confirmed } from "./confirm";
@@ -248,7 +260,10 @@ function settled(room: Room, ms = 4000): Promise<void> {
 
 /** A file name as a heading: "auth-plan.md" is a document called "Auth plan". */
 const titleOf = (name: string) => {
-  const bare = name.replace(/\.(md|markdown)$/i, "").replace(/[-_]+/g, " ").trim();
+  const bare = name
+    .replace(/\.(md|markdown)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
   return bare ? bare[0].toUpperCase() + bare.slice(1) : name;
 };
 
@@ -286,12 +301,12 @@ function sameFiles(
     const y = b[k];
     if (!y || x.length !== y.length) return false;
     for (let i = 0; i < x.length; i++) {
-      if (x[i].relPath !== y[i].relPath || x[i].modified !== y[i].modified) return false;
+      if (x[i].relPath !== y[i].relPath || x[i].modified !== y[i].modified)
+        return false;
     }
   }
   return true;
 }
-
 
 function sameStatus(
   a: Record<string, GitStatus>,
@@ -306,19 +321,20 @@ function sameStatus(
     // new status against a `prev[repo]` that is undefined the first time it
     // runs, and "nothing" is never the same as "something".
     if (!x || !y) return false;
-    if (x.branch !== y.branch || x.ahead !== y.ahead || x.behind !== y.behind) return false;
+    if (x.branch !== y.branch || x.ahead !== y.ahead || x.behind !== y.behind)
+      return false;
     if (x.entries.length !== y.entries.length) return false;
     for (let i = 0; i < x.entries.length; i++) {
       const p = x.entries[i];
       const q = y.entries[i];
-      if (p.path !== q.path || p.index !== q.index || p.worktree !== q.worktree) return false;
+      if (p.path !== q.path || p.index !== q.index || p.worktree !== q.worktree)
+        return false;
     }
   }
   return true;
 }
 
 type Toast = { text: string; kind: "info" | "error" } | null;
-
 
 /**
  * A slider fires a change per step; one event per press is what's wanted. The
@@ -358,7 +374,8 @@ export default function App() {
         if (patch.showGit && next.showMux) next.showMux = false;
         if (patch.showMux && next.showGit) next.showGit = false;
         // Moving the chat to the side with both open: the chat is what moved.
-        if (patch.chatPlace === "side" && next.showGit && next.showMux) next.showGit = false;
+        if (patch.chatPlace === "side" && next.showGit && next.showMux)
+          next.showGit = false;
       }
       return next;
     });
@@ -383,13 +400,19 @@ export default function App() {
   /** The repositories as the UI shows them — the alias, where one is set. */
   const shownRepos = useMemo(
     () =>
-      repos.map((r) => (repoNames[r.path] ? { ...r, name: repoNames[r.path] } : r)),
+      repos.map((r) =>
+        repoNames[r.path] ? { ...r, name: repoNames[r.path] } : r,
+      ),
     [repos, repoNames],
   );
   const [activeRepoPath, setActiveRepoPath] = useState<string | null>(null);
   // Every open repo is in the tree at once, so files and status are per-repo.
-  const [filesByRepo, setFilesByRepo] = useState<Record<string, PlanFile[]>>({});
-  const [statusByRepo, setStatusByRepo] = useState<Record<string, GitStatus>>({});
+  const [filesByRepo, setFilesByRepo] = useState<Record<string, PlanFile[]>>(
+    {},
+  );
+  const [statusByRepo, setStatusByRepo] = useState<Record<string, GitStatus>>(
+    {},
+  );
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [activePath, setActivePath] = useState<string | null>(null);
   /** The prose only — frontmatter is held apart in `matter`. */
@@ -409,7 +432,10 @@ export default function App() {
   /** The Keyboard page, which lives beside Settings and shows in its place. */
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [epoch, setEpoch] = useState(0);
-  const [palette, setPalette] = useState<null | { commands: boolean; text?: boolean }>(null);
+  const [palette, setPalette] = useState<null | {
+    commands: boolean;
+    text?: boolean;
+  }>(null);
   /** So the open path can call itself once after refreshing a stale tree. */
   const openFileRef = useRef<
     ((repo: string, path: string, retrying?: boolean) => Promise<void>) | null
@@ -468,7 +494,8 @@ export default function App() {
    *  clamps to "source" for it — memory buffers excepted, since those are
    *  Write-only prose of the app's own making. */
   const storedView: View =
-    tabs.find((t) => t.repo === activeRepoPath && t.path === activePath)?.view ?? "write";
+    tabs.find((t) => t.repo === activeRepoPath && t.path === activePath)
+      ?.view ?? "write";
   const view: View =
     storedView === "write" &&
     activePath &&
@@ -480,7 +507,9 @@ export default function App() {
     (next: View) => {
       setTabs((prev) =>
         prev.map((t) =>
-          t.repo === activeRepoPath && t.path === activePath ? { ...t, view: next } : t,
+          t.repo === activeRepoPath && t.path === activePath
+            ? { ...t, view: next }
+            : t,
         ),
       );
     },
@@ -548,14 +577,17 @@ export default function App() {
       const id = wsIdOf(repo);
       const entries = id ? (wsTreesRef.current[id] ?? []) : null;
       const seen = new Set<string>(
-        entries ? entries.filter((e) => e.kind === "folder").map((e) => e.path) : (emptyDirs[repo] ?? []),
+        entries
+          ? entries.filter((e) => e.kind === "folder").map((e) => e.path)
+          : (emptyDirs[repo] ?? []),
       );
       const files = entries
         ? entries.filter((e) => e.kind === "file").map((e) => e.path)
         : (filesByRepo[repo] ?? []).map((f) => f.relPath);
       for (const relPath of files) {
         const parts = relPath.split("/");
-        for (let i = 1; i < parts.length; i++) seen.add(parts.slice(0, i).join("/"));
+        for (let i = 1; i < parts.length; i++)
+          seen.add(parts.slice(0, i).join("/"));
       }
       return [...seen].sort();
     },
@@ -567,7 +599,8 @@ export default function App() {
     const seen = new Set<string>(emptyDirs[naming.repo] ?? []);
     for (const f of filesByRepo[naming.repo] ?? []) {
       const parts = f.relPath.split("/");
-      for (let i = 1; i < parts.length; i++) seen.add(parts.slice(0, i).join("/"));
+      for (let i = 1; i < parts.length; i++)
+        seen.add(parts.slice(0, i).join("/"));
     }
     return [...seen].sort();
   }, [naming, filesByRepo, emptyDirs]);
@@ -577,7 +610,10 @@ export default function App() {
   const treeDirs = useMemo(() => {
     if (!Object.keys(diskDirs).length) return emptyDirs;
     const out: Record<string, string[]> = {};
-    for (const r of new Set([...Object.keys(emptyDirs), ...Object.keys(diskDirs)]))
+    for (const r of new Set([
+      ...Object.keys(emptyDirs),
+      ...Object.keys(diskDirs),
+    ]))
       out[r] = [...new Set([...(emptyDirs[r] ?? []), ...(diskDirs[r] ?? [])])];
     return out;
   }, [emptyDirs, diskDirs]);
@@ -591,18 +627,24 @@ export default function App() {
    * offers what was true at the moment of the click rather than at the moment
    * of the press — clicking an item moves focus, and the selection with it.
    */
-  const [pageMenu, setPageMenu] = useState<null | { x: number; y: number; selection: string }>(
-    null,
-  );
+  const [pageMenu, setPageMenu] = useState<null | {
+    x: number;
+    y: number;
+    selection: string;
+  }>(null);
   /**
    * The window's own size, watched so the app can say when it has been made
    * too small to draw. Only the two numbers are kept: `TooSmall` is the only
    * reader, and re-rendering the page on every resize frame to feed it would
    * cost more than the panel it draws.
    */
-  const [winSize, setWinSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const [winSize, setWinSize] = useState({
+    w: window.innerWidth,
+    h: window.innerHeight,
+  });
   useEffect(() => {
-    const onResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight });
+    const onResize = () =>
+      setWinSize({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener("resize", onResize);
     onResize();
     return () => window.removeEventListener("resize", onResize);
@@ -627,7 +669,9 @@ export default function App() {
   useRovingFocus(pageMenuRef, { selector: ".ctx-item", active: !!pageMenu });
   useFocusTrap(pageMenuRef, !!pageMenu);
   /** A file being moved, which is a different question from being renamed. */
-  const [moving, setMoving] = useState<null | { repo: string; path: string }>(null);
+  const [moving, setMoving] = useState<null | { repo: string; path: string }>(
+    null,
+  );
   /**
    * The buffer model, in the manner of vim: the file is never locked, and what
    * we hold is a copy taken at `stamp`. Anything else — an agent in a terminal,
@@ -646,11 +690,13 @@ export default function App() {
    * newline, so without this every file gains a "\ No newline at end of file"
    * the first time it is saved.
    */
-  const original = useRef<{ matter: string | null; raw: string; eol: boolean }>({
-    matter: null,
-    raw: "",
-    eol: true,
-  });
+  const original = useRef<{ matter: string | null; raw: string; eol: boolean }>(
+    {
+      matter: null,
+      raw: "",
+      eol: true,
+    },
+  );
   const [conflict, setConflict] = useState<null | { theirs: string }>(null);
 
   // --- updates -------------------------------------------------------------
@@ -688,7 +734,8 @@ export default function App() {
   const [roomTick, setRoomTick] = useState(0);
   /** A workspace being named, invited to, or copied out. */
   const [wsNaming, setWsNaming] = useState(false);
-  const [wsInviting, setWsInviting] = useState<string | null>(null);
+  /** The workspace whose members sheet is open. */
+  const [wsMembers, setWsMembers] = useState<string | null>(null);
   const [wsCopying, setWsCopying] = useState<null | {
     id: string;
     path: string;
@@ -708,7 +755,9 @@ export default function App() {
     ((seen: string | null, running: string) => Promise<void>) | null
   >(null);
   /** Closing a tab is defined below what a workspace's delete needs it for. */
-  const closeTabRef = useRef<((repo: string, path: string) => Promise<void>) | null>(null);
+  const closeTabRef = useRef<
+    ((repo: string, path: string) => Promise<void>) | null
+  >(null);
   /** What is actually running, which is not always what was bundled with. */
   const [appVersion, setAppVersion] = useState(RELEASE_VERSION);
 
@@ -717,16 +766,23 @@ export default function App() {
    * repo plus access to it has everything collaboration needs; sign-in is
    * `git config`, where it always was. Fetched once per repo and kept.
    */
-  const [identityByRepo, setIdentityByRepo] = useState<Record<string, string>>({});
+  const [identityByRepo, setIdentityByRepo] = useState<Record<string, string>>(
+    {},
+  );
   useEffect(() => {
-    for (const r of repos) {
-      if (identityByRepo[r.path] !== undefined) continue;
-      void api.gitIdentity(r.path).then(
-        (id) => setIdentityByRepo((m) => ({ ...m, [r.path]: authorSlug(id.name) })),
-        () => setIdentityByRepo((m) => ({ ...m, [r.path]: "" })),
+    // A workspace's scratch folder is asked too: it is no repository, but
+    // `git config` answers from the global config outside one, which is the
+    // name "sign comments as git" wants there.
+    const dirs = [...repos.map((r) => r.path), ...Object.values(scratchDirs)];
+    for (const dir of dirs) {
+      if (identityByRepo[dir] !== undefined) continue;
+      void api.gitIdentity(dir).then(
+        (id) =>
+          setIdentityByRepo((m) => ({ ...m, [dir]: authorSlug(id.name) })),
+        () => setIdentityByRepo((m) => ({ ...m, [dir]: "" })),
       );
     }
-  }, [repos, identityByRepo]);
+  }, [repos, scratchDirs, identityByRepo]);
 
   const activeRepo = useMemo(
     () => repos.find((r) => r.path === activeRepoPath) ?? null,
@@ -753,7 +809,11 @@ export default function App() {
    * offered there.
    */
   const activeWsId = wsIdOf(activePath);
-  const chatRepo = activeRepo ? activeRepo.path : activeWsId ? (scratchDirs[activeWsId] ?? null) : null;
+  const chatRepo = activeRepo
+    ? activeRepo.path
+    : activeWsId
+      ? (scratchDirs[activeWsId] ?? null)
+      : null;
 
   // Kept in step during render, like `openFileRef` below it.
   activeRef.current = { repo: activeRepoPath, path: activePath };
@@ -794,8 +854,10 @@ export default function App() {
     const id = wsIdOf(activePath);
     return id ? (workspaces.find((w) => w.id === id) ?? null) : null;
   }, [activePath, workspaces]);
-  const author = wsIdOf(activePath)
-    ? (account?.login ?? "")
+  const author = activeWsId
+    ? settings.commentSigner === "git"
+      ? (identityByRepo[scratchDirs[activeWsId] ?? ""] ?? "")
+      : (account?.login ?? "")
     : activeRepoPath
       ? (identityByRepo[activeRepoPath] ?? "")
       : "";
@@ -803,8 +865,10 @@ export default function App() {
   const activeProfiles = useMemo(() => {
     if (!activeWorkspace) return undefined;
     const out: Record<string, Profile> = {};
-    for (const p of activeWorkspace.profiles ?? []) out[p.login.toLowerCase()] = p;
-    for (const login of activeWorkspace.members) out[login.toLowerCase()] ??= { login, name: null, avatar: null };
+    for (const p of activeWorkspace.profiles ?? [])
+      out[p.login.toLowerCase()] = p;
+    for (const login of activeWorkspace.members)
+      out[login.toLowerCase()] ??= { login, name: null, avatar: null };
     return out;
   }, [activeWorkspace]);
 
@@ -815,12 +879,13 @@ export default function App() {
   const newComment = useCallback(() => {
     const me = author;
     const inWorkspace = !!wsIdOf(activePath);
+    const byAccount = inWorkspace && settings.commentSigner !== "git";
     setAsking({
       title: "New comment",
       placeholder: "What needs saying?",
       note: me
         ? `Lands at the cursor, as <!-- @${me}: … -->, signed with ${
-            inWorkspace ? "your account" : "git's name here"
+            byAccount ? "your account" : "git's name here"
           }. ⌘⇧M from anywhere in the page.`
         : "Lands at the cursor as an HTML comment. git config user.name would sign it.",
       confirm: "Comment",
@@ -829,15 +894,20 @@ export default function App() {
       run: (value) => {
         const text = value.trim();
         if (!text) return;
-        htmlBridge.comment?.(me ? `<!-- @${me}: ${text} -->` : `<!-- ${text} -->`);
+        htmlBridge.comment?.(
+          me ? `<!-- @${me}: ${text} -->` : `<!-- ${text} -->`,
+        );
       },
     });
-  }, [author, activePath, activeProfiles]);
+  }, [author, activePath, activeProfiles, settings.commentSigner]);
 
-  const notify = useCallback((text: string, kind: "info" | "error" = "info") => {
-    setToast({ text, kind });
-    setTimeout(() => setToast(null), kind === "error" ? 6000 : 2200);
-  }, []);
+  const notify = useCallback(
+    (text: string, kind: "info" | "error" = "info") => {
+      setToast({ text, kind });
+      setTimeout(() => setToast(null), kind === "error" ? 6000 : 2200);
+    },
+    [],
+  );
 
   /**
    * Each view change reports where the reader came from and how long they
@@ -978,7 +1048,10 @@ export default function App() {
           } catch {
             if (!settingsBroken.current) {
               settingsBroken.current = true;
-              notify("settings.json doesn't parse — keeping the last settings", "error");
+              notify(
+                "settings.json doesn't parse — keeping the last settings",
+                "error",
+              );
             }
             return;
           }
@@ -986,7 +1059,10 @@ export default function App() {
           settingsExtras.current = parsed.extras;
           // The text on disk is theirs, not ours: recording what we would have
           // written stops the save effect from reformatting it straight back.
-          settingsText.current = serializeSettings(parsed.settings, parsed.extras);
+          settingsText.current = serializeSettings(
+            parsed.settings,
+            parsed.extras,
+          );
           // A knob turned in a text editor is a knob turned. Which ones matter
           // is the whole point of the counter, and a shallow compare over the
           // known keys is all the diffing that honesty needs here.
@@ -1035,13 +1111,17 @@ export default function App() {
         // reads as a broken one.
         if (!(await api.updatesPossible())) {
           if (asked)
-            notify("This copy is managed by your package manager — update it from there");
+            notify(
+              "This copy is managed by your package manager — update it from there",
+            );
           return;
         }
         const found = await checkForUpdate();
         if (found) setUpdate(found);
         else if (asked)
-          notify(`Looped Plans ${await runningVersion()} is the latest version`);
+          notify(
+            `Looped Plans ${await runningVersion()} is the latest version`,
+          );
       } catch (e) {
         if (asked) notify(String(e), "error");
       }
@@ -1055,7 +1135,10 @@ export default function App() {
   useEffect(() => {
     if (settings.updates === "off") return;
     const first = setTimeout(() => void lookForUpdate(false), 8_000);
-    const every = setInterval(() => void lookForUpdate(false), 6 * 60 * 60 * 1000);
+    const every = setInterval(
+      () => void lookForUpdate(false),
+      6 * 60 * 60 * 1000,
+    );
     return () => {
       clearTimeout(first);
       clearInterval(every);
@@ -1137,19 +1220,22 @@ export default function App() {
   useEffect(() => {
     const paths = stored<string[]>(KEY.repos, []);
     if (!paths.length) return;
-    Promise.all(paths.map((p) => api.openRepo(p).catch(() => null))).then((rs) => {
-      const ok = rs.filter(Boolean) as RepoInfo[];
-      setRepos(ok);
-      reposBooted.current = true;
-      // One clean sample per launch of how many repositories come back.
-      track("repos_restored", { repos: ok.length });
-      const last = stored<string | null>(KEY.last, null);
-      const active = ok.find((r) => r.path === last)?.path ?? ok[0]?.path ?? null;
-      setActiveRepoPath(active);
-      // Open the repository being worked in, so the app starts with its files
-      // in view rather than with a collapsed row and nothing to read.
-      if (active) setExpanded((prev) => new Set(prev).add(`${active}::`));
-    });
+    Promise.all(paths.map((p) => api.openRepo(p).catch(() => null))).then(
+      (rs) => {
+        const ok = rs.filter(Boolean) as RepoInfo[];
+        setRepos(ok);
+        reposBooted.current = true;
+        // One clean sample per launch of how many repositories come back.
+        track("repos_restored", { repos: ok.length });
+        const last = stored<string | null>(KEY.last, null);
+        const active =
+          ok.find((r) => r.path === last)?.path ?? ok[0]?.path ?? null;
+        setActiveRepoPath(active);
+        // Open the repository being worked in, so the app starts with its files
+        // in view rather than with a collapsed row and nothing to read.
+        if (active) setExpanded((prev) => new Set(prev).add(`${active}::`));
+      },
+    );
   }, []);
 
   // A repository named on the command line: `plans .` at launch hands its
@@ -1194,7 +1280,10 @@ export default function App() {
       setTemplates(found.templates);
       setTemplatesDir(found.dir);
       if (found.skipped.length) {
-        notify(`Skipped ${found.skipped.join(", ")}: no name in the frontmatter`, "error");
+        notify(
+          `Skipped ${found.skipped.join(", ")}: no name in the frontmatter`,
+          "error",
+        );
       }
     });
   }, [notify]);
@@ -1218,7 +1307,8 @@ export default function App() {
     // The file is the list every build of the app reads; the window's own
     // storage is only the first-launch seed and a fallback.
     if (!reposBooted.current) return;
-    if (paths.join("\n") !== settingsRef.current.repos.join("\n")) set({ repos: paths });
+    if (paths.join("\n") !== settingsRef.current.repos.join("\n"))
+      set({ repos: paths });
   }, [repos, set]);
 
   /**
@@ -1236,17 +1326,22 @@ export default function App() {
     if (!want.length) return;
     const have = new Set(repos.map((r) => r.path));
     const missing = want.filter((p) => !have.has(p));
-    const extra = repos.filter((r) => !want.includes(r.path)).map((r) => r.path);
+    const extra = repos
+      .filter((r) => !want.includes(r.path))
+      .map((r) => r.path);
     if (!missing.length && !extra.length) return;
     void (async () => {
-      const opened = (await Promise.all(missing.map((p) => api.openRepo(p).catch(() => null)))).filter(
-        Boolean,
-      ) as RepoInfo[];
+      const opened = (
+        await Promise.all(missing.map((p) => api.openRepo(p).catch(() => null)))
+      ).filter(Boolean) as RepoInfo[];
       setRepos((prev) => {
         const kept = prev.filter((r) => !extra.includes(r.path));
         const byPath = new Map([...kept, ...opened].map((r) => [r.path, r]));
         // In the file's order, with anything the file does not know last.
-        return [...want.map((p) => byPath.get(p)).filter(Boolean), ...kept.filter((r) => !want.includes(r.path))] as RepoInfo[];
+        return [
+          ...want.map((p) => byPath.get(p)).filter(Boolean),
+          ...kept.filter((r) => !want.includes(r.path)),
+        ] as RepoInfo[];
       });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1259,7 +1354,10 @@ export default function App() {
   useEffect(() => {
     // Memory buffers are not restored: their text lives only in this window,
     // so a tab pointing at one would come back empty and unopenable.
-    localStorage.setItem(KEY.tabs, JSON.stringify(tabs.filter((t) => t.repo !== MEMORY)));
+    localStorage.setItem(
+      KEY.tabs,
+      JSON.stringify(tabs.filter((t) => t.repo !== MEMORY)),
+    );
   }, [tabs]);
 
   useEffect(() => {
@@ -1277,7 +1375,9 @@ export default function App() {
           next[repo] = dirs;
           continue;
         }
-        const kept = dirs.filter((d) => !files.some((f) => f.relPath.startsWith(`${d}/`)));
+        const kept = dirs.filter(
+          (d) => !files.some((f) => f.relPath.startsWith(`${d}/`)),
+        );
         if (kept.length !== dirs.length) changed = true;
         if (kept.length) next[repo] = kept;
       }
@@ -1286,7 +1386,8 @@ export default function App() {
   }, [filesByRepo]);
 
   useEffect(() => {
-    if (activeRepoPath) localStorage.setItem(KEY.last, JSON.stringify(activeRepoPath));
+    if (activeRepoPath)
+      localStorage.setItem(KEY.last, JSON.stringify(activeRepoPath));
   }, [activeRepoPath]);
 
   // --- data ----------------------------------------------------------------
@@ -1301,7 +1402,12 @@ export default function App() {
       try {
         got.push([
           r.path,
-          await api.listPlans(r.path, [""], settings.showIgnored, !settings.showAllFiles),
+          await api.listPlans(
+            r.path,
+            [""],
+            settings.showIgnored,
+            !settings.showAllFiles,
+          ),
         ] as const);
       } catch {
         got.push([r.path, []] as const);
@@ -1373,7 +1479,9 @@ export default function App() {
     try {
       const st = await api.gitStatus(repo, []);
       setStatusByRepo((prev) =>
-        sameStatus({ [repo]: prev[repo] }, { [repo]: st }) ? prev : { ...prev, [repo]: st },
+        sameStatus({ [repo]: prev[repo] }, { [repo]: st })
+          ? prev
+          : { ...prev, [repo]: st },
       );
     } catch {
       /* the next poll will pick it up */
@@ -1480,7 +1588,10 @@ export default function App() {
    * delete/delete — the cases where neither `index` nor `worktree` is `U`.
    */
   const conflicted = (e: StatusEntry) =>
-    e.index === "U" || e.worktree === "U" || e.index + e.worktree === "AA" || e.index + e.worktree === "DD";
+    e.index === "U" ||
+    e.worktree === "U" ||
+    e.index + e.worktree === "AA" ||
+    e.index + e.worktree === "DD";
 
   /** "<repo>::<path>" -> mark, so the tree carries git state with the panel closed. */
   const marks = useMemo(() => {
@@ -1500,11 +1611,18 @@ export default function App() {
   }, [statusByRepo]);
 
   /**
-   * Start the agent on the open plan, as the first message of its chat.
+   * Start the agent on the open plan, as the first message of a chat of its
+   * own.
    *
    * The prompt is the same instruction the tmux template carried; the
    * difference is where the run lives. Nothing is committed and nothing is
    * watched from here: the agent writes files and the poll notices.
+   *
+   * Its own chat, because a handoff is a job with a start and an end, and it
+   * used to land in whichever conversation happened to be on screen — on top
+   * of a discussion about something else, or into a turn still running. A
+   * conversation nobody has said anything in yet is taken as it is rather
+   * than stacked under a second empty one.
    */
   const handOff = useCallback(
     async (kind: HandoffKind, repo?: string, path?: string) => {
@@ -1516,7 +1634,19 @@ export default function App() {
       // conversation.
       // Through the ref: `openFile` is declared further down, and this is the
       // same indirection the stale-tree retry already uses.
-      if (r !== activeRepoPath || f !== activePath) await openFileRef.current?.(r, f);
+      if (r !== activeRepoPath || f !== activePath)
+        await openFileRef.current?.(r, f);
+      // Where the file's chats live: the repository, or a workspace's scratch
+      // folder. Worked out from the file rather than read from `chatRepo`,
+      // which may not have moved yet after the open above.
+      const ws = wsIdOf(f);
+      const home = ws ? (scratchDirs[ws] ?? null) : r;
+      if (home) {
+        const had = loadChats(home);
+        const next = chatSize(home, had.current) === 0 ? had : startedChat(had);
+        saveChats(home, next);
+        setChats(next);
+      }
       const prompt =
         kind === "implement"
           ? settings.implementPrompt || IMPLEMENT_PROMPT
@@ -1524,7 +1654,14 @@ export default function App() {
       setChatSeed(prompt.replace(/\{file\}/g, f));
       set({ showMux: true });
     },
-    [activeRepoPath, activePath, set, settings.handoffPrompt, settings.implementPrompt],
+    [
+      activeRepoPath,
+      activePath,
+      scratchDirs,
+      set,
+      settings.handoffPrompt,
+      settings.implementPrompt,
+    ],
   );
 
   /**
@@ -1556,7 +1693,6 @@ export default function App() {
     );
   }, [activePath, settings.agentCommand, notify]);
 
-
   const changeCount = status?.entries.length ?? 0;
   /** Git's answer once status has been read, the repo's own until then. */
   const branch = status?.branch ?? activeRepo?.branch ?? "";
@@ -1566,7 +1702,8 @@ export default function App() {
    * which is not something to do on a timer for a list nobody has opened.
    */
   useEffect(() => {
-    if (!activeRepoPath || (!palette && !settings.showGit && !wantBranches)) return;
+    if (!activeRepoPath || (!palette && !settings.showGit && !wantBranches))
+      return;
     let live = true;
     setBranchesLoading(true);
     api
@@ -1585,7 +1722,14 @@ export default function App() {
     return () => {
       live = false;
     };
-  }, [activeRepoPath, status?.branch, epoch, palette, settings.showGit, wantBranches]);
+  }, [
+    activeRepoPath,
+    status?.branch,
+    epoch,
+    palette,
+    settings.showGit,
+    wantBranches,
+  ]);
 
   // --- repos ---------------------------------------------------------------
   const addRepo = useCallback(async () => {
@@ -1701,9 +1845,9 @@ export default function App() {
    * app already puts facts about the thing you are working in. It also means
    * the reading survives the panel being closed.
    */
-  const [usage, setUsage] = useState<Record<string, { used: number; size: number; cost?: number }>>(
-    {},
-  );
+  const [usage, setUsage] = useState<
+    Record<string, { used: number; size: number; cost?: number }>
+  >({});
 
   /**
    * The active repository's conversations.
@@ -1712,7 +1856,9 @@ export default function App() {
    * ones its picker does, and two copies of that list would be two chances to
    * disagree about which chat you are in.
    */
-  const [chats, setChats] = useState<ChatIndex>(() => loadChats(chatRepo ?? ""));
+  const [chats, setChats] = useState<ChatIndex>(() =>
+    loadChats(chatRepo ?? ""),
+  );
   useEffect(() => {
     setChats(loadChats(chatRepo ?? ""));
   }, [chatRepo]);
@@ -1725,9 +1871,9 @@ export default function App() {
    * one, "opus" for another), so with no session advertising options there
    * are no commands, and the keys are set by hand in the frontmatter sheet.
    */
-  const [agentOptionsBy, setAgentOptionsBy] = useState<Map<string, ConfigOption[]>>(
-    () => new Map(),
-  );
+  const [agentOptionsBy, setAgentOptionsBy] = useState<
+    Map<string, ConfigOption[]>
+  >(() => new Map());
   useEffect(() => {
     // One listener for the app's lifetime, keeping every session's options:
     // the event fires once when a session opens, so a listener scoped to the
@@ -1737,7 +1883,10 @@ export default function App() {
       "agent-config",
       (e) =>
         setAgentOptionsBy((m) =>
-          new Map(m).set(`${e.payload.repo}\n${e.payload.chat}`, e.payload.options ?? []),
+          new Map(m).set(
+            `${e.payload.repo}\n${e.payload.chat}`,
+            e.payload.options ?? [],
+          ),
         ),
     );
     return () => void un.then((f) => f());
@@ -1745,8 +1894,13 @@ export default function App() {
   const routingChoices = useMemo(() => {
     const opts = agentOptionsBy.get(`${chatRepo}\n${chats.current}`) ?? [];
     return {
-      model: opts.find((o) => o.category === "model")?.options.map((c) => c.value) ?? [],
-      effort: opts.find((o) => o.category === "thought_level")?.options.map((c) => c.value) ?? [],
+      model:
+        opts.find((o) => o.category === "model")?.options.map((c) => c.value) ??
+        [],
+      effort:
+        opts
+          .find((o) => o.category === "thought_level")
+          ?.options.map((c) => c.value) ?? [],
     };
   }, [agentOptionsBy, chatRepo, chats]);
 
@@ -1813,7 +1967,9 @@ export default function App() {
       out.push(
         ...chats.list.map((c) => ({
           repoPath: chatRepo,
-          repoName: activeWsId ? (workspaces.find((w) => w.id === activeWsId)?.name ?? "") : "",
+          repoName: activeWsId
+            ? (workspaces.find((w) => w.id === activeWsId)?.name ?? "")
+            : "",
           chat: c,
           local: true,
           current: c.id === chats.current,
@@ -1861,7 +2017,8 @@ export default function App() {
       if (!chatRepo) return;
       const held = chatSize(chatRepo, id);
       const name = chats.list.find((c) => c.id === id)?.title ?? "this chat";
-      if (held > 0 && !(await confirmed(`Delete “${name}”?`, { ok: "Delete" }))) return;
+      if (held > 0 && !(await confirmed(`Delete “${name}”?`, { ok: "Delete" })))
+        return;
       /*
        * Its session goes with it, whether or not it was the one on screen.
        *
@@ -1897,7 +2054,9 @@ export default function App() {
           if (!title) return;
           putChats({
             ...chats,
-            list: chats.list.map((c) => (c.id === id ? { ...c, title, named: true } : c)),
+            list: chats.list.map((c) =>
+              c.id === id ? { ...c, title, named: true } : c,
+            ),
           });
         },
       });
@@ -1911,7 +2070,10 @@ export default function App() {
         const at = prev.list.find((c) => c.id === id);
         // A name you chose outranks the one the transcript suggests.
         if (!at || at.named || at.title === title) return prev;
-        const next = { ...prev, list: prev.list.map((c) => (c.id === id ? { ...c, title } : c)) };
+        const next = {
+          ...prev,
+          list: prev.list.map((c) => (c.id === id ? { ...c, title } : c)),
+        };
         if (chatRepo) saveChats(chatRepo, next);
         return next;
       });
@@ -1935,21 +2097,27 @@ export default function App() {
   const runningCount = Object.keys(running).length;
 
   useEffect(() => {
-    const up = listen<{ repo: string; chat: string; gen: number }>("agent-ready", (e) => {
-      const { repo, chat, gen } = e.payload;
-      setRunning((prev) => ({ ...prev, [`${repo}::${chat}`]: gen }));
-    });
-    const gone = listen<{ repo: string; chat: string; gen: number }>("agent-down", (e) => {
-      const { repo, chat, gen } = e.payload;
-      setRunning((prev) => {
-        const k = `${repo}::${chat}`;
-        // A farewell from a session already replaced by a newer one.
-        if (!(k in prev) || (gen && gen < prev[k])) return prev;
-        const next = { ...prev };
-        delete next[k];
-        return next;
-      });
-    });
+    const up = listen<{ repo: string; chat: string; gen: number }>(
+      "agent-ready",
+      (e) => {
+        const { repo, chat, gen } = e.payload;
+        setRunning((prev) => ({ ...prev, [`${repo}::${chat}`]: gen }));
+      },
+    );
+    const gone = listen<{ repo: string; chat: string; gen: number }>(
+      "agent-down",
+      (e) => {
+        const { repo, chat, gen } = e.payload;
+        setRunning((prev) => {
+          const k = `${repo}::${chat}`;
+          // A farewell from a session already replaced by a newer one.
+          if (!(k in prev) || (gen && gen < prev[k])) return prev;
+          const next = { ...prev };
+          delete next[k];
+          return next;
+        });
+      },
+    );
     return () => {
       void up.then((f) => f());
       void gone.then((f) => f());
@@ -1965,13 +2133,19 @@ export default function App() {
      * was the repository's. It shows the focused chat's, which is the one
      * whose context window the number is actually about.
      */
-    const off = listen<{ repo: string; chat: string; used: number; size: number; cost?: number }>(
-      "agent-usage",
-      (e) => {
-        const { repo, chat, used, size, cost } = e.payload;
-        setUsage((prev) => ({ ...prev, [`${repo}::${chat}`]: { used, size, cost } }));
-      },
-    );
+    const off = listen<{
+      repo: string;
+      chat: string;
+      used: number;
+      size: number;
+      cost?: number;
+    }>("agent-usage", (e) => {
+      const { repo, chat, used, size, cost } = e.payload;
+      setUsage((prev) => ({
+        ...prev,
+        [`${repo}::${chat}`]: { used, size, cost },
+      }));
+    });
     return () => void off.then((f) => f());
   }, []);
   const [skills, setSkills] = useState<Record<string, SkillState>>({});
@@ -2000,7 +2174,9 @@ export default function App() {
     ];
     for (const r of repos) {
       void skillState(r.path, agentPaths.current).then((st) =>
-        setSkills((prev) => (prev[r.path] === st ? prev : { ...prev, [r.path]: st })),
+        setSkills((prev) =>
+          prev[r.path] === st ? prev : { ...prev, [r.path]: st },
+        ),
       );
     }
   }, [repos]);
@@ -2031,7 +2207,9 @@ export default function App() {
       el.setPointerCapture(e.pointerId);
       const r = RANGES.treeWidth;
       const move = (ev: PointerEvent) => {
-        set({ treeWidth: Math.min(r.max, Math.max(r.min, Math.round(ev.clientX))) });
+        set({
+          treeWidth: Math.min(r.max, Math.max(r.min, Math.round(ev.clientX))),
+        });
       };
       const done = () => {
         el.removeEventListener("pointermove", move);
@@ -2064,7 +2242,9 @@ export default function App() {
       const r = side ? RANGES.chatWidth : RANGES.muxHeight;
       el.setPointerCapture(e.pointerId);
       const move = (ev: PointerEvent) => {
-        const px = Math.round(side ? fixed.right - ev.clientX : fixed.bottom - ev.clientY);
+        const px = Math.round(
+          side ? fixed.right - ev.clientX : fixed.bottom - ev.clientY,
+        );
         const v = Math.min(r.max, Math.max(r.min, px));
         set(side ? { chatWidth: v } : { muxHeight: v });
       };
@@ -2101,7 +2281,9 @@ export default function App() {
 
   // --- editing -------------------------------------------------------------
   const saveTimer = useRef<number | null>(null);
-  const pending = useRef<{ repo: string; path: string; text: string } | null>(null);
+  const pending = useRef<{ repo: string; path: string; text: string } | null>(
+    null,
+  );
 
   /** The write that is in the air, if one is: what a second flush has to wait for. */
   const flushing = useRef<Promise<boolean> | null>(null);
@@ -2114,11 +2296,22 @@ export default function App() {
     try {
       // Conditional on the version we loaded: if the file moved under us the
       // write is refused rather than clobbering whatever arrived.
-      stamp.current = await api.writePlan(p.repo, p.path, p.text, stamp.current ?? undefined);
+      stamp.current = await api.writePlan(
+        p.repo,
+        p.path,
+        p.text,
+        stamp.current ?? undefined,
+      );
       setDirty(false);
-      track("file_saved", { autosave: settings.autosave, chars: p.text.length });
+      track("file_saved", {
+        autosave: settings.autosave,
+        chars: p.text.length,
+      });
       setSavedAt(
-        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       );
       // Only the repository that was written to. Re-reading every open repo's
       // status on each autosave is a lot of work for one file's worth of news.
@@ -2157,7 +2350,9 @@ export default function App() {
          */
         const now = await api.statPlan(p.repo, p.path).catch(() => null);
         if (now === "absent") {
-          stamp.current = await api.writePlan(p.repo, p.path, p.text).catch(() => null);
+          stamp.current = await api
+            .writePlan(p.repo, p.path, p.text)
+            .catch(() => null);
           setDirty(false);
           void refreshFiles();
           // No stamp means even the unconditional write failed.
@@ -2232,23 +2427,32 @@ export default function App() {
         );
       }
     },
-    [activeRepoPath, activePath, flush, matter, settings.autosave, settings.autosaveDelay],
+    [
+      activeRepoPath,
+      activePath,
+      flush,
+      matter,
+      settings.autosave,
+      settings.autosaveDelay,
+    ],
   );
 
   /**
    * The whole file as text, frontmatter and all — what is actually on disk.
    * Editing it re-splits, so the other two views stay in step.
    */
-  const assemble = useCallback(
-    (m: string | null, body: string) => {
-      const text = joinFrontmatter(m, body, original.current);
-      // Files end with a newline; the serialiser does not always agree.
-      return original.current.eol && text && !text.endsWith("\n") ? `${text}\n` : text;
-    },
-    [],
-  );
+  const assemble = useCallback((m: string | null, body: string) => {
+    const text = joinFrontmatter(m, body, original.current);
+    // Files end with a newline; the serialiser does not always agree.
+    return original.current.eol && text && !text.endsWith("\n")
+      ? `${text}\n`
+      : text;
+  }, []);
 
-  const source = useMemo(() => assemble(matter, content), [assemble, matter, content]);
+  const source = useMemo(
+    () => assemble(matter, content),
+    [assemble, matter, content],
+  );
 
   // --- sharing ---------------------------------------------------------------
 
@@ -2311,7 +2515,10 @@ export default function App() {
     try {
       const page =
         shareTarget.kind === "workspace"
-          ? await workspace.pages.publishWorkspace(shareTarget.id, shareTarget.path)
+          ? await workspace.pages.publishWorkspace(
+              shareTarget.id,
+              shareTarget.path,
+            )
           : await workspace.pages.publishFile(
               shareTarget.repo,
               shareTarget.path,
@@ -2323,10 +2530,14 @@ export default function App() {
       const url = workspace.pageUrl(page.id);
       await navigator.clipboard.writeText(url).then(
         () => notify("Link copied — anyone with it can read this plan"),
-        () => notify("The link is in the sheet; the clipboard refused it", "error"),
+        () =>
+          notify("The link is in the sheet; the clipboard refused it", "error"),
       );
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Could not share this plan", "error");
+      notify(
+        e instanceof Error ? e.message : "Could not share this plan",
+        "error",
+      );
     }
   }, [shareTarget, source, rememberPage, notify]);
 
@@ -2339,7 +2550,10 @@ export default function App() {
       notify("Stopped sharing — that address is dead");
       setSharing(false);
     } catch (e) {
-      notify(e instanceof Error ? e.message : "Could not stop sharing", "error");
+      notify(
+        e instanceof Error ? e.message : "Could not stop sharing",
+        "error",
+      );
     }
   }, [shareTarget, sharedPageId, rememberPage, notify]);
 
@@ -2405,7 +2619,12 @@ export default function App() {
             const template = settings.rewritePrompt || REWRITE_PROMPT;
             // One pass, and through a function: the quote is someone's prose,
             // and `$&` in it must not turn into a substitution of its own.
-            setChatSeed(template.replace(/\{(file|lines|ask|quote)\}/g, (m, k) => fields[k] ?? m));
+            setChatSeed(
+              template.replace(
+                /\{(file|lines|ask|quote)\}/g,
+                (m, k) => fields[k] ?? m,
+              ),
+            );
             set({ showMux: true });
           })();
         },
@@ -2427,9 +2646,10 @@ export default function App() {
       if (!activeRepoPath || activeRepoPath === MEMORY || !activePath) return;
       // The same rule as opening: frontmatter is a markdown convention, so a
       // YAML file that happens to start with `---` keeps its header in the body.
-      const split = settings.showFrontmatter && isMarkdownPath(activePath)
-        ? splitFrontmatter(text)
-        : { matter: null, body: text };
+      const split =
+        settings.showFrontmatter && isMarkdownPath(activePath)
+          ? splitFrontmatter(text)
+          : { matter: null, body: text };
       setMatter(split.matter);
       setContent(split.body);
       setDirty(true);
@@ -2467,7 +2687,9 @@ export default function App() {
       // Write is for markdown alone. ⌘1 on anything else does nothing rather
       // than silently switching — Milkdown would rewrite the file on save.
       const target =
-        focusedOnly && paneRoute.current.split && paneRoute.current.paneFocus === "split"
+        focusedOnly &&
+        paneRoute.current.split &&
+        paneRoute.current.paneFocus === "split"
           ? paneRoute.current.split.path
           : activePath;
       if (
@@ -2493,11 +2715,15 @@ export default function App() {
       }
       // The view switch offers what the buffer can do: a dropped file has no
       // repository, so there is nothing for Diff to compare against.
-      if (next === "diff" && !repos.some((r) => r.path === activeRepoPath)) return;
-      if (next === "source" && view !== "source") sourceOnEntry.current = source;
+      if (next === "diff" && !repos.some((r) => r.path === activeRepoPath))
+        return;
+      if (next === "source" && view !== "source")
+        sourceOnEntry.current = source;
       if (next === "write" && view === "source" && activePath) {
-        const changed = sourceOnEntry.current !== null && sourceOnEntry.current !== source;
-        if (changed) setDocKey(`${activeRepoPath}::${activePath}::${Date.now()}`);
+        const changed =
+          sourceOnEntry.current !== null && sourceOnEntry.current !== source;
+        if (changed)
+          setDocKey(`${activeRepoPath}::${activePath}::${Date.now()}`);
         sourceOnEntry.current = null;
       }
       setBufferView(next);
@@ -2558,7 +2784,15 @@ export default function App() {
         );
       }
     },
-    [activeRepoPath, activePath, content, flush, settings.autosave, settings.autosaveDelay, settings.statuses],
+    [
+      activeRepoPath,
+      activePath,
+      content,
+      flush,
+      settings.autosave,
+      settings.autosaveDelay,
+      settings.statuses,
+    ],
   );
   /** The block as last written through here, so a status edit can be told from a re-save. */
   const lastMatter = useRef<string | null>(null);
@@ -2628,8 +2862,10 @@ export default function App() {
       const name = activePath.split("/").pop() ?? activePath;
       m = setMatterValue(m, "title", displayName(name, false));
     }
-    if (!matterValue(m, "status")) m = setMatterValue(m, "status", statusChoices[0] ?? "draft");
-    if (!matterValue(m, "owner") && author) m = setMatterValue(m, "owner", author);
+    if (!matterValue(m, "status"))
+      m = setMatterValue(m, "status", statusChoices[0] ?? "draft");
+    if (!matterValue(m, "owner") && author)
+      m = setMatterValue(m, "owner", author);
     if (!matterValue(m, "due")) m = setMatterValue(m, "due", "");
     onMatterChange(m);
     setMatterOpen(true);
@@ -2654,13 +2890,15 @@ export default function App() {
   // Two panes and no more. The second is self-contained (`SplitPane.tsx`);
   // what lives here is only which file it shows, which way the split runs,
   // where the divider sits, and which pane a keystroke belongs to.
-  const [split, setSplit] = useState<{ repo: string; path: string } | null>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(KEY.split) ?? "null");
-    } catch {
-      return null;
-    }
-  });
+  const [split, setSplit] = useState<{ repo: string; path: string } | null>(
+    () => {
+      try {
+        return JSON.parse(localStorage.getItem(KEY.split) ?? "null");
+      } catch {
+        return null;
+      }
+    },
+  );
   const [splitDir, setSplitDir] = useState<"row" | "column">(() =>
     localStorage.getItem(KEY.splitDir) === "column" ? "column" : "row",
   );
@@ -2674,33 +2912,42 @@ export default function App() {
    * strip acting on "the focused pane" read as one pane's tabs leaking into
    * the other's chrome.
    */
-  const [splitTabs, setSplitTabs] = useState<{ repo: string; path: string }[]>(() => {
-    try {
-      const list = JSON.parse(localStorage.getItem(KEY.splitTabs) ?? "[]") as {
-        repo: string;
-        path: string;
-      }[];
-      const tabs = Array.isArray(list) ? list : [];
-      // The pane's current file always has a tab, whatever storage says.
-      const cur = JSON.parse(localStorage.getItem(KEY.split) ?? "null") as {
-        repo: string;
-        path: string;
-      } | null;
-      if (cur && !tabs.some((t) => t.repo === cur.repo && t.path === cur.path)) {
-        tabs.push(cur);
+  const [splitTabs, setSplitTabs] = useState<{ repo: string; path: string }[]>(
+    () => {
+      try {
+        const list = JSON.parse(
+          localStorage.getItem(KEY.splitTabs) ?? "[]",
+        ) as {
+          repo: string;
+          path: string;
+        }[];
+        const tabs = Array.isArray(list) ? list : [];
+        // The pane's current file always has a tab, whatever storage says.
+        const cur = JSON.parse(localStorage.getItem(KEY.split) ?? "null") as {
+          repo: string;
+          path: string;
+        } | null;
+        if (
+          cur &&
+          !tabs.some((t) => t.repo === cur.repo && t.path === cur.path)
+        ) {
+          tabs.push(cur);
+        }
+        return tabs;
+      } catch {
+        return [];
       }
-      return tabs;
-    } catch {
-      return [];
-    }
-  });
+    },
+  );
   /**
    * The split pane's view *override*. Null follows the global switch — one
    * state, both panes — and a value pins this pane: the same file can sit
    * rich on one side and raw on the other. ⌥-click on the switch (or the
    * palette's "This pane" commands) sets it; a plain click clears it.
    */
-  const [splitOverride, setSplitOverride] = useState<"write" | "source" | "diff" | null>(null);
+  const [splitOverride, setSplitOverride] = useState<
+    "write" | "source" | "diff" | null
+  >(null);
   const splitFlush = useRef<(() => Promise<void>) | null>(null);
 
   /**
@@ -2708,22 +2955,29 @@ export default function App() {
    * `at` places the tab (a drop knows where it landed); without it a tab the
    * strip already has stays put, and a new one joins the end.
    */
-  const openSplitFile = useCallback((repo: string, path: string, at?: number) => {
-    setSplit({ repo, path });
-    setSplitTabs((prev) => {
-      const has = prev.some((t) => t.repo === repo && t.path === path);
-      if (at === undefined) return has ? prev : [...prev, { repo, path }];
-      const without = prev.filter((t) => !(t.repo === repo && t.path === path));
-      const i = Math.max(0, Math.min(at, without.length));
-      return [...without.slice(0, i), { repo, path }, ...without.slice(i)];
-    });
-    setPaneFocus("split");
-  }, []);
+  const openSplitFile = useCallback(
+    (repo: string, path: string, at?: number) => {
+      setSplit({ repo, path });
+      setSplitTabs((prev) => {
+        const has = prev.some((t) => t.repo === repo && t.path === path);
+        if (at === undefined) return has ? prev : [...prev, { repo, path }];
+        const without = prev.filter(
+          (t) => !(t.repo === repo && t.path === path),
+        );
+        const i = Math.max(0, Math.min(at, without.length));
+        return [...without.slice(0, i), { repo, path }, ...without.slice(i)];
+      });
+      setPaneFocus("split");
+    },
+    [],
+  );
 
   /** Close one of the split's tabs; the last one closes the pane with it. */
   const closeSplitTab = useCallback(
     (repo: string, path: string) => {
-      const rest = splitTabs.filter((t) => !(t.repo === repo && t.path === path));
+      const rest = splitTabs.filter(
+        (t) => !(t.repo === repo && t.path === path),
+      );
       setSplitTabs(rest);
       setSplit((cur) => {
         if (!cur || cur.repo !== repo || cur.path !== path) return cur;
@@ -2736,9 +2990,15 @@ export default function App() {
     localStorage.setItem(KEY.split, JSON.stringify(split));
     if (!split) setPaneFocus("main");
   }, [split]);
-  useEffect(() => localStorage.setItem(KEY.splitTabs, JSON.stringify(splitTabs)), [splitTabs]);
+  useEffect(
+    () => localStorage.setItem(KEY.splitTabs, JSON.stringify(splitTabs)),
+    [splitTabs],
+  );
   useEffect(() => localStorage.setItem(KEY.splitDir, splitDir), [splitDir]);
-  useEffect(() => localStorage.setItem(KEY.splitRatio, String(splitRatio)), [splitRatio]);
+  useEffect(
+    () => localStorage.setItem(KEY.splitRatio, String(splitRatio)),
+    [splitRatio],
+  );
   /**
    * What `openFile` needs to route without re-creating itself: opening a file
    * while the split has focus loads it there, and a file already open in the
@@ -2781,7 +3041,11 @@ export default function App() {
             openSplitFile(repoPath, relPath);
             return;
           }
-        } else if (r.split && r.split.repo === repoPath && r.split.path === relPath) {
+        } else if (
+          r.split &&
+          r.split.repo === repoPath &&
+          r.split.path === relPath
+        ) {
           setPaneFocus("split");
           return;
         }
@@ -2789,7 +3053,10 @@ export default function App() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       await flush();
       try {
-        const { content: text, stamp: at } = await api.readPlan(repoPath, relPath);
+        const { content: text, stamp: at } = await api.readPlan(
+          repoPath,
+          relPath,
+        );
         stamp.current = at;
         // Reading it is the answer to "has this changed since I read it".
         tabStamps.current.set(`${repoPath}::${relPath}`, at);
@@ -2830,12 +3097,16 @@ export default function App() {
         // Markdown keeps whatever mode the buffer was left in; anything else
         // opens in Source, the only surface that will not rewrite it.
         setTabs((prev) => {
-          const next = prev.some((t) => t.repo === repoPath && t.path === relPath)
+          const next = prev.some(
+            (t) => t.repo === repoPath && t.path === relPath,
+          )
             ? prev
             : [...prev, { repo: repoPath, path: relPath }];
           if (mode)
             return next.map((t) =>
-              t.repo === repoPath && t.path === relPath ? { ...t, view: mode } : t,
+              t.repo === repoPath && t.path === relPath
+                ? { ...t, view: mode }
+                : t,
             );
           return md
             ? next
@@ -2868,7 +3139,10 @@ export default function App() {
           return openFileRef.current?.(repoPath, relPath, true);
         }
         trace("open failed", { relPath, error: String(e) });
-        notify(`Could not open ${relPath}: ${String(e).replace(/^Error:\s*/, "")}`, "error");
+        notify(
+          `Could not open ${relPath}: ${String(e).replace(/^Error:\s*/, "")}`,
+          "error",
+        );
       }
     },
     [flush, notify, settings.showFrontmatter, refreshFiles, openSplitFile],
@@ -2891,7 +3165,10 @@ export default function App() {
       if (!agentPaths.current.length) await readInstalls();
       const path = await skillFileFor(activeRepoPath, agentPaths.current, name);
       if (path) return openFileRef.current?.(activeRepoPath, path);
-      notify(`The ${name} skill is not installed here — install the conventions from Settings`, "info");
+      notify(
+        `The ${name} skill is not installed here — install the conventions from Settings`,
+        "info",
+      );
     },
     [activeRepoPath, notify, readInstalls],
   );
@@ -2912,9 +3189,16 @@ export default function App() {
     async (raw: string) => {
       const path = raw.replace(/\/+$/, "");
       if (/\.(md|markdown|mdx)$/i.test(path)) {
-        const inRepo = repos.find((r) => path.startsWith(`${r.path.replace(/\/+$/, "")}/`));
+        const inRepo = repos.find((r) =>
+          path.startsWith(`${r.path.replace(/\/+$/, "")}/`),
+        );
         if (inRepo) {
-          await openFile(inRepo.path, path.slice(inRepo.path.length + 1), false, true);
+          await openFile(
+            inRepo.path,
+            path.slice(inRepo.path.length + 1),
+            false,
+            true,
+          );
           return;
         }
         const cut = path.lastIndexOf("/");
@@ -2947,7 +3231,6 @@ export default function App() {
     };
   }, [dropPath]);
 
-
   /**
    * ⌘-click on a link in the page. A scheme goes to the system browser; a
    * relative path resolves against the open file's folder, and another
@@ -2970,7 +3253,10 @@ export default function App() {
       }
       const rel = parts.join("/");
       if (/\.(md|markdown|mdx)$/i.test(rel)) void openFile(repo, rel);
-      else void api.revealInFinder(repo, rel).catch(() => notify(`Not a markdown file: ${rel}`, "error"));
+      else
+        void api
+          .revealInFinder(repo, rel)
+          .catch(() => notify(`Not a markdown file: ${rel}`, "error"));
     },
     [openFile, notify],
   );
@@ -2993,7 +3279,11 @@ export default function App() {
       const sp = settings.showFrontmatter
         ? splitFrontmatter(text)
         : { matter: null, body: text, raw: "" };
-      original.current = { matter: sp.matter, raw: sp.raw, eol: /\n$/.test(text) };
+      original.current = {
+        matter: sp.matter,
+        raw: sp.raw,
+        eol: /\n$/.test(text),
+      };
       pending.current = null;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       setMatter(sp.matter);
@@ -3002,7 +3292,8 @@ export default function App() {
       if (viewNow.current === "write") {
         clearTimeout(mirrorTimer.current);
         mirrorTimer.current = window.setTimeout(
-          () => setDocKey(`${r.activeRepoPath}::${r.activePath}::${Date.now()}`),
+          () =>
+            setDocKey(`${r.activeRepoPath}::${r.activePath}::${Date.now()}`),
           250,
         );
       }
@@ -3020,7 +3311,9 @@ export default function App() {
    * scrollTop on an empty host clamps to zero, so the restore retries until
    * the content is tall enough to take it.
    */
-  const scrollPos = useRef(new Map<string, { top: number; range: number; view: string }>());
+  const scrollPos = useRef(
+    new Map<string, { top: number; range: number; view: string }>(),
+  );
   useEffect(() => {
     if (!activeRepoPath || !activePath) return;
     /*
@@ -3059,8 +3352,11 @@ export default function App() {
        * is what keeps the two modes in sync on the same file. Within a mode
        * the exact pixel is kept.
        */
-      const want =
-        !saved ? 0 : saved.view === view || !saved.range ? saved.top : (saved.top / saved.range) * range;
+      const want = !saved
+        ? 0
+        : saved.view === view || !saved.range
+          ? saved.top
+          : (saved.top / saved.range) * range;
       if (want <= range) {
         host.scrollTop = want;
         clearInterval(restore);
@@ -3093,7 +3389,9 @@ export default function App() {
     if (activeRepoPath === MEMORY) return;
     const t = setInterval(async () => {
       if (busy || conflict || writing.current || pending.current) return;
-      const at = await api.statPlan(activeRepoPath, activePath).catch(() => null);
+      const at = await api
+        .statPlan(activeRepoPath, activePath)
+        .catch(() => null);
       if (!at || at === stamp.current) return;
       /**
        * A file that is gone is not a file that changed.
@@ -3111,14 +3409,17 @@ export default function App() {
       // this app, almost always the agent writing the plan.
       track("external_change", { conflict: dirty || !!pending.current });
       if (dirty || pending.current) {
-        const theirs = await api
-          .readPlan(activeRepoPath, activePath)
-          .then((r) => r.content, () => "");
+        const theirs = await api.readPlan(activeRepoPath, activePath).then(
+          (r) => r.content,
+          () => "",
+        );
         setConflict({ theirs });
       } else {
         // The other pane's autosave of this same text is not news: take the
         // stamp and stay put, so nothing rebuilds under the reader.
-        const theirs = await api.readPlan(activeRepoPath, activePath).catch(() => null);
+        const theirs = await api
+          .readPlan(activeRepoPath, activePath)
+          .catch(() => null);
         if (theirs && theirs.content === sourceNow.current) {
           stamp.current = theirs.stamp;
           return;
@@ -3210,7 +3511,6 @@ export default function App() {
     return () => clearInterval(t);
   }, [tabs, activeRepoPath, activePath, settings.watchSeconds]);
 
-
   /**
    * Open text the app is holding as a buffer, as though it were a file.
    *
@@ -3294,7 +3594,12 @@ export default function App() {
   const presence = useCallback(
     () =>
       account
-        ? { name: account.name ?? account.login, color: colorFor(account.login), avatar: account.avatar }
+        ? {
+            name: account.name ?? account.login,
+            color: colorFor(account.login),
+            avatar: account.avatar,
+            login: account.login,
+          }
         : null,
     [account],
   );
@@ -3320,7 +3625,8 @@ export default function App() {
       if (again) return again;
       const room = openRoom(treeRoomId(id), id, session, me);
       rooms.current.set(treeRoomId(id), room);
-      const draw = () => setWsTrees((prev) => ({ ...prev, [id]: treeEntries(room) }));
+      const draw = () =>
+        setWsTrees((prev) => ({ ...prev, [id]: treeEntries(room) }));
       treeMap(room).observe(draw);
       room.onSynced(draw);
       room.onStatus(() => setRoomTick((n) => n + 1));
@@ -3352,7 +3658,15 @@ export default function App() {
   /** Drop a workspace from this window: its rooms, its tabs, its heading. */
   const forgetWorkspace = useCallback(
     (id: string) => {
-      closeWorkspace(id);
+      /*
+       * The rooms close after the editor has let go of them, not before.
+       * An editor bound to a workspace file unmounts on the render these
+       * state updates cause, and its teardown is asynchronous; a Y.Doc
+       * destroyed under a live binding throws from inside the collab
+       * plugin. The sockets are either dead already (removed, deleted) or
+       * about to be told we left, so nothing is lost by waiting a moment.
+       */
+      window.setTimeout(() => closeWorkspace(id), 500);
       setWorkspaces((prev) => prev.filter((w) => w.id !== id));
       setWsTrees((prev) => {
         const next = { ...prev };
@@ -3374,7 +3688,13 @@ export default function App() {
     async (id: string) => {
       const ws = workspaces.find((w) => w.id === id);
       if (!ws) return;
-      if (!(await confirmed(`Leave "${ws.name}"? You can be invited back.`, { ok: "Leave", kind: "info" }))) return;
+      if (
+        !(await confirmed(`Leave "${ws.name}"? You can be invited back.`, {
+          ok: "Leave",
+          kind: "info",
+        }))
+      )
+        return;
       try {
         await workspace.leave(id);
         forgetWorkspace(id);
@@ -3455,7 +3775,11 @@ export default function App() {
         const here = treeEntries(at).find((e) => e.doc === docId);
         if (!here) return;
         const split = splitFrontmatter(meta.get("markdown") ?? "");
-        wsTree.setStatus(at, here.path, matterValue(split.matter ?? "", "status"));
+        wsTree.setStatus(
+          at,
+          here.path,
+          matterValue(split.matter ?? "", "status"),
+        );
       });
       return room;
     },
@@ -3478,7 +3802,10 @@ export default function App() {
         return;
       }
       const docId = entry.doc;
-      track("workspace_opened", { fresh: !rooms.current.has(docId), workspaces: workspaces.length });
+      track("workspace_opened", {
+        fresh: !rooms.current.has(docId),
+        workspaces: workspaces.length,
+      });
       const room = await roomFor(id, docId);
       if (!room) return;
       // A workspace's first file is the workspace: `plan.md` in "Roadmap"
@@ -3505,7 +3832,8 @@ export default function App() {
     async (repo: string, path: string) => {
       const id = wsIdOf(path);
       if (id) return openWorkspaceFile(id, wsFileOf(path));
-      if (repo === MEMORY) return openMemory(path, memoryDocs.current.get(path) ?? "");
+      if (repo === MEMORY)
+        return openMemory(path, memoryDocs.current.get(path) ?? "");
       return openFile(repo, path, false, true);
     },
     [openWorkspaceFile, openMemory, openFile],
@@ -3514,7 +3842,13 @@ export default function App() {
   /** Sign out: the session goes from the server and the keychain, and every
    *  open room closes — its socket carried that session. */
   const signOut = useCallback(async () => {
-    if (!(await confirmed(`Sign out of workspaces as ${account?.login}?`, { ok: "Sign out", kind: "info" }))) return;
+    if (
+      !(await confirmed(`Sign out of workspaces as ${account?.login}?`, {
+        ok: "Sign out",
+        kind: "info",
+      }))
+    )
+      return;
     for (const [id, room] of rooms.current) {
       room.close();
       rooms.current.delete(id);
@@ -3551,7 +3885,6 @@ export default function App() {
 
   const inviteTo = useCallback(
     async (id: string, login: string) => {
-      setWsInviting(null);
       try {
         const ws = await workspace.invite(id, login.trim());
         setWorkspaces((prev) => prev.map((w) => (w.id === id ? ws : w)));
@@ -3563,6 +3896,84 @@ export default function App() {
     },
     [notify],
   );
+
+  /**
+   * Put someone out, or hand the room on. Both are the owner's alone and
+   * both are asked about: one closes someone's editors under them, the
+   * other gives away the only key that can delete the room.
+   */
+  const removeMember = useCallback(
+    async (id: string, login: string) => {
+      const ws = workspaces.find((w) => w.id === id);
+      if (!ws) return;
+      if (
+        !(await confirmed(
+          `Remove ${login} from "${ws.name}"? Their open editors close now. They can be invited back.`,
+          { ok: "Remove" },
+        ))
+      )
+        return;
+      try {
+        const next = await workspace.removeMember(id, login);
+        setWorkspaces((prev) => prev.map((w) => (w.id === id ? next : w)));
+        track("workspace_member_removed");
+        notify(`Removed ${login}`);
+      } catch (e) {
+        notify(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
+    [workspaces, notify],
+  );
+
+  const handOver = useCallback(
+    async (id: string, login: string) => {
+      const ws = workspaces.find((w) => w.id === id);
+      if (!ws) return;
+      if (
+        !(await confirmed(
+          `Make ${login} the owner of "${ws.name}"? You stay in it as a member, and only they can delete it or remove anyone.`,
+          {
+            ok: "Make owner",
+            kind: "info",
+          },
+        ))
+      )
+        return;
+      try {
+        const next = await workspace.handOver(id, login);
+        setWorkspaces((prev) => prev.map((w) => (w.id === id ? next : w)));
+        track("workspace_handed_over");
+        notify(`${login} owns ${ws.name} now`);
+      } catch (e) {
+        notify(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
+    [workspaces, notify],
+  );
+
+  /**
+   * Removed from a workspace while it was open. The server closes every
+   * socket of ours into it with a code of its own, and the room records it;
+   * here that becomes the workspace leaving the sidebar, the way leaving
+   * does, and a line saying why — a shelf that silently vanished would
+   * read as a bug.
+   */
+  const removedFrom = useRef(new Set<string>());
+  useEffect(() => {
+    const seen = removedFrom.current;
+    for (const room of [...rooms.current.values()]) {
+      if (room.gone !== "removed" || seen.has(room.workspaceId)) continue;
+      seen.add(room.workspaceId);
+      const ws = workspaces.find((w) => w.id === room.workspaceId);
+      forgetWorkspace(room.workspaceId);
+      if (wsMembers === room.workspaceId) setWsMembers(null);
+      notify(
+        `You were removed from ${ws ? `"${ws.name}"` : "a workspace"}`,
+        "error",
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomTick]);
 
   /**
    * The bridge out of the room: one file, as markdown, into a repository.
@@ -3591,9 +4002,13 @@ export default function App() {
         await api.createFile(repoPath, relPath, out);
         localStorage.setItem(
           `plans.newPlanDir::${repoPath}`,
-          relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "",
+          relPath.includes("/")
+            ? relPath.slice(0, relPath.lastIndexOf("/"))
+            : "",
         );
-        const live = await workspace.pages.forWorkspace(id, path).catch(() => null);
+        const live = await workspace.pages
+          .forWorkspace(id, path)
+          .catch(() => null);
         if (live) {
           await workspace.pages.stop(live.id).catch(() => undefined);
           rememberPage(shareKey("workspace", `${id}/${path}`), null);
@@ -3640,7 +4055,10 @@ export default function App() {
         run: (name) => {
           const bare = name.replace(/\//g, "-").trim();
           if (!bare) return;
-          const file = bare.endsWith(".md") || bare.endsWith(".markdown") ? bare : `${bare}.md`;
+          const file =
+            bare.endsWith(".md") || bare.endsWith(".markdown")
+              ? bare
+              : `${bare}.md`;
           const path = dir ? `${dir}/${file}` : file;
           void (async () => {
             const room = await wsRoomFor(id);
@@ -3709,19 +4127,18 @@ export default function App() {
    * editing the same document — what changes is what it is called, which is
    * the tab's name and the buffer's key.
    */
-  const wsFollow = useCallback(
-    (id: string, from: string, to: string) => {
-      const rewrite = (path: string) => {
-        if (wsIdOf(path) !== id) return path;
-        const file = wsFileOf(path);
-        if (file !== from && !file.startsWith(`${from}/`)) return path;
-        return wsBufferPath(id, `${to}${file.slice(from.length)}`);
-      };
-      setTabs((prev) => prev.map((t) => ({ repo: t.repo, path: rewrite(t.path) })));
-      setActivePath((prev) => (prev ? rewrite(prev) : prev));
-    },
-    [],
-  );
+  const wsFollow = useCallback((id: string, from: string, to: string) => {
+    const rewrite = (path: string) => {
+      if (wsIdOf(path) !== id) return path;
+      const file = wsFileOf(path);
+      if (file !== from && !file.startsWith(`${from}/`)) return path;
+      return wsBufferPath(id, `${to}${file.slice(from.length)}`);
+    };
+    setTabs((prev) =>
+      prev.map((t) => ({ repo: t.repo, path: rewrite(t.path) })),
+    );
+    setActivePath((prev) => (prev ? rewrite(prev) : prev));
+  }, []);
 
   /**
    * Follow a move someone else made.
@@ -3762,7 +4179,9 @@ export default function App() {
   /** Rename in place: a name, not a path — moving has its own sheet. */
   const wsRename = useCallback(
     (id: string, path: string) => {
-      const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+      const dir = path.includes("/")
+        ? path.slice(0, path.lastIndexOf("/"))
+        : "";
       const name = path.split("/").pop() ?? path;
       setAsking({
         title: "Rename",
@@ -3773,7 +4192,10 @@ export default function App() {
         run: (next) => {
           const bare = next.replace(/\//g, "-").trim();
           if (!bare) return;
-          const named = bare.endsWith(".md") || bare.endsWith(".markdown") ? bare : `${bare}.md`;
+          const named =
+            bare.endsWith(".md") || bare.endsWith(".markdown")
+              ? bare
+              : `${bare}.md`;
           const to = dir ? `${dir}/${named}` : named;
           if (to === path) return;
           void (async () => {
@@ -3836,7 +4258,8 @@ export default function App() {
         const under = (p: string) =>
           wsIdOf(p) === id &&
           (wsFileOf(p) === path || wsFileOf(p).startsWith(`${path}/`));
-        for (const t of tabs.filter((x) => under(x.path))) await closeTabRef.current?.(t.repo, t.path);
+        for (const t of tabs.filter((x) => under(x.path)))
+          await closeTabRef.current?.(t.repo, t.path);
       })();
     },
     [wsRoomFor, tabs],
@@ -3854,9 +4277,14 @@ export default function App() {
       // Everything newer than what you last read. No upper bound: the notes
       // are bundled with the build, so nothing here can be newer than what is
       // running, and a filter for that only misfires on odd version strings.
-      const fresh = seen ? RELEASE_SECTIONS.filter((x) => isNewer(x.version, seen)) : [];
+      const fresh = seen
+        ? RELEASE_SECTIONS.filter((x) => isNewer(x.version, seen))
+        : [];
       const shown = fresh.length ? fresh : RELEASE_SECTIONS;
-      const title = fresh.length && seen ? `# What changed since ${seen}` : `# Looped Plans ${running}`;
+      const title =
+        fresh.length && seen
+          ? `# What changed since ${seen}`
+          : `# Looped Plans ${running}`;
       const body = shown
         .map((s) => `## ${s.version}\n\n${s.notes}`)
         .join("\n\n");
@@ -3883,18 +4311,32 @@ export default function App() {
       // Each pane cycles its own strip — the split's tabs are its business.
       if (paneFocus === "split" && split) {
         if (splitTabs.length < 2) return;
-        const i = splitTabs.findIndex((t) => t.repo === split.repo && t.path === split.path);
-        const next = splitTabs[(i + step + splitTabs.length) % splitTabs.length];
+        const i = splitTabs.findIndex(
+          (t) => t.repo === split.repo && t.path === split.path,
+        );
+        const next =
+          splitTabs[(i + step + splitTabs.length) % splitTabs.length];
         if (next) openSplitFile(next.repo, next.path);
         return;
       }
       if (tabs.length < 2) return;
-      const i = tabs.findIndex((t) => t.repo === activeRepoPath && t.path === activePath);
+      const i = tabs.findIndex(
+        (t) => t.repo === activeRepoPath && t.path === activePath,
+      );
       const next = tabs[(i + step + tabs.length) % tabs.length];
       if (!next) return;
       void reopenTab(next.repo, next.path);
     },
-    [tabs, activeRepoPath, activePath, reopenTab, paneFocus, split, splitTabs, openSplitFile],
+    [
+      tabs,
+      activeRepoPath,
+      activePath,
+      reopenTab,
+      paneFocus,
+      split,
+      splitTabs,
+      openSplitFile,
+    ],
   );
 
   /** Close a buffer and step to whichever tab was next to it. */
@@ -3916,7 +4358,9 @@ export default function App() {
        */
       const wsId = wsIdOf(path);
       if (wsId) {
-        const docId = (wsTrees[wsId] ?? []).find((e) => e.path === wsFileOf(path))?.doc;
+        const docId = (wsTrees[wsId] ?? []).find(
+          (e) => e.path === wsFileOf(path),
+        )?.doc;
         if (docId) {
           rooms.current.get(docId)?.close();
           rooms.current.delete(docId);
@@ -4001,7 +4445,9 @@ export default function App() {
       await openFile(repo, path, false, true);
       if (at !== undefined) {
         setTabs((prev) => {
-          const without = prev.filter((t) => !(t.repo === repo && t.path === path));
+          const without = prev.filter(
+            (t) => !(t.repo === repo && t.path === path),
+          );
           const i = Math.max(0, Math.min(at, without.length));
           return [...without.slice(0, i), { repo, path }, ...without.slice(i)];
         });
@@ -4041,19 +4487,22 @@ export default function App() {
    * "Move up" already offers a repository. The tab keeps focus because React
    * keys the strip by path, so the DOM node travels with the reorder.
    */
-  const moveTab = useCallback((strip: "main" | "split", repo: string, path: string, by: number) => {
-    const shift = (prev: { repo: string; path: string }[]) => {
-      const i = prev.findIndex((t) => t.repo === repo && t.path === path);
-      const to = i + by;
-      if (i === -1 || to < 0 || to >= prev.length) return prev;
-      const next = prev.slice();
-      const [it] = next.splice(i, 1);
-      next.splice(to, 0, it);
-      return next;
-    };
-    if (strip === "main") setTabs(shift);
-    else setSplitTabs(shift);
-  }, []);
+  const moveTab = useCallback(
+    (strip: "main" | "split", repo: string, path: string, by: number) => {
+      const shift = (prev: { repo: string; path: string }[]) => {
+        const i = prev.findIndex((t) => t.repo === repo && t.path === path);
+        const to = i + by;
+        if (i === -1 || to < 0 || to >= prev.length) return prev;
+        const next = prev.slice();
+        const [it] = next.splice(i, 1);
+        next.splice(to, 0, it);
+        return next;
+      };
+      if (strip === "main") setTabs(shift);
+      else setSplitTabs(shift);
+    },
+    [],
+  );
 
   /*
    * The main strip honours the role it declares.
@@ -4081,7 +4530,9 @@ export default function App() {
    */
   const stripKey = useCallback(
     (strip: "main" | "split") => (e: React.KeyboardEvent) => {
-      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(".tab-name");
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        ".tab-name",
+      );
       const repo = el?.dataset.repo;
       const path = el?.dataset.path;
       if (!el || !repo || path === undefined) return;
@@ -4103,7 +4554,12 @@ export default function App() {
 
   /** Called from both strips' tabs; the strip name says which set it is. */
   const pressTab = useCallback(
-    (strip: "main" | "split", repo: string, path: string, e: React.PointerEvent) => {
+    (
+      strip: "main" | "split",
+      repo: string,
+      path: string,
+      e: React.PointerEvent,
+    ) => {
       if (e.button !== 0 || repo === MEMORY) return;
       tabPress.current = { strip, repo, path, x: e.clientX, y: e.clientY };
     },
@@ -4192,7 +4648,10 @@ export default function App() {
         );
       }
       const it = tabCarried.current;
-      const at = document.elementFromPoint(e.clientX, e.clientY) as Element | null;
+      const at = document.elementFromPoint(
+        e.clientX,
+        e.clientY,
+      ) as Element | null;
       const strip = at?.closest<HTMLElement>("[data-strip]");
       // Light whatever this tab could land on, as the pointer moves.
       if (strip && strip.dataset.strip !== it.strip) {
@@ -4209,7 +4668,9 @@ export default function App() {
       // on release, because moving a pane's open document mid-drag would
       // swap buffers under the pointer.
       const list = it.strip === "main" ? tabsRef.current : splitTabsRef.current;
-      const from = list.findIndex((t) => t.repo === it.repo && t.path === it.path);
+      const from = list.findIndex(
+        (t) => t.repo === it.repo && t.path === it.path,
+      );
       if (from === -1) return;
       let to = indexIn(strip, e.clientX);
       // Dropping right of its own midpoint counts itself; settle on the slot.
@@ -4226,7 +4687,10 @@ export default function App() {
         return;
       }
       tabDidDrag.current = true;
-      const at = document.elementFromPoint(e.clientX, e.clientY) as Element | null;
+      const at = document.elementFromPoint(
+        e.clientX,
+        e.clientY,
+      ) as Element | null;
       const strip = at?.closest<HTMLElement>("[data-strip]");
       const pane = at?.closest<HTMLElement>('[data-drop-pane="split"]');
       clear();
@@ -4287,7 +4751,9 @@ export default function App() {
       }
       // Adopt the on-disk stamp so the next write is allowed through, then
       // write our buffer over it.
-      stamp.current = await api.statPlan(activeRepoPath, activePath).catch(() => null);
+      stamp.current = await api
+        .statPlan(activeRepoPath, activePath)
+        .catch(() => null);
       setConflict(null);
       await flush();
       notify("Kept your version");
@@ -4309,7 +4775,10 @@ export default function App() {
       setRepos(fresh);
       await Promise.all([refreshFiles(), refreshStatus()]);
       if (activeRepoPath && activePath) {
-        const { content: text, stamp: at } = await api.readPlan(activeRepoPath, activePath);
+        const { content: text, stamp: at } = await api.readPlan(
+          activeRepoPath,
+          activePath,
+        );
         stamp.current = at;
         setConflict(null);
         const split = settings.showFrontmatter
@@ -4384,10 +4853,19 @@ export default function App() {
   );
 
   const makeFile = useCallback(
-    async (repoPath: string, relPath: string, title: string, template: Template) => {
+    async (
+      repoPath: string,
+      relPath: string,
+      title: string,
+      template: Template,
+    ) => {
       setNaming(null);
       try {
-        await api.createFile(repoPath, relPath, renderContent(template, vars(title)));
+        await api.createFile(
+          repoPath,
+          relPath,
+          renderContent(template, vars(title)),
+        );
         track("plan_created", {
           bundled: BUNDLED.some(([f]) => f === template.file),
           prompted: template.prompt,
@@ -4396,7 +4874,9 @@ export default function App() {
         // Where this landed is where the next one starts.
         localStorage.setItem(
           `plans.newPlanDir::${repoPath}`,
-          relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "",
+          relPath.includes("/")
+            ? relPath.slice(0, relPath.lastIndexOf("/"))
+            : "",
         );
         await refreshFiles();
         /*
@@ -4456,7 +4936,9 @@ export default function App() {
         template,
         activeRepo.path,
         lastPlanDir(activeRepo.path) ??
-          (activePath?.includes("/") ? activePath.slice(0, activePath.lastIndexOf("/")) : ""),
+          (activePath?.includes("/")
+            ? activePath.slice(0, activePath.lastIndexOf("/"))
+            : ""),
       );
     },
     [activeRepo, activePath, lastPlanDir, newFromTemplate],
@@ -4503,10 +4985,14 @@ export default function App() {
         pending.current = null;
         setDirty(false);
       }
-      fileAction(repoPath, gone ? "File deleted" : "Reset to last commit", async () => {
-        if (gone) await api.deletePlan(repoPath, relPath);
-        else await api.gitDiscard(repoPath, [relPath]);
-      });
+      fileAction(
+        repoPath,
+        gone ? "File deleted" : "Reset to last commit",
+        async () => {
+          if (gone) await api.deletePlan(repoPath, relPath);
+          else await api.gitDiscard(repoPath, [relPath]);
+        },
+      );
       if (repoPath === activeRepoPath && relPath === activePath) {
         if (gone) {
           setActivePath(null);
@@ -4522,7 +5008,8 @@ export default function App() {
 
   const deleteFile = useCallback(
     async (repoPath: string, relPath: string) => {
-      if (!(await confirmed(`Delete ${relPath} from disk?`, { ok: "Delete" }))) return;
+      if (!(await confirmed(`Delete ${relPath} from disk?`, { ok: "Delete" })))
+        return;
       if (repoPath === activeRepoPath && relPath === activePath) {
         if (saveTimer.current) clearTimeout(saveTimer.current);
         pending.current = null;
@@ -4555,11 +5042,17 @@ export default function App() {
           census.hidden > 0
             ? ` ${census.hidden === census.files ? (census.files === 1 ? "It is" : "All of them are") : `${census.hidden} of them are`} not markdown, so the sidebar does not show ${census.hidden === 1 ? "it" : "them"}.`
             : "";
-        if (!(await confirmed(`Delete ${relPath} and the ${files} inside it?${unseen}`, { ok: "Delete" }))) {
+        if (
+          !(await confirmed(
+            `Delete ${relPath} and the ${files} inside it?${unseen}`,
+            { ok: "Delete" },
+          ))
+        ) {
           return;
         }
       }
-      const under = (path: string) => path === relPath || path.startsWith(`${relPath}/`);
+      const under = (path: string) =>
+        path === relPath || path.startsWith(`${relPath}/`);
       if (repoPath === activeRepoPath && activePath && under(activePath)) {
         if (saveTimer.current) clearTimeout(saveTimer.current);
         pending.current = null;
@@ -4567,12 +5060,16 @@ export default function App() {
         setContent("");
         setMatter(null);
       }
-      setTabs((prev) => prev.filter((t) => !(t.repo === repoPath && under(t.path))));
+      setTabs((prev) =>
+        prev.filter((t) => !(t.repo === repoPath && under(t.path))),
+      );
       setEmptyDirs((prev) => ({
         ...prev,
         [repoPath]: (prev[repoPath] ?? []).filter((d) => !under(d)),
       }));
-      fileAction(repoPath, "Folder deleted", () => api.deleteFolder(repoPath, relPath));
+      fileAction(repoPath, "Folder deleted", () =>
+        api.deleteFolder(repoPath, relPath),
+      );
     },
     [activeRepoPath, activePath, fileAction, notify],
   );
@@ -4584,25 +5081,34 @@ export default function App() {
   );
 
   const terminalOne = useCallback(
-    (r: string) => void api.openInTerminal(r).catch((e) => notify(String(e), "error")),
+    (r: string) =>
+      void api.openInTerminal(r).catch((e) => notify(String(e), "error")),
     [notify],
   );
 
   /** Stable handlers, so a memoised tree is not defeated by new closures. */
   const stageOne = useCallback(
-    (r: string, f: string) => fileAction(r, "Staged", () => api.gitStage(r, [f])),
+    (r: string, f: string) =>
+      fileAction(r, "Staged", () => api.gitStage(r, [f])),
     [fileAction],
   );
   const unstageOne = useCallback(
-    (r: string, f: string) => fileAction(r, "Unstaged", () => api.gitUnstage(r, [f])),
+    (r: string, f: string) =>
+      fileAction(r, "Unstaged", () => api.gitUnstage(r, [f])),
     [fileAction],
   );
   const discardOne = useCallback(
     (r: string, f: string, m: Mark) => void discardFile(r, f, m),
     [discardFile],
   );
-  const deleteOne = useCallback((r: string, f: string) => void deleteFile(r, f), [deleteFile]);
-  const deleteDirOne = useCallback((r: string, f: string) => void deleteDir(r, f), [deleteDir]);
+  const deleteOne = useCallback(
+    (r: string, f: string) => void deleteFile(r, f),
+    [deleteFile],
+  );
+  const deleteDirOne = useCallback(
+    (r: string, f: string) => void deleteDir(r, f),
+    [deleteDir],
+  );
 
   /**
    * Rename, which is also how a file moves: the answer is a path, so typing a
@@ -4610,7 +5116,9 @@ export default function App() {
    */
   const renameFile = useCallback(
     (repoPath: string, relPath: string) => {
-      const dir = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+      const dir = relPath.includes("/")
+        ? relPath.slice(0, relPath.lastIndexOf("/"))
+        : "";
       const name = relPath.split("/").pop() ?? relPath;
       setAsking({
         title: "Rename",
@@ -4623,7 +5131,9 @@ export default function App() {
           const bare = next.replace(/\//g, "-").trim();
           if (!bare) return;
           const named =
-            bare.endsWith(".md") || bare.endsWith(".markdown") ? bare : `${bare}.md`;
+            bare.endsWith(".md") || bare.endsWith(".markdown")
+              ? bare
+              : `${bare}.md`;
           const to = dir ? `${dir}/${named}` : named;
           if (to === relPath) return;
           fileAction(repoPath, "Renamed", async () => {
@@ -4636,14 +5146,18 @@ export default function App() {
               if (saveTimer.current) clearTimeout(saveTimer.current);
               setTabs((prev) =>
                 prev.map((t) =>
-                  t.repo === repoPath && t.path === relPath ? { repo: repoPath, path: to } : t,
+                  t.repo === repoPath && t.path === relPath
+                    ? { repo: repoPath, path: to }
+                    : t,
                 ),
               );
               await openFile(repoPath, to);
             } else {
               setTabs((prev) =>
                 prev.map((t) =>
-                  t.repo === repoPath && t.path === relPath ? { repo: repoPath, path: to } : t,
+                  t.repo === repoPath && t.path === relPath
+                    ? { repo: repoPath, path: to }
+                    : t,
                 ),
               );
             }
@@ -4740,7 +5254,11 @@ export default function App() {
       const to = dir ? `${dir}/${name}` : name;
       if (to === from) return;
 
-      track("plan_moved", { toDone: inDoneFolder(to), fromDone: inDoneFolder(from), toRoot: !dir });
+      track("plan_moved", {
+        toDone: inDoneFolder(to),
+        fromDone: inDoneFolder(from),
+        toRoot: !dir,
+      });
       fileAction(repoPath, "Moved", async () => {
         await api.renamePlan(repoPath, from, to);
         await refreshFiles();
@@ -4823,7 +5341,6 @@ export default function App() {
     [templates, newFromTemplate],
   );
 
-
   const onRun = useCallback(
     (label: string, fn: () => Promise<unknown>) => {
       setBusy(label);
@@ -4846,7 +5363,9 @@ export default function App() {
           if (activeRepoPath) {
             const info = await api.openRepo(activeRepoPath).catch(() => null);
             if (info)
-              setRepos((prev) => prev.map((r) => (r.path === info.path ? info : r)));
+              setRepos((prev) =>
+                prev.map((r) => (r.path === info.path ? info : r)),
+              );
           }
         });
     },
@@ -4863,9 +5382,23 @@ export default function App() {
     const entries = status?.entries ?? [];
     const staged = entries.filter((e) => e.index !== " " && e.index !== "?");
     return [
-      { id: "git.pull", label: "Pull", hint: "--ff-only", run: () => onRun("Pulled", () => api.gitPull(repo)) },
-      { id: "git.push", label: "Push", run: () => onRun("Pushed", () => api.gitPush(repo)) },
-      { id: "git.fetch", label: "Fetch", hint: "--prune", run: () => onRun("Fetched", () => api.gitFetch(repo)) },
+      {
+        id: "git.pull",
+        label: "Pull",
+        hint: "--ff-only",
+        run: () => onRun("Pulled", () => api.gitPull(repo)),
+      },
+      {
+        id: "git.push",
+        label: "Push",
+        run: () => onRun("Pushed", () => api.gitPush(repo)),
+      },
+      {
+        id: "git.fetch",
+        label: "Fetch",
+        hint: "--prune",
+        run: () => onRun("Fetched", () => api.gitFetch(repo)),
+      },
       {
         id: "git.branches.refresh",
         label: "Refresh branches",
@@ -4903,7 +5436,8 @@ export default function App() {
             note: `${staged.length} file${staged.length === 1 ? "" : "s"} staged`,
             confirm: "Commit",
             multiline: true,
-            run: (message: string) => onRun("Committed", () => api.gitCommit(repo, message)),
+            run: (message: string) =>
+              onRun("Committed", () => api.gitCommit(repo, message)),
           }),
       },
       {
@@ -4911,13 +5445,22 @@ export default function App() {
         label: "Stage every changed file",
         run: () =>
           onRun("Staged", () =>
-            api.gitStage(repo, entries.filter((e) => e.worktree !== " ").map((e) => e.path)),
+            api.gitStage(
+              repo,
+              entries.filter((e) => e.worktree !== " ").map((e) => e.path),
+            ),
           ),
       },
       {
         id: "git.unstage",
         label: "Unstage everything",
-        run: () => onRun("Unstaged", () => api.gitUnstage(repo, staged.map((e) => e.path))),
+        run: () =>
+          onRun("Unstaged", () =>
+            api.gitUnstage(
+              repo,
+              staged.map((e) => e.path),
+            ),
+          ),
       },
       ...branches
         .filter((b) => b !== activeRepo.branch)
@@ -4947,8 +5490,13 @@ export default function App() {
    * alone when ⌘F came from the chat composer — find opens over the
    * document, but must not steal a half-written message's cursor.
    */
-  const [find, setFind] = useState<{ query: string; focusSeq: number } | null>(null);
-  const [findCount, setFindCount] = useState<{ current: number; total: number } | null>(null);
+  const [find, setFind] = useState<{ query: string; focusSeq: number } | null>(
+    null,
+  );
+  const [findCount, setFindCount] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   /** Where focus was when the bar opened, so Escape can hand it back. */
   const findReturn = useRef<HTMLElement | null>(null);
   /** The engines: each surface registers one while mounted. */
@@ -4958,7 +5506,9 @@ export default function App() {
   /** The main write surface's whole document, for copying a workspace out. */
   const mainWriteMarkdown = useRef<(() => string | null) | null>(null);
   /** And the way to replace it: the Source view's edits to a shared document. */
-  const mainWriteReplace = useRef<((markdown: string) => string | null) | null>(null);
+  const mainWriteReplace = useRef<((markdown: string) => string | null) | null>(
+    null,
+  );
   /** What Source last sent, as the editor serialised it, so the room's echo is not a change. */
   const wsSourceEcho = useRef<string | null>(null);
   const mainSourceFind = useRef<FindHandle | null>(null);
@@ -4978,7 +5528,10 @@ export default function App() {
     if (r.split && r.paneFocus === "split") return splitFind.current;
     const v = viewNow.current;
     if (v === "diff") return null;
-    if (v === "write" && (r.activeRepoPath === MEMORY || isMarkdownPath(r.activePath ?? "")))
+    if (
+      v === "write" &&
+      (r.activeRepoPath === MEMORY || isMarkdownPath(r.activePath ?? ""))
+    )
       return mainWriteFind.current;
     return mainSourceFind.current;
   }, []);
@@ -5056,12 +5609,22 @@ export default function App() {
           if (r.status !== "fulfilled") continue;
           if (r.value.capped) capped = true;
           for (const h of r.value.hits) {
-            hits.push({ repoPath: r.value.repo.path, repoName: r.value.repo.name, ...h });
+            hits.push({
+              repoPath: r.value.repo.path,
+              repoName: r.value.repo.name,
+              ...h,
+            });
           }
         }
         return { hits, capped };
       }),
-    [shownRepos, activeRepoPath, settings.searchScope, settings.showIgnored, settings.showAllFiles],
+    [
+      shownRepos,
+      activeRepoPath,
+      settings.searchScope,
+      settings.showIgnored,
+      settings.showAllFiles,
+    ],
   );
 
   /** Runs the pending engine update now — Enter must not chase a stale query. */
@@ -5079,13 +5642,16 @@ export default function App() {
       if (timer) clearTimeout(timer);
       timer = null;
       const eng = findEngine();
-      if (findLast.current && findLast.current !== eng) findLast.current.clear();
+      if (findLast.current && findLast.current !== eng)
+        findLast.current.clear();
       findLast.current = eng;
       const seed = findSeed.current;
       findSeed.current = null;
       eng?.set(
         find.query,
-        seed && find.query ? nearestMatchIndex(sourceNow.current, find.query, seed.line) : undefined,
+        seed && find.query
+          ? nearestMatchIndex(sourceNow.current, find.query, seed.line)
+          : undefined,
       );
     };
     flushFind.current = apply;
@@ -5119,7 +5685,6 @@ export default function App() {
     setChordHint(null);
   }, []);
 
-
   /** ⌘\ — open the most recent other buffer beside this one, or close the split. */
   const toggleSplit = useCallback(() => {
     if (split) {
@@ -5130,19 +5695,22 @@ export default function App() {
       .reverse()
       .find(
         (t) =>
-          t.repo !== MEMORY && !(t.repo === activeRepoPath && t.path === activePath),
+          t.repo !== MEMORY &&
+          !(t.repo === activeRepoPath && t.path === activePath),
       );
     if (!other) {
-      notify("Nothing else open — the split shows another buffer beside this one");
+      notify(
+        "Nothing else open — the split shows another buffer beside this one",
+      );
       return;
     }
     openSplitFile(other.repo, other.path);
   }, [split, tabs, activeRepoPath, activePath, notify, openSplitFile]);
 
-
   useEffect(() => {
     const inSurface = (el: EventTarget | null) =>
-      el instanceof Element && !!el.closest(".milkdown, .source, .diff-surface");
+      el instanceof Element &&
+      !!el.closest(".milkdown, .source, .diff-surface");
     const focusIn = (e: FocusEvent) => setEditing(inSurface(e.target));
     const focusOut = (e: FocusEvent) => setEditing(inSurface(e.relatedTarget));
     window.addEventListener("focusin", focusIn);
@@ -5166,8 +5734,9 @@ export default function App() {
     if (!settings.showIndex) set({ showIndex: true });
     requestAnimationFrame(() => {
       const at =
-        document.querySelector<HTMLElement>('.tree [data-rove][tabindex="0"]') ??
-        document.querySelector<HTMLElement>(".tree [data-rove]");
+        document.querySelector<HTMLElement>(
+          '.tree [data-rove][tabindex="0"]',
+        ) ?? document.querySelector<HTMLElement>(".tree [data-rove]");
       at?.focus();
     });
   }, [settings.showIndex, set]);
@@ -5210,12 +5779,16 @@ export default function App() {
       // the page otherwise — so the default target is the thing you're reading.
       if (mod && ["=", "+", "-", "_"].includes(e.key)) {
         e.preventDefault();
-        const inTree = !!(document.activeElement as HTMLElement | null)?.closest(".files");
+        const inTree = !!(
+          document.activeElement as HTMLElement | null
+        )?.closest(".files");
         const up = e.key === "=" || e.key === "+";
         const key = inTree ? "treeSize" : "size";
         const r = RANGES[key];
         const next = settings[key] + (up ? r.step : -r.step);
-        set({ [key]: Math.min(r.max, Math.max(r.min, next)) } as Partial<Settings>);
+        set({
+          [key]: Math.min(r.max, Math.max(r.min, next)),
+        } as Partial<Settings>);
         return;
       }
       /*
@@ -5260,7 +5833,8 @@ export default function App() {
             closeSplitTab(split.repo, split.path);
             return;
           }
-          if (activeRepoPath && activePath) void closeTab(activeRepoPath, activePath);
+          if (activeRepoPath && activePath)
+            void closeTab(activeRepoPath, activePath);
         },
         /*
          * ⌃Tab, the binding every tabbed application has, plus the ⌘⌥ arrows.
@@ -5284,12 +5858,17 @@ export default function App() {
           if (matter === null) onMatterChange("");
           setMatterOpen(true);
         },
-        move: () => activeRepoPath && activePath && setMoving({ repo: activeRepoPath, path: activePath }),
+        move: () =>
+          activeRepoPath &&
+          activePath &&
+          setMoving({ repo: activeRepoPath, path: activePath }),
         "new.folder": () =>
           activeRepoPath &&
           newFolderIn(
             activeRepoPath,
-            activePath?.includes("/") ? activePath.slice(0, activePath.lastIndexOf("/")) : "",
+            activePath?.includes("/")
+              ? activePath.slice(0, activePath.lastIndexOf("/"))
+              : "",
           ),
         reload: () => void reloadAll(),
         "chat.new": () => chat !== false && newChat(),
@@ -5456,7 +6035,9 @@ export default function App() {
     if (settings.showCompleted) return filesByRepo;
     const out: Record<string, PlanFile[]> = {};
     for (const [repo, files] of Object.entries(filesByRepo)) {
-      out[repo] = files.filter((f) => !isDone(f.status) && !inDoneFolder(f.relPath));
+      out[repo] = files.filter(
+        (f) => !isDone(f.status) && !inDoneFolder(f.relPath),
+      );
     }
     return out;
   }, [filesByRepo, settings.showCompleted]);
@@ -5483,8 +6064,14 @@ export default function App() {
       })),
     [workspaces],
   );
-  const wsShelfPaths = useMemo(() => new Set(wsShelf.map((s) => s.path)), [wsShelf]);
-  const shelf = useMemo(() => [...shownRepos, ...wsShelf], [shownRepos, wsShelf]);
+  const wsShelfPaths = useMemo(
+    () => new Set(wsShelf.map((s) => s.path)),
+    [wsShelf],
+  );
+  const shelf = useMemo(
+    () => [...shownRepos, ...wsShelf],
+    [shownRepos, wsShelf],
+  );
   const shelfFiles = useMemo(() => {
     const out: Record<string, PlanFile[]> = { ...shownByRepo };
     for (const w of workspaces) {
@@ -5493,7 +6080,9 @@ export default function App() {
         .map((e) => ({
           relPath: e.path,
           name: e.path.split("/").pop() ?? e.path,
-          dir: e.path.includes("/") ? e.path.slice(0, e.path.lastIndexOf("/")) : "",
+          dir: e.path.includes("/")
+            ? e.path.slice(0, e.path.lastIndexOf("/"))
+            : "",
           // Nothing on disk, so nothing has a modification time; the tree only
           // uses it to notice a poll that changed nothing.
           modified: 0,
@@ -5605,7 +6194,10 @@ export default function App() {
     const file = id ? wsFileOf(activePath) : null;
     for (const room of rooms.current.values()) {
       if (room.id !== treeRoomId(room.workspaceId)) continue;
-      room.awareness.setLocalStateField("at", room.workspaceId === id ? file : null);
+      room.awareness.setLocalStateField(
+        "at",
+        room.workspaceId === id ? file : null,
+      );
     }
     // `roomTick` covers a tree room opened after the file was.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5637,7 +6229,9 @@ export default function App() {
   const [wsSource, setWsSource] = useState("");
   useEffect(() => {
     const id = wsIdOf(activePath);
-    const docId = id ? (wsTrees[id] ?? []).find((e) => e.path === wsFileOf(activePath))?.doc : null;
+    const docId = id
+      ? (wsTrees[id] ?? []).find((e) => e.path === wsFileOf(activePath))?.doc
+      : null;
     const room = docId ? rooms.current.get(docId) : undefined;
     if (!room) {
       setWsSource("");
@@ -5673,6 +6267,21 @@ export default function App() {
   activeWsRoomRef.current = activeWsRoom;
 
   /**
+   * The agent's reads and writes, and the folder's outside edits, one at a
+   * time and in order: two writes to one file must land as sent, and a read
+   * after a shell edit must see the edit.
+   */
+  const fsQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueueFs = useCallback((job: () => Promise<unknown>) => {
+    fsQueue.current = fsQueue.current.then(job).catch(() => {});
+    return fsQueue.current;
+  }, []);
+  /** Set below, once the room-writing path exists. */
+  const outsideRef = useRef<
+    (workspace: string, path: string, text: string) => Promise<unknown>
+  >(async () => {});
+
+  /**
    * Which workspaces need a scratch folder right now: the one on screen,
    * when there is a chat to offer, and any with an agent still running —
    * an agent started here and left to work while you read something else
@@ -5681,8 +6290,11 @@ export default function App() {
   const scratchWanted = useMemo(() => {
     const ids = new Set<string>();
     if (chat !== false && activeWsId && account) ids.add(activeWsId);
-    const dirs = Object.keys(running).map((k) => k.slice(0, k.lastIndexOf("::")));
-    for (const [id, dir] of Object.entries(scratchDirs)) if (dirs.includes(dir)) ids.add(id);
+    const dirs = Object.keys(running).map((k) =>
+      k.slice(0, k.lastIndexOf("::")),
+    );
+    for (const [id, dir] of Object.entries(scratchDirs))
+      if (dirs.includes(dir)) ids.add(id);
     return ids;
   }, [chat, activeWsId, account, running, scratchDirs]);
 
@@ -5705,8 +6317,16 @@ export default function App() {
           tree,
           (docId) => roomFor(id, docId),
           async (files) => {
-            const dir = await api.workspaceScratch(id, files);
-            setScratchDirs((prev) => (prev[id] === dir ? prev : { ...prev, [id]: dir }));
+            const { dir, changed } = await api.workspaceScratch(id, files);
+            setScratchDirs((prev) =>
+              prev[id] === dir ? prev : { ...prev, [id]: dir },
+            );
+            // What the agent changed on disk rather than through us — a
+            // shell edit, a file it made — goes into the room the way one of
+            // its client writes would. Queued, not awaited: the put has to
+            // answer before the write can flush the folder again.
+            for (const c of changed)
+              enqueueFs(() => outsideRef.current(id, c.path, c.text));
           },
         );
         slot.flush = handle.flush;
@@ -5738,7 +6358,9 @@ export default function App() {
       room: Room;
       path: string;
       initial: string;
-      replaceRef: React.MutableRefObject<((markdown: string) => string | null) | null>;
+      replaceRef: React.MutableRefObject<
+        ((markdown: string) => string | null) | null
+      >;
       onReady: () => void;
     }[]
   >([]);
@@ -5748,7 +6370,9 @@ export default function App() {
     (room: Room, path: string, markdown: string, fresh: boolean) =>
       new Promise<string | null>((resolve) => {
         const key = `${room.id}:${Date.now()}:${Math.random()}`;
-        const replaceRef = { current: null as ((markdown: string) => string | null) | null };
+        const replaceRef = {
+          current: null as ((markdown: string) => string | null) | null,
+        };
         let settledOnce = false;
         const finish = (echo: string | null) => {
           if (settledOnce) return;
@@ -5778,71 +6402,105 @@ export default function App() {
   );
 
   /**
-   * The agent read or wrote a file under a workspace's scratch folder.
-   *
-   * A read answers with the room's `meta.markdown` — what the last editor
-   * published, which is the file as everyone else sees it. A write becomes
-   * an edit to the room: through the editor on screen when the file is the
-   * one open here, or through a headless one otherwise; a file the tree does
-   * not have is made first. The folder is flushed before the reply so the
-   * agent's next shell read is current.
+   * Turn text into an edit of a workspace file's room: through the editor on
+   * screen when the file is the one open here, or through a headless one
+   * otherwise; a file the tree does not have is made first, folders and all.
+   * Answers whether the write landed. The folder is flushed afterwards so
+   * the agent's next shell read is current.
    */
-  const onAgentFs = useCallback(
-    async (p: { repo: string; chat: string; requestId: string; op: string; workspace: string; path: string; content: string | null }) => {
-      const reply = (content: string | null) =>
-        api.agentFsReply(p.repo, p.chat, p.requestId, content).catch(() => {});
-      const tree = await openTree(p.workspace);
-      if (!tree) return reply(null);
+  const writeToRoom = useCallback(
+    async (
+      workspace: string,
+      path: string,
+      markdown: string,
+    ): Promise<boolean> => {
+      const tree = await openTree(workspace);
+      if (!tree) return false;
       await settled(tree);
       const map = treeMap(tree);
-      const entry = map.get(p.path);
-      if (p.op === "read") {
-        if (!entry || entry.kind !== "file" || !entry.doc) return reply(null);
-        const room = await roomFor(p.workspace, entry.doc);
-        if (!room) return reply(null);
-        await settled(room);
-        return reply(room.doc.getMap<string>("meta").get("markdown") ?? "");
-      }
-      if (p.op !== "write") return reply(null);
-      const markdown = p.content ?? "";
+      const entry = map.get(path);
       let docId = entry?.kind === "file" ? (entry.doc ?? null) : null;
       let fresh = false;
       if (!docId) {
         // A folder by that name, or a path that climbs: refused.
-        if (entry || p.path.split("/").some((part) => !part || part === "." || part === "..")) return reply(null);
+        if (
+          entry ||
+          path.split("/").some((part) => !part || part === "." || part === "..")
+        )
+          return false;
         try {
-          const parts = p.path.split("/");
+          const parts = path.split("/");
           for (let i = 1; i < parts.length; i++) {
             const dir = parts.slice(0, i).join("/");
             if (!map.has(dir)) wsTree.addFolder(tree, dir);
           }
-          docId = wsTree.addFile(tree, p.path);
+          docId = wsTree.addFile(tree, path);
           fresh = true;
         } catch {
-          return reply(null);
+          return false;
         }
       }
-      const room = await roomFor(p.workspace, docId);
-      if (!room) return reply(null);
+      const room = await roomFor(workspace, docId);
+      if (!room) return false;
       await settled(room);
-      const open = activeWsRoomRef.current?.id === docId ? mainWriteReplace.current : null;
-      const echo = open ? open(markdown) : await ghostReplace(room, p.path, markdown, fresh);
-      if (echo === null) return reply(null);
+      const open =
+        activeWsRoomRef.current?.id === docId ? mainWriteReplace.current : null;
+      const echo = open
+        ? open(markdown)
+        : await ghostReplace(room, path, markdown, fresh);
+      if (echo === null) return false;
       // Published now rather than on the editor's debounce: the reply says
       // the write landed, and the folder is written from this.
       const meta = room.doc.getMap<string>("meta");
       if (meta.get("markdown") !== echo) meta.set("markdown", echo);
-      await scratches.current.get(p.workspace)?.flush();
-      return reply("");
+      await scratches.current.get(workspace)?.flush();
+      return true;
     },
     [openTree, roomFor, ghostReplace],
+  );
+  outsideRef.current = writeToRoom;
+
+  /**
+   * The agent read or wrote a file under a workspace's scratch folder,
+   * through the client filesystem.
+   *
+   * A read answers with the room's `meta.markdown` — what the last editor
+   * published, which is the file as everyone else sees it. A write becomes
+   * an edit to the room.
+   */
+  const onAgentFs = useCallback(
+    async (p: {
+      repo: string;
+      chat: string;
+      requestId: string;
+      op: string;
+      workspace: string;
+      path: string;
+      content: string | null;
+    }) => {
+      const reply = (content: string | null) =>
+        api.agentFsReply(p.repo, p.chat, p.requestId, content).catch(() => {});
+      if (p.op === "write")
+        return reply(
+          (await writeToRoom(p.workspace, p.path, p.content ?? "")) ? "" : null,
+        );
+      if (p.op !== "read") return reply(null);
+      const tree = await openTree(p.workspace);
+      if (!tree) return reply(null);
+      await settled(tree);
+      const entry = treeMap(tree).get(p.path);
+      if (!entry || entry.kind !== "file" || !entry.doc) return reply(null);
+      const room = await roomFor(p.workspace, entry.doc);
+      if (!room) return reply(null);
+      await settled(room);
+      return reply(room.doc.getMap<string>("meta").get("markdown") ?? "");
+    },
+    [openTree, roomFor, writeToRoom],
   );
   const onAgentFsRef = useRef(onAgentFs);
   onAgentFsRef.current = onAgentFs;
 
   useEffect(() => {
-    // One at a time, in order: two writes to one file must land as sent.
-    let queue: Promise<unknown> = Promise.resolve();
     const un = listen<{
       repo: string;
       chat: string;
@@ -5852,10 +6510,43 @@ export default function App() {
       path: string;
       content: string | null;
     }>("agent-fs", (e) => {
-      queue = queue.then(() => onAgentFsRef.current(e.payload)).catch(() => {});
+      void enqueueFs(() => onAgentFsRef.current(e.payload));
     });
     return () => void un.then((f) => f());
-  }, []);
+  }, [enqueueFs]);
+
+  /**
+   * A tool call finishing, or a turn ending, in a chat that runs in a scratch
+   * folder: the moment a shell edit can have landed on disk, and the moment
+   * to look. The rooms do not change when the agent runs `sed`, so nothing
+   * else would write the folder and find the edit; the flush does, and the
+   * put answers with what changed.
+   */
+  const scratchByDir = useRef<Record<string, string>>({});
+  scratchByDir.current = Object.fromEntries(
+    Object.entries(scratchDirs).map(([id, dir]) => [dir, id]),
+  );
+  useEffect(() => {
+    const look = (repo: string) => {
+      const id = scratchByDir.current[repo];
+      if (!id) return;
+      void enqueueFs(async () => scratches.current.get(id)?.flush());
+    };
+    const tool = listen<{ repo: string; status: string | null }>(
+      "agent-tool",
+      (e) => {
+        if (e.payload.status === "completed" || e.payload.status === "failed")
+          look(e.payload.repo);
+      },
+    );
+    const turn = listen<{ repo: string }>("agent-turn", (e) =>
+      look(e.payload.repo),
+    );
+    return () => {
+      void tool.then((f) => f());
+      void turn.then((f) => f());
+    };
+  }, [enqueueFs]);
 
   const allFiles = useMemo(
     () =>
@@ -5869,7 +6560,8 @@ export default function App() {
     [shownRepos, filesByRepo],
   );
 
-  const activeKey = activeRepoPath && activePath ? `${activeRepoPath}::${activePath}` : null;
+  const activeKey =
+    activeRepoPath && activePath ? `${activeRepoPath}::${activePath}` : null;
 
   const activeMark: Mark = activeKey
     ? dirty
@@ -5922,159 +6614,194 @@ export default function App() {
         {zenOn ? (
           <>
             <span className="rail-spacer" data-tauri-drag-region />
-            <button className="rail-btn" onClick={() => setZen(false)} title="Leave zen (esc)">
+            <button
+              className="rail-btn"
+              onClick={() => setZen(false)}
+              title="Leave zen (esc)"
+            >
               Zen
             </button>
           </>
         ) : (
           <>
-        <button
-          className={`rail-btn ${treeOpen ? "on" : ""}`}
-          onClick={() => set({ showIndex: !settings.showIndex })}
-          title={`File tree (${renderKeys("mod+b")})`}
-          aria-pressed={treeOpen}
-        >
-          Files
-        </button>
-        <span className="rail-sep" data-tauri-drag-region />
-        <span className="wordmark" data-tauri-drag-region>
-          Plans
-        </span>
+            <button
+              className={`rail-btn ${treeOpen ? "on" : ""}`}
+              onClick={() => set({ showIndex: !settings.showIndex })}
+              title={`File tree (${renderKeys("mod+b")})`}
+              aria-pressed={treeOpen}
+            >
+              Files
+            </button>
+            <span className="rail-sep" data-tauri-drag-region />
+            <span className="wordmark" data-tauri-drag-region>
+              Plans
+            </span>
 
-        {repos.length > 0 ? (
-          <>
-            <Dropdown
-              ariaLabel="Repository"
-              value={activeRepoPath ?? ""}
-              onChange={(v) => {
-                if (v === "__add") void addRepo();
-                else setActiveRepoPath(v);
-              }}
-              choices={[
-                ...repos.map((r) => ({ value: r.path, label: r.name, note: r.branch })),
-                { value: "__add", label: "Add a repository…", apart: true, always: true },
-              ]}
-            />
-            {activeRepo && (
-              <Dropdown
-                className="branch-pick"
-                ariaLabel="Branch"
-                onOpen={() => setWantBranches(true)}
-                value={branch}
-                disabled={!!busy}
-                status={branchesLoading ? "Refreshing…" : undefined}
-                onChange={(b) =>
-                  onRun(`Switched to ${b}`, () => api.gitCheckout(activeRepo.path, b))
-                }
-                choices={[
-                  ...(branches.length ? branches : [branch]).map((b) => ({
-                    value: b,
-                    label: b,
-                  })),
-                  // On origin and not here yet: picking one is a checkout that
-                  // creates the tracking branch, which is why it can sit in
-                  // the same menu rather than in a second one.
-                  ...remoteBranches.map((b) => ({
-                    value: b,
-                    label: b.split("/").slice(1).join("/"),
-                    note: b.split("/")[0],
-                    apart: true,
-                  })),
-                ]}
-              />
-            )}
-          </>
-        ) : (
-          <button className="rail-btn on" onClick={addRepo}>
-            Add a repository
-          </button>
-        )}
-
-        <span className="rail-spacer" data-tauri-drag-region />
-
-        {/*
-         * The mode still belongs to the buffer — `goto` sets it on the active
-         * tab, not on the app — but it is read as chrome, so it sits in the
-         * chrome. In the tab row it moved with the tabs and shared a line
-         * with the buffer names, which made a per-buffer setting look like
-         * part of the buffer list.
-         */}
-        {/* A memory buffer has no file to show the source of and no commit to
-            diff against, so it is Write or nothing. */}
-        {activePath && !settingsOpen && (activeRepoPath !== MEMORY || wsIdOf(activePath)) && (
-          /* One switch, one state, both panes — and ⌥-click pins only the
-             focused pane, so one file can sit rich on one side and raw on
-             the other. The highlight follows the focused pane. */
-          <span className="segmented small view-switch">
-            {/* Write is a markdown surface: for anything else it is hidden,
-                not disabled — the buffer has one honest mode, Source. */}
-            {isMarkdownPath(paneFocus === "split" && split ? split.path : activePath) && (
-              <button
-                className={(paneFocus === "split" && split ? (splitOverride ?? view) : view) === "write" ? "on" : ""}
-                onClick={(e) => goto("write", e.altKey)}
-                title="⌥-click: this pane only"
-              >
-                Write
+            {repos.length > 0 ? (
+              <>
+                <Dropdown
+                  ariaLabel="Repository"
+                  value={activeRepoPath ?? ""}
+                  onChange={(v) => {
+                    if (v === "__add") void addRepo();
+                    else setActiveRepoPath(v);
+                  }}
+                  choices={[
+                    ...repos.map((r) => ({
+                      value: r.path,
+                      label: r.name,
+                      note: r.branch,
+                    })),
+                    {
+                      value: "__add",
+                      label: "Add a repository…",
+                      apart: true,
+                      always: true,
+                    },
+                  ]}
+                />
+                {activeRepo && (
+                  <Dropdown
+                    className="branch-pick"
+                    ariaLabel="Branch"
+                    onOpen={() => setWantBranches(true)}
+                    value={branch}
+                    disabled={!!busy}
+                    status={branchesLoading ? "Refreshing…" : undefined}
+                    onChange={(b) =>
+                      onRun(`Switched to ${b}`, () =>
+                        api.gitCheckout(activeRepo.path, b),
+                      )
+                    }
+                    choices={[
+                      ...(branches.length ? branches : [branch]).map((b) => ({
+                        value: b,
+                        label: b,
+                      })),
+                      // On origin and not here yet: picking one is a checkout that
+                      // creates the tracking branch, which is why it can sit in
+                      // the same menu rather than in a second one.
+                      ...remoteBranches.map((b) => ({
+                        value: b,
+                        label: b.split("/").slice(1).join("/"),
+                        note: b.split("/")[0],
+                        apart: true,
+                      })),
+                    ]}
+                  />
+                )}
+              </>
+            ) : (
+              <button className="rail-btn on" onClick={addRepo}>
+                Add a repository
               </button>
             )}
-            <button
-              className={(paneFocus === "split" && split ? (splitOverride ?? view) : view) === "source" ? "on" : ""}
-              onClick={(e) => goto("source", e.altKey)}
-              title="The raw markdown, exactly as it is on disk — ⌥-click: this pane only"
-            >
-              Source
-            </button>
-            {/* Diff is not a mode you switch into: it belongs to changed
+
+            <span className="rail-spacer" data-tauri-drag-region />
+
+            {/*
+             * The mode still belongs to the buffer — `goto` sets it on the active
+             * tab, not on the app — but it is read as chrome, so it sits in the
+             * chrome. In the tab row it moved with the tabs and shared a line
+             * with the buffer names, which made a per-buffer setting look like
+             * part of the buffer list.
+             */}
+            {/* A memory buffer has no file to show the source of and no commit to
+            diff against, so it is Write or nothing. */}
+            {activePath &&
+              !settingsOpen &&
+              (activeRepoPath !== MEMORY || wsIdOf(activePath)) && (
+                /* One switch, one state, both panes — and ⌥-click pins only the
+             focused pane, so one file can sit rich on one side and raw on
+             the other. The highlight follows the focused pane. */
+                <span className="segmented small view-switch">
+                  {/* Write is a markdown surface: for anything else it is hidden,
+                not disabled — the buffer has one honest mode, Source. */}
+                  {isMarkdownPath(
+                    paneFocus === "split" && split ? split.path : activePath,
+                  ) && (
+                    <button
+                      className={
+                        (paneFocus === "split" && split
+                          ? (splitOverride ?? view)
+                          : view) === "write"
+                          ? "on"
+                          : ""
+                      }
+                      onClick={(e) => goto("write", e.altKey)}
+                      title="⌥-click: this pane only"
+                    >
+                      Write
+                    </button>
+                  )}
+                  <button
+                    className={
+                      (paneFocus === "split" && split
+                        ? (splitOverride ?? view)
+                        : view) === "source"
+                        ? "on"
+                        : ""
+                    }
+                    onClick={(e) => goto("source", e.altKey)}
+                    title="The raw markdown, exactly as it is on disk — ⌥-click: this pane only"
+                  >
+                    Source
+                  </button>
+                  {/* Diff is not a mode you switch into: it belongs to changed
                 files, reached from the git panel. In it, neither button is
                 lit, and pressing either is the way back out. */}
-          </span>
-        )}
+                </span>
+              )}
 
-        {/* Not in a workspace: nothing there is a repository's to commit. */}
-        {!wsIdOf(activePath) && (
-          <button
-            className={`rail-btn ${gitOpen ? "on" : ""}`}
-            onClick={() => showPanel("showGit")}
-            title={`Git panel (${renderKeys("mod+g")})`}
-            aria-pressed={gitOpen}
-          >
-            Git
-            {changeCount > 0 && <span className="count">{changeCount}</span>}
-          </button>
-        )}
-        {/* Only with somewhere to run: a repository, or a workspace whose
+            {/* Not in a workspace: nothing there is a repository's to commit. */}
+            {!wsIdOf(activePath) && (
+              <button
+                className={`rail-btn ${gitOpen ? "on" : ""}`}
+                onClick={() => showPanel("showGit")}
+                title={`Git panel (${renderKeys("mod+g")})`}
+                aria-pressed={gitOpen}
+              >
+                Git
+                {changeCount > 0 && (
+                  <span className="count">{changeCount}</span>
+                )}
+              </button>
+            )}
+            {/* Only with somewhere to run: a repository, or a workspace whose
             scratch folder is written. The release notes have neither, and
             offering a chat that cannot start is worse than none. */}
-        {chat !== false && chatRepo && (
-          <button
-            className={`rail-btn ${muxOpen ? "on" : ""}`}
-            onClick={() => showPanel("showMux")}
-            title={
-              runningCount
-                ? `Agent chat (${renderKeys("mod+j")}) — ${runningCount} running`
-                : `Agent chat (${renderKeys("mod+j")})`
-            }
-            aria-pressed={muxOpen}
-          >
-            Chat
-            {/* Across every repository, not only the open one. What this
+            {chat !== false && chatRepo && (
+              <button
+                className={`rail-btn ${muxOpen ? "on" : ""}`}
+                onClick={() => showPanel("showMux")}
+                title={
+                  runningCount
+                    ? `Agent chat (${renderKeys("mod+j")}) — ${runningCount} running`
+                    : `Agent chat (${renderKeys("mod+j")})`
+                }
+                aria-pressed={muxOpen}
+              >
+                Chat
+                {/* Across every repository, not only the open one. What this
                 number is about is `node` processes on the machine, and a badge
                 that hid the ones running in a repo you switched away from
                 would be hiding exactly what it exists to report. */}
-            {runningCount > 0 && <span className="count live">{runningCount}</span>}
-          </button>
-        )}
-        <button
-          className={`rail-btn ${settingsOpen ? "on" : ""}`}
-          onClick={() => {
-            setKeyboardOpen(false);
-            setSettingsOpen((o) => !o);
-          }}
-          title={`Settings (${renderKeys("mod+,")})`}
-          aria-pressed={settingsOpen}
-        >
-          <span className="aa">Aa</span>
-        </button>
+                {runningCount > 0 && (
+                  <span className="count live">{runningCount}</span>
+                )}
+              </button>
+            )}
+            <button
+              className={`rail-btn ${settingsOpen ? "on" : ""}`}
+              onClick={() => {
+                setKeyboardOpen(false);
+                setSettingsOpen((o) => !o);
+              }}
+              title={`Settings (${renderKeys("mod+,")})`}
+              aria-pressed={settingsOpen}
+            >
+              <span className="aa">Aa</span>
+            </button>
           </>
         )}
 
@@ -6125,7 +6852,9 @@ export default function App() {
                     ? wsShelfPath(wsIdOf(activePath)!)
                     : activeRepoPath
               }
-              activePath={wsIdOf(activePath) ? wsFileOf(activePath) : activePath}
+              activePath={
+                wsIdOf(activePath) ? wsFileOf(activePath) : activePath
+              }
               expanded={expanded}
               onToggle={shelfToggle}
               onOpen={shelfOpen}
@@ -6143,15 +6872,27 @@ export default function App() {
               onReveal={revealOne}
               onTerminal={terminalOne}
               onOpenSplit={openInSplit}
-              onHandOff={chat === false ? undefined : (repo, path, kind) => void handOff(kind, repo, path)}
+              onHandOff={
+                chat === false
+                  ? undefined
+                  : (repo, path, kind) => void handOff(kind, repo, path)
+              }
               onNewFile={shelfNewFile}
               templates={templates}
               onNewFolder={shelfNewFolder}
               onMove={shelfMove}
-              onCopy={(from, path, toRepo, dir) => void copyTo(from, path, toRepo, dir)}
+              onCopy={(from, path, toRepo, dir) =>
+                void copyTo(from, path, toRepo, dir)
+              }
               emptyDirs={shelfDirs}
               presence={wsPresence}
-              ownedWorkspaces={new Set(workspaces.filter((w) => w.createdBy === account?.login).map((w) => wsShelfPath(w.id)))}
+              ownedWorkspaces={
+                new Set(
+                  workspaces
+                    .filter((w) => w.createdBy === account?.login)
+                    .map((w) => wsShelfPath(w.id)),
+                )
+              }
               onLeaveWorkspace={(repo) => void leaveWorkspace(wsIdOf(repo)!)}
               onDeleteWorkspace={(repo) => void deleteWorkspace(wsIdOf(repo)!)}
               onRename={shelfRename}
@@ -6177,13 +6918,25 @@ export default function App() {
               {account ? (
                 <>
                   <Avatar
-                    who={{ name: account.name ?? account.login, color: colorFor(account.login), avatar: account.avatar }}
+                    who={{
+                      name: account.name ?? account.login,
+                      color: colorFor(account.login),
+                      avatar: account.avatar,
+                    }}
                     size={22}
                   />
-                  <span className="foot-name" data-testid="account" title={account.login}>
+                  <span
+                    className="foot-name"
+                    data-testid="account"
+                    title={account.login}
+                  >
                     {account.name ?? account.login}
                   </span>
-                  <button className="rail-btn" onClick={() => void signOut()} title="Sign out of workspaces">
+                  <button
+                    className="rail-btn"
+                    onClick={() => void signOut()}
+                    title="Sign out of workspaces"
+                  >
                     Sign out
                   </button>
                 </>
@@ -6237,7 +6990,11 @@ export default function App() {
         {/* --- page -------------------------------------------------------- */}
         <main className="page">
           {settingsOpen && keyboardOpen ? (
-            <KeyboardPage settings={settings} onChange={set} onBack={() => setKeyboardOpen(false)} />
+            <KeyboardPage
+              settings={settings}
+              onChange={set}
+              onBack={() => setKeyboardOpen(false)}
+            />
           ) : settingsOpen ? (
             <SettingsPage
               settings={settings}
@@ -6286,7 +7043,9 @@ export default function App() {
               templates={templates}
               templatesDir={templatesDir}
               onOpenTemplates={() =>
-                void api.templatesOpen().catch((e) => notify(String(e), "error"))
+                void api
+                  .templatesOpen()
+                  .catch((e) => notify(String(e), "error"))
               }
             />
           ) : (
@@ -6294,511 +7053,580 @@ export default function App() {
               {/* The document area: two pane columns, each carrying its own
                   strip, header and buffer — the chrome resizes with the
                   document it describes. Zen collapses to the main one. */}
-              <div className={`page-body ${splitDir === "column" ? "dir-col" : "dir-row"}`}>
               <div
-                className="main-pane"
-                style={split && !zen ? { flex: `${splitRatio} 1 0px` } : undefined}
-                onMouseDownCapture={() => setPaneFocus("main")}
-                onFocusCapture={() => setPaneFocus("main")}
+                className={`page-body ${splitDir === "column" ? "dir-col" : "dir-row"}`}
               >
-              {/* Zen is one buffer and nothing else — no tabs, no header. */}
-              {tabs.length > 0 && !zenOn && (
-                <div className="tab-row">
                 <div
-                  className="tabs"
-                  data-strip="main"
-                  role="tablist"
-                  aria-label="Open buffers"
-                  ref={mainStrip}
-                  onKeyDown={stripKey("main")}
-                  onClickCapture={swallowTabClick}
+                  className="main-pane"
+                  style={
+                    split && !zen ? { flex: `${splitRatio} 1 0px` } : undefined
+                  }
+                  onMouseDownCapture={() => setPaneFocus("main")}
+                  onFocusCapture={() => setPaneFocus("main")}
                 >
-                  {tabs.map((t) => {
-                    const on = t.repo === activeRepoPath && t.path === activePath;
-                    const mark = liveMarks.get(`${t.repo}::${t.path}`) ?? "clean";
-                    // A workspace file reads as its own name, like any other;
-                    // which workspace it is in is the tooltip's business.
-                    const shown = wsIdOf(t.path) ? wsFileOf(t.path) : t.path;
-                    const name = shown.split("/").pop() ?? shown;
-                    const where = wsIdOf(t.path)
-                      ? `${workspaces.find((w) => w.id === wsIdOf(t.path))?.name ?? "workspace"} / ${shown}`
-                      : t.path;
-                    // Changed on disk since we read it. Says so rather than
-                    // acting: opening the tab re-reads the file anyway.
-                    const moved = outside.has(`${t.repo}::${t.path}`);
-                    return (
-                      <span
-                        className={`tab ${on ? "on" : ""}${
-                          on && editing && paneFocus === "main" ? " editing" : ""
-                        } ${mark}${moved ? " outside" : ""}`}
-                        key={`${t.repo}::${t.path}`}
+                  {/* Zen is one buffer and nothing else — no tabs, no header. */}
+                  {tabs.length > 0 && !zenOn && (
+                    <div className="tab-row">
+                      <div
+                        className="tabs"
+                        data-strip="main"
+                        role="tablist"
+                        aria-label="Open buffers"
+                        ref={mainStrip}
+                        onKeyDown={stripKey("main")}
+                        onClickCapture={swallowTabClick}
                       >
-                        <button
-                          className="tab-name"
-                          role="tab"
-                          aria-selected={on}
-                          data-rove={`${t.repo}::${t.path}`}
-                          data-repo={t.repo}
-                          data-path={t.path}
-                          title={moved ? `${t.path} — changed on disk` : where}
-                          onClick={() => void reopenTab(t.repo, t.path)}
-                          onAuxClick={(e) => {
-                            if (e.button === 1) void closeTab(t.repo, t.path);
-                          }}
-                          onPointerDown={(e) => pressTab("main", t.repo, t.path, e)}
-                          onContextMenu={(e) => {
-                            if (t.repo === MEMORY) return;
-                            e.preventDefault();
-                            setTabMenu({
-                              x: e.clientX,
-                              y: e.clientY,
-                              strip: "main",
-                              repo: t.repo,
-                              path: t.path,
-                            });
-                          }}
-                        >
-                          {displayName(name, settings.showExtensions)}
-                        </button>
-                        <button
-                          className="tab-close"
-                          aria-label={`Close ${name}`}
-                          onClick={() => void closeTab(t.repo, t.path)}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-                </div>
-              )}
+                        {tabs.map((t) => {
+                          const on =
+                            t.repo === activeRepoPath && t.path === activePath;
+                          const mark =
+                            liveMarks.get(`${t.repo}::${t.path}`) ?? "clean";
+                          // A workspace file reads as its own name, like any other;
+                          // which workspace it is in is the tooltip's business.
+                          const shown = wsIdOf(t.path)
+                            ? wsFileOf(t.path)
+                            : t.path;
+                          const name = shown.split("/").pop() ?? shown;
+                          const where = wsIdOf(t.path)
+                            ? `${workspaces.find((w) => w.id === wsIdOf(t.path))?.name ?? "workspace"} / ${shown}`
+                            : t.path;
+                          // Changed on disk since we read it. Says so rather than
+                          // acting: opening the tab re-reads the file anyway.
+                          const moved = outside.has(`${t.repo}::${t.path}`);
+                          return (
+                            <span
+                              className={`tab ${on ? "on" : ""}${
+                                on && editing && paneFocus === "main"
+                                  ? " editing"
+                                  : ""
+                              } ${mark}${moved ? " outside" : ""}`}
+                              key={`${t.repo}::${t.path}`}
+                            >
+                              <button
+                                className="tab-name"
+                                role="tab"
+                                aria-selected={on}
+                                data-rove={`${t.repo}::${t.path}`}
+                                data-repo={t.repo}
+                                data-path={t.path}
+                                title={
+                                  moved ? `${t.path} — changed on disk` : where
+                                }
+                                onClick={() => void reopenTab(t.repo, t.path)}
+                                onAuxClick={(e) => {
+                                  if (e.button === 1)
+                                    void closeTab(t.repo, t.path);
+                                }}
+                                onPointerDown={(e) =>
+                                  pressTab("main", t.repo, t.path, e)
+                                }
+                                onContextMenu={(e) => {
+                                  if (t.repo === MEMORY) return;
+                                  e.preventDefault();
+                                  setTabMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    strip: "main",
+                                    repo: t.repo,
+                                    path: t.path,
+                                  });
+                                }}
+                              >
+                                {displayName(name, settings.showExtensions)}
+                              </button>
+                              <button
+                                className="tab-close"
+                                aria-label={`Close ${name}`}
+                                onClick={() => void closeTab(t.repo, t.path)}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
-              <div className={`page-head ${zenOn ? "hushed" : ""}`}>
-                <span className="page-path">
-                  {wsIdOf(activePath)
-                    ? `${workspaces.find((w) => w.id === wsIdOf(activePath))?.name ?? "workspace"} · ${wsFileOf(activePath)}`
-                    : (activePath ?? "")}
-                </span>
-                {/* Everyone else with this file open, beside its name: the
+                  <div className={`page-head ${zenOn ? "hushed" : ""}`}>
+                    <span className="page-path">
+                      {wsIdOf(activePath)
+                        ? `${workspaces.find((w) => w.id === wsIdOf(activePath))?.name ?? "workspace"} · ${wsFileOf(activePath)}`
+                        : (activePath ?? "")}
+                    </span>
+                    {/* Everyone else with this file open, beside its name: the
                     one fact about a shared file worth a glance before typing. */}
-                {wsIdOf(activePath) && (
-                  <Faces
-                    who={wsPresence[wsShelfPath(wsIdOf(activePath)!)]?.[wsFileOf(activePath)] ?? []}
-                    size={20}
-                  />
-                )}
-                {activePath && (
-                  <span className="page-actions">
-                    {/* Sharing, on any file: a plan is a plan whether it lives
+                    {wsIdOf(activePath) && (
+                      <Faces
+                        who={
+                          wsPresence[wsShelfPath(wsIdOf(activePath)!)]?.[
+                            wsFileOf(activePath)
+                          ] ?? []
+                        }
+                        size={20}
+                      />
+                    )}
+                    {activePath && (
+                      <span className="page-actions">
+                        {/* Sharing, on any file: a plan is a plan whether it lives
                         in a room or on someone's disk, and the reader on the
                         other end of the address cannot tell the difference.
                         Shared shows a mark, and the way to stop is behind it. */}
-                    {/* Signed in, because publishing is: an offer to share
+                        {/* Signed in, because publishing is: an offer to share
                         that can only answer "sign in first" is not an offer. */}
-                    {shareTarget && account && (
-                      <button
-                        className={`rail-btn ${sharedPageId ? "on" : ""}`}
-                        onClick={() => setSharing(true)}
-                        data-testid="share-plan"
-                        title={
-                          sharedPageId
-                            ? "Shared — anyone with the address can read this"
-                            : "A page anyone can open in a browser, with no account"
-                        }
-                      >
-                        {sharedPageId ? "Shared" : "Share…"}
-                      </button>
-                    )}
-                    {/* A workspace file's chrome: where the line is, where the
+                        {shareTarget && account && (
+                          <button
+                            className={`rail-btn ${sharedPageId ? "on" : ""}`}
+                            onClick={() => setSharing(true)}
+                            data-testid="share-plan"
+                            title={
+                              sharedPageId
+                                ? "Shared — anyone with the address can read this"
+                                : "A page anyone can open in a browser, with no account"
+                            }
+                          >
+                            {sharedPageId ? "Shared" : "Share"}
+                          </button>
+                        )}
+                        {/* A workspace file's chrome: where the line is, where the
                         file says it stands, and the moves out of the room.
                         There is no review gate any more — `status:` in the
                         file is what it used to say, and it travels with the
                         file wherever the file goes. */}
-                    {wsIdOf(activePath) &&
-                      (() => {
-                        const id = wsIdOf(activePath)!;
-                        const file = wsFileOf(activePath);
-                        const ws = workspaces.find((w) => w.id === id);
-                        if (!ws) return null;
-                        const docId = (wsTrees[id] ?? []).find((e) => e.path === file)?.doc;
-                        const room = docId ? rooms.current.get(docId) : undefined;
-                        const status = (wsTrees[id] ?? []).find((e) => e.path === file)?.status;
-                        return (
-                          <>
-                            {room && room.status !== "open" && (
-                              <span className="ws-status" title="Reconnecting to the workspace server">
-                                {room.status === "connecting" ? "connecting…" : "offline"}
-                              </span>
-                            )}
-                            {status && (
-                              <span
-                                className={`status-badge tone-${statusTone(status)}`}
-                                title="status: from this file's frontmatter"
-                                data-testid="ws-status"
-                              >
-                                {status}
-                              </span>
-                            )}
-                            <button
-                              className="rail-btn"
-                              onClick={() => setWsInviting(id)}
-                              title={`Members: ${ws.members.join(", ")}`}
-                            >
-                              Invite
-                            </button>
-                            {shownRepos.length > 0 && (
-                              <button
-                                className="rail-btn"
-                                onClick={() =>
-                                  setWsCopying({
-                                    id,
-                                    path: file,
-                                    repo: activeRepo?.path ?? shownRepos[0].path,
-                                    dir: lastPlanDir(activeRepo?.path ?? shownRepos[0].path) ?? "",
-                                  })
-                                }
-                                title="Write this file into a repository, where git can see it"
-                              >
-                                Copy to repository…
-                              </button>
-                            )}
-                          </>
-                        );
-                      })()}
-                    {/* Layout sits to the left of the view switch: appearing
+                        {wsIdOf(activePath) &&
+                          (() => {
+                            const id = wsIdOf(activePath)!;
+                            const file = wsFileOf(activePath);
+                            const ws = workspaces.find((w) => w.id === id);
+                            if (!ws) return null;
+                            const docId = (wsTrees[id] ?? []).find(
+                              (e) => e.path === file,
+                            )?.doc;
+                            const room = docId
+                              ? rooms.current.get(docId)
+                              : undefined;
+                            const status = (wsTrees[id] ?? []).find(
+                              (e) => e.path === file,
+                            )?.status;
+                            return (
+                              <>
+                                {room && room.status !== "open" && (
+                                  <span
+                                    className="ws-status"
+                                    title="Reconnecting to the workspace server"
+                                  >
+                                    {room.status === "connecting"
+                                      ? "connecting…"
+                                      : "offline"}
+                                  </span>
+                                )}
+                                {status && (
+                                  <span
+                                    className={`status-badge tone-${statusTone(status)}`}
+                                    title="status: from this file's frontmatter"
+                                    data-testid="ws-status"
+                                  >
+                                    {status}
+                                  </span>
+                                )}
+                                <button
+                                  className="rail-btn"
+                                  onClick={() => setWsMembers(id)}
+                                  title={`${ws.members.length} ${ws.members.length === 1 ? "member" : "members"}: see who, invite, remove`}
+                                  data-testid="members"
+                                >
+                                  Members
+                                </button>
+                                {shownRepos.length > 0 && (
+                                  <button
+                                    className="rail-btn"
+                                    onClick={() =>
+                                      setWsCopying({
+                                        id,
+                                        path: file,
+                                        repo:
+                                          activeRepo?.path ??
+                                          shownRepos[0].path,
+                                        dir:
+                                          lastPlanDir(
+                                            activeRepo?.path ??
+                                              shownRepos[0].path,
+                                          ) ?? "",
+                                      })
+                                    }
+                                    title="Write this file into a repository, where git can see it"
+                                  >
+                                    Copy to a repo
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
+                        {/* Layout sits to the left of the view switch: appearing
                         between the switch and Delete moved them under the
                         pointer every time the diff was opened. */}
-                    {view === "diff" && (
-                      <span className="segmented small">
-                        <button
-                          className={settings.diffStyle === "unified" ? "on" : ""}
-                          onClick={() => set({ diffStyle: "unified" })}
-                        >
-                          Unified
-                        </button>
-                        <button
-                          className={settings.diffStyle === "split" ? "on" : ""}
-                          onClick={() => set({ diffStyle: "split" })}
-                        >
-                          Split
-                        </button>
+                        {view === "diff" && (
+                          <span className="segmented small">
+                            <button
+                              className={
+                                settings.diffStyle === "unified" ? "on" : ""
+                              }
+                              onClick={() => set({ diffStyle: "unified" })}
+                            >
+                              Unified
+                            </button>
+                            <button
+                              className={
+                                settings.diffStyle === "split" ? "on" : ""
+                              }
+                              onClick={() => set({ diffStyle: "split" })}
+                            >
+                              Split
+                            </button>
+                          </span>
+                        )}
+
+                        {/* Read from a few conventional frontmatter keys and shown
+                        read-only; the sheet stays the only writer. */}
+                        {matter !== null &&
+                          (() => {
+                            const s = matterValue(matter, "status");
+                            const who =
+                              matterValue(matter, "owner") ??
+                              matterValue(matter, "assignee");
+                            const due = matterValue(matter, "due");
+                            const overdue =
+                              !!due &&
+                              !Number.isNaN(Date.parse(due)) &&
+                              Date.parse(due) < Date.now();
+                            return (
+                              <>
+                                {s && (
+                                  <span
+                                    className={`status-badge tone-${statusTone(s)}`}
+                                    title="status: from this file's frontmatter"
+                                  >
+                                    {s}
+                                  </span>
+                                )}
+                                {who && (
+                                  <span
+                                    className="matter-owner"
+                                    title="owner: from this file's frontmatter"
+                                  >
+                                    @{who}
+                                  </span>
+                                )}
+                                {due && (
+                                  <span
+                                    className={`matter-due ${overdue ? "overdue" : ""}`}
+                                    title="due: from this file's frontmatter"
+                                  >
+                                    due {due}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
+                        {/* Only where there is one to edit. */}
+                        {matter !== null && (
+                          <button
+                            className={`rail-btn ${matterOpen ? "on" : ""}`}
+                            onClick={() => setMatterOpen((o) => !o)}
+                            title="Edit this file's YAML frontmatter"
+                          >
+                            Frontmatter
+                          </button>
+                        )}
                       </span>
                     )}
+                  </div>
 
-                    {/* Read from a few conventional frontmatter keys and shown
-                        read-only; the sheet stays the only writer. */}
-                    {matter !== null &&
-                      (() => {
-                        const s = matterValue(matter, "status");
-                        const who =
-                          matterValue(matter, "owner") ?? matterValue(matter, "assignee");
-                        const due = matterValue(matter, "due");
-                        const overdue =
-                          !!due && !Number.isNaN(Date.parse(due)) && Date.parse(due) < Date.now();
-                        return (
-                          <>
-                            {s && (
-                              <span
-                                className={`status-badge tone-${statusTone(s)}`}
-                                title="status: from this file's frontmatter"
-                              >
-                                {s}
-                              </span>
-                            )}
-                            {who && (
-                              <span
-                                className="matter-owner"
-                                title="owner: from this file's frontmatter"
-                              >
-                                @{who}
-                              </span>
-                            )}
-                            {due && (
-                              <span
-                                className={`matter-due ${overdue ? "overdue" : ""}`}
-                                title="due: from this file's frontmatter"
-                              >
-                                due {due}
-                              </span>
-                            )}
-                          </>
-                        );
-                      })()}
-                    {/* Only where there is one to edit. */}
-                    {matter !== null && (
-                      <button
-                        className={`rail-btn ${matterOpen ? "on" : ""}`}
-                        onClick={() => setMatterOpen((o) => !o)}
-                        title="Edit this file's YAML frontmatter"
-                      >
-                        Frontmatter
-                      </button>
-                    )}
-                  </span>
-                )}
-              </div>
+                  {conflict && activePath && (
+                    <div className="conflict">
+                      <p className="conflict-line">
+                        This file changed on disk while you were editing it.
+                      </p>
+                      <p className="conflict-hint">
+                        Nothing has been overwritten. Your version is still
+                        here, and theirs is on disk — choose which one survives.
+                      </p>
+                      <span className="conflict-acts">
+                        <button
+                          className="rail-btn"
+                          onClick={() => void resolveConflict("mine")}
+                        >
+                          Keep mine
+                        </button>
+                        <button
+                          className="rail-btn"
+                          onClick={() => void resolveConflict("theirs")}
+                        >
+                          Take theirs
+                        </button>
+                        <button
+                          className="rail-btn"
+                          onClick={() => goto("diff")}
+                          title="Yours against the last commit"
+                        >
+                          See the diff
+                        </button>
+                      </span>
+                    </div>
+                  )}
 
-              {conflict && activePath && (
-                <div className="conflict">
-                  <p className="conflict-line">
-                    This file changed on disk while you were editing it.
-                  </p>
-                  <p className="conflict-hint">
-                    Nothing has been overwritten. Your version is still here, and
-                    theirs is on disk — choose which one survives.
-                  </p>
-                  <span className="conflict-acts">
-                    <button className="rail-btn" onClick={() => void resolveConflict("mine")}>
-                      Keep mine
-                    </button>
-                    <button className="rail-btn" onClick={() => void resolveConflict("theirs")}>
-                      Take theirs
-                    </button>
-                    <button
-                      className="rail-btn"
-                      onClick={() => goto("diff")}
-                      title="Yours against the last commit"
-                    >
-                      See the diff
-                    </button>
-                  </span>
-                </div>
-              )}
+                  {(!split || paneFocus === "main") && findBar}
 
-              {(!split || paneFocus === "main") && findBar}
-
-              {!activePath ? (
-                <div className="blank">
-                  <p className="blank-line">
-                    {activeRepo
-                      ? "Choose a file from the tree, or start a new one."
-                      : "Point the app at a repository and it will show you the markdown inside it."}
-                  </p>
-                  <dl className="blank-keys">
-                    {(activeRepo
-                      ? [
-                          [renderKeys("mod+p"), "Find a file"],
-                          [renderKeys("mod+shift+p"), "All commands"],
-                          [renderKeys("mod+n"), "New file"],
-                          [renderKeys("mod+b"), "Show or hide the tree"],
-                          [renderKeys("mod+g"), "Git panel"],
-                          [renderKeys("mod+shift+l"), "Zen"],
-                          [renderKeys("mod+,"), "Settings"],
-                        ]
-                      : [
-                          [renderKeys("mod+shift+o"), "Add a repository"],
-                          [renderKeys("mod+shift+p"), "All commands"],
-                          [renderKeys("mod+,"), "Settings"],
-                        ]
-                    ).map(([k, what]) => (
-                      <div className="blank-key" key={k}>
-                        <dt>{k}</dt>
-                        <dd>{what}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              ) : view === "source" || view === "write" ? (
-                <>
-                  {/*
+                  {!activePath ? (
+                    <div className="blank">
+                      <p className="blank-line">
+                        {activeRepo
+                          ? "Choose a file from the tree, or start a new one."
+                          : "Point the app at a repository and it will show you the markdown inside it."}
+                      </p>
+                      <dl className="blank-keys">
+                        {(activeRepo
+                          ? [
+                              [renderKeys("mod+p"), "Find a file"],
+                              [renderKeys("mod+shift+p"), "All commands"],
+                              [renderKeys("mod+n"), "New file"],
+                              [renderKeys("mod+b"), "Show or hide the tree"],
+                              [renderKeys("mod+g"), "Git panel"],
+                              [renderKeys("mod+shift+l"), "Zen"],
+                              [renderKeys("mod+,"), "Settings"],
+                            ]
+                          : [
+                              [renderKeys("mod+shift+o"), "Add a repository"],
+                              [renderKeys("mod+shift+p"), "All commands"],
+                              [renderKeys("mod+,"), "Settings"],
+                            ]
+                        ).map(([k, what]) => (
+                          <div className="blank-key" key={k}>
+                            <dt>{k}</dt>
+                            <dd>{what}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ) : view === "source" || view === "write" ? (
+                    <>
+                      {/*
                     Both surfaces stay mounted and the hidden one is put aside
                     with CSS. Unmounting the page meant rebuilding Milkdown on
                     every glance at the source, which is what made switching
                     feel slow; hiding costs a little memory and nothing else.
                   */}
-                  {/* Not mounted at all for a non-markdown file: even parked
+                      {/* Not mounted at all for a non-markdown file: even parked
                       aside, Milkdown would parse the text as markdown, and
                       that document must never exist for a file it could
                       rewrite. Memory buffers are the app's own prose. */}
-                  {(activeRepoPath === MEMORY || isMarkdownPath(activePath)) && (
-                  <div
-                    className={`surface ${view === "write" ? "" : "aside"}`}
-                    onContextMenu={(e) => {
-                      if (view !== "write") return;
-                      e.preventDefault();
-                      setPageMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                        selection: mainWriteSelection.current?.() ?? "",
-                      });
-                    }}
-                  >
-                    <Editor
-                      /* A workspace file is its own editor: the collab plugin
+                      {(activeRepoPath === MEMORY ||
+                        isMarkdownPath(activePath)) && (
+                        <div
+                          className={`surface ${view === "write" ? "" : "aside"}`}
+                          onContextMenu={(e) => {
+                            if (view !== "write") return;
+                            e.preventDefault();
+                            setPageMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              selection: mainWriteSelection.current?.() ?? "",
+                            });
+                          }}
+                        >
+                          <Editor
+                            /* A workspace file is its own editor: the collab plugin
                          is bound at construction, and a different room is a
                          different document rather than a swap. One editor per
                          file room, keyed by the document the room carries. */
-                      key={activeWsRoom?.id ?? "file"}
-                      room={activeWsRoom}
-                      markdownRef={mainWriteMarkdown}
-                      replaceRef={mainWriteReplace}
-                      docKey={docKey}
-                      repo={activeRepo?.path ?? ""}
-                      relPath={activePath}
-                      initialValue={content}
-                      spellcheck={settings.spellcheck}
-                      imageFolder={settings.imageFolder}
-                      author={author}
-                      profiles={activeProfiles}
-                      onChange={onChange}
-                      onOpenLink={(href) =>
-                        activeRepoPath &&
-                        activePath &&
-                        followLink(activeRepoPath, activePath, href)
-                      }
-                      findRef={mainWriteFind}
-                      selectionRef={mainWriteSelection}
-                      onFindCount={reportFind}
-                    />
-                  </div>
-                  )}
-                  <div className={`surface ${view === "source" ? "" : "aside"}`}>
-                    <SourceView
-                      value={wsIdOf(activePath) ? wsSource : source}
-                      onChange={onSourceChange}
-                      settings={settings}
-                      docKey={docKey}
-                      active={view === "source"}
-                      findRef={mainSourceFind}
-                      onFindCount={reportFind}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="editor-host">
-                  {/* Keyed by file: every piece of diff state — committed
+                            key={activeWsRoom?.id ?? "file"}
+                            room={activeWsRoom}
+                            markdownRef={mainWriteMarkdown}
+                            replaceRef={mainWriteReplace}
+                            docKey={docKey}
+                            repo={activeRepo?.path ?? ""}
+                            relPath={activePath}
+                            initialValue={content}
+                            spellcheck={settings.spellcheck}
+                            imageFolder={settings.imageFolder}
+                            author={author}
+                            profiles={activeProfiles}
+                            onChange={onChange}
+                            onOpenLink={(href) =>
+                              activeRepoPath &&
+                              activePath &&
+                              followLink(activeRepoPath, activePath, href)
+                            }
+                            findRef={mainWriteFind}
+                            selectionRef={mainWriteSelection}
+                            onFindCount={reportFind}
+                          />
+                        </div>
+                      )}
+                      <div
+                        className={`surface ${view === "source" ? "" : "aside"}`}
+                      >
+                        <SourceView
+                          value={wsIdOf(activePath) ? wsSource : source}
+                          onChange={onSourceChange}
+                          settings={settings}
+                          docKey={docKey}
+                          active={view === "source"}
+                          findRef={mainSourceFind}
+                          onFindCount={reportFind}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="editor-host">
+                      {/* Keyed by file: every piece of diff state — committed
                       side, disk copy, settled buffer — must belong to one
                       document, or a click on the next changed file diffs one
                       file's head against another's text for a beat. */}
-                  <DiffView
-                    key={`${activeRepoOrPath}::${activePath}`}
-                    repo={activeRepoOrPath}
-                    relPath={activePath}
-                    buffer={source}
-                    onEdit={onSourceChange}
-                    settings={settings}
-                    epoch={epoch}
-                  />
+                      <DiffView
+                        key={`${activeRepoOrPath}::${activePath}`}
+                        repo={activeRepoOrPath}
+                        relPath={activePath}
+                        buffer={source}
+                        onEdit={onSourceChange}
+                        settings={settings}
+                        epoch={epoch}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-              </div>
-              {/* Where a dragged file lands to open beside this one. Inert
+                {/* Where a dragged file lands to open beside this one. Inert
                   except while a drag is live (body.tree-drag) — and gone once
                   a split exists: the open pane is the target then, and a
                   strip over its far edge would promise a third pane this app
                   deliberately does not have. */}
-              {!zen && activePath && !split && (
-                <div className="split-drop" data-drop-pane="split" aria-hidden>
-                  <span className="split-drop-hint">Open beside</span>
-                </div>
-              )}
-              {split && !zen && (
-                <>
+                {!zen && activePath && !split && (
                   <div
-                    className="pane-divider"
-                    role="separator"
-                    aria-orientation={splitDir === "row" ? "vertical" : "horizontal"}
-                    aria-label="Resize the split"
-                    title="Drag to resize · double-click to even out"
-                    tabIndex={0}
-                    aria-valuenow={Math.round(splitRatio * 100)}
-                    aria-valuemin={15}
-                    aria-valuemax={85}
-                    onKeyDown={(e) => {
-                      // Whichever pair of arrows lies along the divider: the
-                      // vertical one moves left and right, the horizontal one
-                      // up and down.
-                      const less = splitDir === "row" ? "ArrowLeft" : "ArrowUp";
-                      const more = splitDir === "row" ? "ArrowRight" : "ArrowDown";
-                      const at =
-                        e.key === less
-                          ? splitRatio - 0.05
-                          : e.key === more
-                            ? splitRatio + 0.05
-                            : e.key === "Home"
-                              ? 0.15
-                              : e.key === "End"
-                                ? 0.85
-                                : null;
-                      if (at === null) return;
-                      e.preventDefault();
-                      setSplitRatio(Math.min(0.85, Math.max(0.15, at)));
-                    }}
-                    onDoubleClick={() => setSplitRatio(0.5)}
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      const rect = (
-                        e.currentTarget as HTMLElement
-                      ).parentElement!.getBoundingClientRect();
-                      const move = (ev: PointerEvent) => {
-                        const frac =
-                          splitDir === "row"
-                            ? (ev.clientX - rect.left) / rect.width
-                            : (ev.clientY - rect.top) / rect.height;
-                        setSplitRatio(Math.min(0.85, Math.max(0.15, frac)));
-                      };
-                      const up = () => {
-                        window.removeEventListener("pointermove", move);
-                        window.removeEventListener("pointerup", up);
-                      };
-                      window.addEventListener("pointermove", move);
-                      window.addEventListener("pointerup", up);
-                    }}
-                  />
-                  <div className="split-host" data-drop-pane="split" style={{ flex: `${1 - splitRatio} 1 0px` }}>
-                    <SplitPane
-                      key={`${split.repo}::${split.path}`}
-                      repo={split.repo}
-                      relPath={split.path}
-                      settings={settings}
-                      // The split holds a repository file, and signs as git.
-                      author={identityByRepo[split.repo] ?? ""}
-                      view={
-                        // The split obeys the same rule as the main pane:
-                        // Write only ever holds markdown.
-                        (splitOverride ?? view) === "write" && !isMarkdownPath(split.path)
-                          ? "source"
-                          : (splitOverride ?? view)
-                      }
-                      epoch={epoch}
-                      canDiff={repos.some((r) => r.path === split.repo)}
-                      tabs={splitTabs}
-                      onSelectTab={openSplitFile}
-                      onCloseTab={closeSplitTab}
-                      editing={editing && paneFocus === "split"}
-                      onTabPress={(r, pt, e) => pressTab("split", r, pt, e)}
-                      onTabMenu={(r, pt, e) => {
-                        e.preventDefault();
-                        setTabMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          strip: "split",
-                          repo: r,
-                          path: pt,
-                        });
-                      }}
-                      onStripClickCapture={swallowTabClick}
-                      onStripKey={stripKey("split")}
-                      focused={paneFocus === "split"}
-                      onFocus={() => setPaneFocus("split")}
-                      onClose={() => setSplit(null)}
-                      notify={notify}
-                      flushRef={splitFlush}
-                      onOpenLink={(href) => followLink(split.repo, split.path, href)}
-                      liveText={
-                        split.repo === activeRepoPath && split.path === activePath
-                          ? source
-                          : null
-                      }
-                      onLiveEdit={adoptFromSplit}
-                      findRef={splitFind}
-                      onFindCount={reportFind}
-                      findBar={paneFocus === "split" ? findBar : null}
-                    />
+                    className="split-drop"
+                    data-drop-pane="split"
+                    aria-hidden
+                  >
+                    <span className="split-drop-hint">Open beside</span>
                   </div>
-                </>
-              )}
+                )}
+                {split && !zen && (
+                  <>
+                    <div
+                      className="pane-divider"
+                      role="separator"
+                      aria-orientation={
+                        splitDir === "row" ? "vertical" : "horizontal"
+                      }
+                      aria-label="Resize the split"
+                      title="Drag to resize · double-click to even out"
+                      tabIndex={0}
+                      aria-valuenow={Math.round(splitRatio * 100)}
+                      aria-valuemin={15}
+                      aria-valuemax={85}
+                      onKeyDown={(e) => {
+                        // Whichever pair of arrows lies along the divider: the
+                        // vertical one moves left and right, the horizontal one
+                        // up and down.
+                        const less =
+                          splitDir === "row" ? "ArrowLeft" : "ArrowUp";
+                        const more =
+                          splitDir === "row" ? "ArrowRight" : "ArrowDown";
+                        const at =
+                          e.key === less
+                            ? splitRatio - 0.05
+                            : e.key === more
+                              ? splitRatio + 0.05
+                              : e.key === "Home"
+                                ? 0.15
+                                : e.key === "End"
+                                  ? 0.85
+                                  : null;
+                        if (at === null) return;
+                        e.preventDefault();
+                        setSplitRatio(Math.min(0.85, Math.max(0.15, at)));
+                      }}
+                      onDoubleClick={() => setSplitRatio(0.5)}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        const rect = (
+                          e.currentTarget as HTMLElement
+                        ).parentElement!.getBoundingClientRect();
+                        const move = (ev: PointerEvent) => {
+                          const frac =
+                            splitDir === "row"
+                              ? (ev.clientX - rect.left) / rect.width
+                              : (ev.clientY - rect.top) / rect.height;
+                          setSplitRatio(Math.min(0.85, Math.max(0.15, frac)));
+                        };
+                        const up = () => {
+                          window.removeEventListener("pointermove", move);
+                          window.removeEventListener("pointerup", up);
+                        };
+                        window.addEventListener("pointermove", move);
+                        window.addEventListener("pointerup", up);
+                      }}
+                    />
+                    <div
+                      className="split-host"
+                      data-drop-pane="split"
+                      style={{ flex: `${1 - splitRatio} 1 0px` }}
+                    >
+                      <SplitPane
+                        key={`${split.repo}::${split.path}`}
+                        repo={split.repo}
+                        relPath={split.path}
+                        settings={settings}
+                        // The split holds a repository file, and signs as git.
+                        author={identityByRepo[split.repo] ?? ""}
+                        view={
+                          // The split obeys the same rule as the main pane:
+                          // Write only ever holds markdown.
+                          (splitOverride ?? view) === "write" &&
+                          !isMarkdownPath(split.path)
+                            ? "source"
+                            : (splitOverride ?? view)
+                        }
+                        epoch={epoch}
+                        canDiff={repos.some((r) => r.path === split.repo)}
+                        tabs={splitTabs}
+                        onSelectTab={openSplitFile}
+                        onCloseTab={closeSplitTab}
+                        editing={editing && paneFocus === "split"}
+                        onTabPress={(r, pt, e) => pressTab("split", r, pt, e)}
+                        onTabMenu={(r, pt, e) => {
+                          e.preventDefault();
+                          setTabMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            strip: "split",
+                            repo: r,
+                            path: pt,
+                          });
+                        }}
+                        onStripClickCapture={swallowTabClick}
+                        onStripKey={stripKey("split")}
+                        focused={paneFocus === "split"}
+                        onFocus={() => setPaneFocus("split")}
+                        onClose={() => setSplit(null)}
+                        notify={notify}
+                        flushRef={splitFlush}
+                        onOpenLink={(href) =>
+                          followLink(split.repo, split.path, href)
+                        }
+                        liveText={
+                          split.repo === activeRepoPath &&
+                          split.path === activePath
+                            ? source
+                            : null
+                        }
+                        onLiveEdit={adoptFromSplit}
+                        findRef={splitFind}
+                        onFindCount={reportFind}
+                        findBar={paneFocus === "split" ? findBar : null}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -6856,7 +7684,9 @@ export default function App() {
             onDeleteChat={(id) => void deleteChat(id)}
             onRenameChat={renameChat}
             onTitle={nameChat}
-            authHint={agents.find((a) => a.id === settings.chatCommand)?.auth ?? ""}
+            authHint={
+              agents.find((a) => a.id === settings.chatCommand)?.auth ?? ""
+            }
           />
         )}
       </div>
@@ -6881,18 +7711,24 @@ export default function App() {
             <span>{activeRepo?.name ?? "No repository"}</span>
           )}
           {/* The armed chord prefix — visible, or it reads as dropped keys. */}
-          {chordHint && <span className="chord-hint">{renderKeys(chordHint)} …</span>}
+          {chordHint && (
+            <span className="chord-hint">{renderKeys(chordHint)} …</span>
+          )}
           <span className="bar-spacer" />
           {chatRepo && usage[`${chatRepo}::${chats.current}`] && (
             <span title="The agent's context window, and what this session has cost">
               <b>
                 {Math.round(
-                  (usage[`${chatRepo}::${chats.current}`].used / Math.max(1, usage[`${chatRepo}::${chats.current}`].size)) * 100,
+                  (usage[`${chatRepo}::${chats.current}`].used /
+                    Math.max(1, usage[`${chatRepo}::${chats.current}`].size)) *
+                    100,
                 )}
                 %
               </b>{" "}
               context
-              {usage[`${chatRepo}::${chats.current}`].cost ? ` · $${usage[`${chatRepo}::${chats.current}`].cost!.toFixed(2)}` : ""}
+              {usage[`${chatRepo}::${chats.current}`].cost
+                ? ` · $${usage[`${chatRepo}::${chats.current}`].cost!.toFixed(2)}`
+                : ""}
             </span>
           )}
           {busy && <span className="saving">{busy}…</span>}
@@ -6901,7 +7737,9 @@ export default function App() {
               <b>{changeCount}</b> uncommitted
             </span>
           )}
-          <span>{renderKeys("mod+g")} git · {renderKeys("mod+,")} settings</span>
+          <span>
+            {renderKeys("mod+g")} git · {renderKeys("mod+,")} settings
+          </span>
         </footer>
       )}
 
@@ -6927,19 +7765,21 @@ export default function App() {
           {/* Only with something selected, and only where there is an agent
               to send it to: a menu item that scolds you for not selecting
               first is worse than one that is absent. */}
-          {pageMenu.selection.trim() !== "" && chat !== false && activeRepoPath !== MEMORY && (
-            <button
-              className="ctx-item"
-              role="menuitem"
-              onClick={() => {
-                const selection = pageMenu.selection;
-                setPageMenu(null);
-                rewriteSelection(selection);
-              }}
-            >
-              Rewrite…
-            </button>
-          )}
+          {pageMenu.selection.trim() !== "" &&
+            chat !== false &&
+            activeRepoPath !== MEMORY && (
+              <button
+                className="ctx-item"
+                role="menuitem"
+                onClick={() => {
+                  const selection = pageMenu.selection;
+                  setPageMenu(null);
+                  rewriteSelection(selection);
+                }}
+              >
+                Rewrite…
+              </button>
+            )}
         </div>
       )}
 
@@ -7016,16 +7856,40 @@ export default function App() {
         />
       )}
 
-      {wsInviting && (
-        <TextPrompt
-          title="Invite to this workspace"
-          placeholder="Email address"
-          note="They see it the next time they sign in."
-          confirm="Invite"
-          onCancel={() => setWsInviting(null)}
-          onSubmit={(login) => void inviteTo(wsInviting, login)}
-        />
-      )}
+      {wsMembers &&
+        account &&
+        (() => {
+          const ws = workspaces.find((w) => w.id === wsMembers);
+          if (!ws) return null;
+          const tree = rooms.current.get(treeRoomId(ws.id));
+          const here = new Set(
+            tree
+              ? presentIn(tree)
+                  .map((p) => p.login ?? "")
+                  .filter(Boolean)
+              : [],
+          );
+          return (
+            <MembersSheet
+              name={ws.name}
+              me={account.login}
+              owner={ws.createdBy}
+              profiles={
+                ws.profiles ??
+                ws.members.map((login) => ({ login, name: null, avatar: null }))
+              }
+              here={here}
+              onInvite={(login) => inviteTo(ws.id, login)}
+              onRemove={(login) => removeMember(ws.id, login)}
+              onHandOver={(login) => handOver(ws.id, login)}
+              onLeave={async () => {
+                setWsMembers(null);
+                await leaveWorkspace(ws.id);
+              }}
+              onClose={() => setWsMembers(null)}
+            />
+          );
+        })()}
 
       {sharing && shareTarget && (
         <ShareSheet
@@ -7048,16 +7912,24 @@ export default function App() {
           dir={wsCopying.dir}
           repo={wsCopying.repo}
           repos={shownRepos}
-          onRepoChange={(repo) => setWsCopying({ ...wsCopying, repo, dir: lastPlanDir(repo) ?? "" })}
+          onRepoChange={(repo) =>
+            setWsCopying({ ...wsCopying, repo, dir: lastPlanDir(repo) ?? "" })
+          }
           dirs={(() => {
             const seen = new Set<string>(treeDirs[wsCopying.repo] ?? []);
-            for (const f of filesByRepo[wsCopying.repo] ?? []) if (f.dir) seen.add(f.dir);
+            for (const f of filesByRepo[wsCopying.repo] ?? [])
+              if (f.dir) seen.add(f.dir);
             return [...seen].sort();
           })()}
           onDirChange={(dir) => setWsCopying({ ...wsCopying, dir })}
           onCancel={() => setWsCopying(null)}
           onCreate={(relPath) =>
-            void copyWorkspaceOut(wsCopying.id, wsCopying.path, wsCopying.repo, relPath)
+            void copyWorkspaceOut(
+              wsCopying.id,
+              wsCopying.path,
+              wsCopying.repo,
+              relPath,
+            )
           }
         />
       )}
@@ -7072,7 +7944,11 @@ export default function App() {
           // Folders belong to a repository, so choosing another starts at
           // that repository's remembered folder, or its root.
           onRepoChange={(repo) =>
-            setNaming({ repo, dir: lastPlanDir(repo) ?? "", template: naming.template })
+            setNaming({
+              repo,
+              dir: lastPlanDir(repo) ?? "",
+              template: naming.template,
+            })
           }
           dirs={folderChoices}
           onDirChange={(dir) => setNaming({ ...naming, dir })}
@@ -7126,13 +8002,19 @@ export default function App() {
           activeRepoPath &&
           newFolderIn(
             activeRepoPath,
-            activePath?.includes("/") ? activePath.slice(0, activePath.lastIndexOf("/")) : "",
+            activePath?.includes("/")
+              ? activePath.slice(0, activePath.lastIndexOf("/"))
+              : "",
           )
         }
         canRename={!!activePath && !!activeRepoPath}
-        onRename={() => activeRepoPath && activePath && renameFile(activeRepoPath, activePath)}
+        onRename={() =>
+          activeRepoPath && activePath && renameFile(activeRepoPath, activePath)
+        }
         onMoveFile={() =>
-          activeRepoPath && activePath && setMoving({ repo: activeRepoPath, path: activePath })
+          activeRepoPath &&
+          activePath &&
+          setMoving({ repo: activeRepoPath, path: activePath })
         }
         onNewComment={newComment}
         onInsertHtml={() =>
@@ -7147,7 +8029,9 @@ export default function App() {
         }
         onReload={() => void reloadAll()}
         onSearch={searchFiles}
-        onReadFile={(repo, rel) => api.readPlan(repo, rel).then((r) => r.content)}
+        onReadFile={(repo, rel) =>
+          api.readPlan(repo, rel).then((r) => r.content)
+        }
         onOpenAt={(r, f, line, q) =>
           void openFile(r, f).then(() => {
             // In-file find is the missing half of cross-file search: the hit
@@ -7155,7 +8039,10 @@ export default function App() {
             // the hit line current — instead of landing at the top and reading.
             findSeed.current = { line };
             findReturn.current = null;
-            setFind((prev) => ({ query: q, focusSeq: (prev?.focusSeq ?? 0) + 1 }));
+            setFind((prev) => ({
+              query: q,
+              focusSeq: (prev?.focusSeq ?? 0) + 1,
+            }));
           })
         }
         onFind={openFind}
@@ -7165,7 +8052,9 @@ export default function App() {
         onReleaseNotes={() => void showNotes()}
         gitCommands={gitCommands}
         skillFiles={
-          activeRepoPath ? SKILLS.map((k) => ({ name: k.name, label: k.label })) : []
+          activeRepoPath
+            ? SKILLS.map((k) => ({ name: k.name, label: k.label }))
+            : []
         }
         onOpenSkill={(name) => void openSkill(name)}
         hasMatter={matter !== null}
@@ -7211,7 +8100,9 @@ export default function App() {
         onSplitDir={() => setSplitDir((d) => (d === "row" ? "column" : "row"))}
         onSwapPanes={() => void swapPanes()}
         onPaneView={(v) => goto(v, true)}
-        canSplitSame={!!activePath && !!activeRepoPath && activeRepoPath !== MEMORY}
+        canSplitSame={
+          !!activePath && !!activeRepoPath && activeRepoPath !== MEMORY
+        }
         onSplitSame={splitSame}
       />
 
@@ -7262,7 +8153,9 @@ export default function App() {
           overrides={settings.keyOverrides}
           preset={settings.keyPreset}
           onOverrides={(next) => {
-            track("shortcut_customised", { overrides: Object.keys(next).length });
+            track("shortcut_customised", {
+              overrides: Object.keys(next).length,
+            });
             set({ keyOverrides: next });
           }}
           onClose={() => setShortcuts(false)}

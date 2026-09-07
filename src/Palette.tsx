@@ -297,8 +297,9 @@ function buildCommands(p: Props): Command[] {
     add({
       id: "agent.copy",
       group: "Agent",
-      label: "Copy the agent command",
-      terms: "clipboard claude shell",
+      label: "Copy the agent planning prompt",
+      hint: "the shell line that starts an agent on this plan",
+      terms: "clipboard claude shell command",
       run: p.onCopyAgentCommand,
     });
     /*

@@ -22,7 +22,7 @@ today. So the app can be the workspace's filesystem, with a scratch folder
 for the parts of an agent that want a real path.
 
 - **A scratch checkout per workspace.** Opening the chat in a workspace
-  writes the room's tree into a folder under the app's cache directory,
+  writes the room's tree into a folder under `~/plans/workspaces`,
   keyed by workspace id, and starts the agent with that folder as its
   working directory. Listing, grepping and shell tools work, because the
   files are really there.

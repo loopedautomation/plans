@@ -195,6 +195,56 @@ test("a tool line finishes rather than repeating itself", async ({ page }) => {
   await expect(page.locator(".chat-tool.completed")).toHaveCount(1);
 });
 
+/*
+ * A run of tool calls is one line while it runs — the latest step, and how
+ * many — and opens to the list. The steps are available, not in the way.
+ */
+test("a run of steps is one line that updates, and opens to the list", async ({ page }) => {
+  await open(page);
+  await openPlan(page);
+  await page.keyboard.press("Meta+j");
+  await say(page, "do three things");
+  await expect.poll(() => calls(page, "agent_prompt")).toBe(1);
+
+  await page.evaluate(() => {
+    const f = (window as any).__fake;
+    const r = "/repo/one";
+    f.emit("agent-tool", { repo: r, turn: 1, callId: "t1", title: "Read first.md", status: "completed" });
+    f.emit("agent-thought", { repo: r, turn: 1, text: "It needs a section." });
+    f.emit("agent-tool", { repo: r, turn: 1, callId: "t2", title: "Edit first.md", status: "in_progress" });
+  });
+  // One line for the run, saying what is happening now.
+  const steps = page.locator(".chat-steps");
+  await expect(steps).toHaveCount(1);
+  const now = steps.locator("> summary");
+  await expect(now).toContainText("Edit first.md");
+  await expect(now).toContainText("3 steps");
+  await expect(now).toHaveClass(/in_progress/);
+  // Closed by default: the list is there, not shown.
+  await expect(page.locator(".chat-tool").first()).toBeHidden();
+
+  // The line follows the step it names.
+  await page.evaluate(() => {
+    (window as any).__fake.emit("agent-tool", { repo: "/repo/one", turn: 1, callId: "t2", title: "Edit first.md", status: "completed" });
+  });
+  await expect(now).toHaveClass(/completed/);
+
+  // Opened, it is the steps in order.
+  await now.click();
+  await expect(page.locator(".chat-tool")).toHaveCount(2);
+  await expect(page.locator(".chat-tool").first()).toBeVisible();
+  await expect(page.locator(".chat-thought")).toHaveCount(1);
+
+  // Prose after the run closes it; a later tool starts a new one.
+  await page.evaluate(() => {
+    const f = (window as any).__fake;
+    f.emit("agent-message", { repo: "/repo/one", turn: 1, text: "Halfway." });
+    f.emit("agent-tool", { repo: "/repo/one", turn: 1, callId: "t3", title: "Bash", status: "completed" });
+  });
+  await expect(page.locator(".chat-steps")).toHaveCount(2);
+  await expect(page.locator(".chat-steps").last().locator("> summary")).toContainText("1 step");
+});
+
 test("the session holds the conversation, so nothing is re-sent", async ({ page }) => {
   await open(page);
   await openPlan(page);
@@ -2126,6 +2176,32 @@ test("chats are reachable from the palette", async ({ page }) => {
   await expect(page.locator(".chat-msg.user")).toContainText("the first conversation");
 });
 
+test("a handoff starts a chat of its own, and leaves the one in progress alone", async ({ page }) => {
+  await open(page);
+  await openPlan(page);
+  await page.keyboard.press("Meta+j");
+  await say(page, "a conversation about something else");
+  await finish(page, 1);
+
+  await page.keyboard.press("Meta+p");
+  await page.locator(".palette-input").fill(">hand off complete");
+  await page.keyboard.press("Enter");
+
+  // The instruction went out, into a transcript that holds nothing else.
+  await expect.poll(() => calls(page, "agent_prompt")).toBe(2);
+  await expect(page.locator(".chat-msg.user")).toHaveCount(1);
+  await expect(page.locator(".chat-msg.user")).toContainText("plans/first.md");
+  await expect(page.locator(".chat-msg.user")).not.toContainText("something else");
+
+  // The earlier conversation is still there, as it was.
+  await page.keyboard.press("Meta+p");
+  await page.locator(".palette-input").fill(">something else");
+  await expect(page.locator(".palette-row").first()).toContainText("a conversation about something else");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".chat-msg.user")).toHaveCount(1);
+  await expect(page.locator(".chat-msg.user")).toContainText("a conversation about something else");
+});
+
 test("the palette does not offer the chat you are already in", async ({ page }) => {
   await open(page);
   await openPlan(page);
@@ -2477,14 +2553,22 @@ test("a message typed mid-turn goes out when the turn ends", async ({ page }) =>
   await say(page, "first");
   await expect.poll(() => calls(page, "agent_prompt")).toBe(1);
 
-  // Turn 1 is still running; the second message waits rather than vanishing.
+  // Turn 1 is still running; the second message waits rather than vanishing —
+  // and waits in sight, as the bubble it will be, marked as not yet sent.
   await say(page, "second");
-  await expect(page.locator(".chat-log")).toContainText("queued");
+  const waiting = page.locator(".chat-msg.user.queued");
+  await expect(waiting).toHaveCount(1);
+  await expect(waiting).toContainText("second");
+  await expect(waiting).toContainText("queued");
   await finish(page, 1);
 
   await expect.poll(() => calls(page, "agent_prompt")).toBe(2);
   const sent = await argsOf(page, "agent_prompt");
   expect(sent[1].text).toBe("second");
+  // Sent, the same bubble stops saying it is waiting — not a second copy.
+  await expect(page.locator(".chat-msg.user.queued")).toHaveCount(0);
+  await expect(page.locator(".chat-msg.user")).toHaveCount(2);
+  await expect(page.locator(".chat-msg.user").last()).toHaveText("second");
 });
 
 /*
