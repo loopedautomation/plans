@@ -1333,6 +1333,60 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .palette-input::placeholder { color: var(--ink-3); }
 
+/* One column, until "*" mode puts a preview beside the results. */
+.palette-body { display: flex; min-height: 0; }
+.palette-body > .palette-list { flex: 1 1 auto; min-width: 0; }
+
+/*
+ * Search-inside mode: the same 620px list, plus a preview column beside it.
+ * The list keeps its width rather than sharing — the rows are the thing being
+ * steered, and a narrower list would trade legibility for a bigger picture.
+ */
+.palette.wide { width: min(1040px, calc(100vw - 64px)); }
+.palette.wide .palette-body > .palette-list { flex: 0 0 min(620px, 100%); }
+.palette-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 46vh;
+  overflow: auto;
+  border-left: 1px solid var(--rule);
+  padding: 8px 0;
+}
+.palette-preview .pv {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+.pv-line { display: flex; gap: 10px; padding: 0 12px; white-space: pre; }
+.pv-line.on { background: var(--shade); color: var(--ink); }
+.pv-n {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  text-align: right;
+  color: var(--ink-3);
+  opacity: 0.7;
+  user-select: none;
+}
+.pv-t { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+/* The same wash the find bar paints a match with, so a hit looks the same
+   before you open the file and after. */
+.pv-mark {
+  background: color-mix(in srgb, var(--git-mod) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
+/*
+ * Below this the preview would crush the list rather than inform it, so it
+ * goes away and "*" mode is the plain single column it always was. Same
+ * instinct as the tree folding at 820px: the reading surface wins.
+ */
+@media (max-width: 1120px) {
+  .palette.wide { width: min(620px, calc(100vw - 64px)); }
+  .palette-preview { display: none; }
+}
+
 .palette-list { max-height: 46vh; overflow: auto; padding: 4px 0; }
 .palette-empty {
   padding: 18px 16px;
@@ -1355,6 +1409,17 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--ink-2);
 }
 .palette-row.on { background: var(--shade); color: var(--ink); }
+/* A file's heading in "*" mode, and the lines that belong to it. The indent
+   is what says "these came from that", the way the tree already does. */
+.palette-row.head {
+  color: var(--ink);
+  padding-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.palette-row.hit { padding-top: 4px; padding-bottom: 4px; padding-left: 30px; }
+.palette-row.hit .palette-group { flex: 0 0 auto; }
+.palette-row.hit .palette-label { flex: 1 1 auto; }
 .palette-label { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .palette-group {
   flex: 1 1 auto;

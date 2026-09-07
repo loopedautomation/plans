@@ -201,6 +201,15 @@
       "description": "Whether `#` in the palette reaches the conversations of the repository you are in, or of every repository open. Per-repo by default, because a chat is usually about the plans next to it and a list that changes as you move between repositories is that list being right. \"All\" is for the other habit — one train of thought that outlives which window happens to be focused. A setting rather than a guess, because both are correct and which one you want is a fact about you.",
       "default": "repo"
     },
+    "searchScope": {
+      "type": "string",
+      "enum": [
+        "repo",
+        "all"
+      ],
+      "description": "Whether `*` in the palette searches inside every open repository's files, or only the active one's. All of them by default, which is the opposite call to `chatScope` and for the opposite reason: a chat belongs to where it was had, but \"search all files\" that quietly means \"this repository's files\" is a search that answers \"no such thing\" when it meant \"not here\". The narrowing is the option, so the chip is for focusing a search, never for discovering that the rest of the world existed all along.",
+      "default": "all"
+    },
     "treeSort": {
       "type": "string",
       "enum": [

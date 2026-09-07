@@ -193,23 +193,43 @@ export const api = {
     bytes: number[],
   ) => invoke<string>("write_asset", { repo, relPath, folder, stem, ext, bytes }),
 
-  /** Lines inside the repository's files that contain `query`. */
+  /**
+   * Lines inside the repository's files that contain `query`.
+   *
+   * `perFile` is the second budget: no single file may take more than this
+   * many of `limit`, so a dense file cannot hide every other one. `more` on
+   * each hit is what that file kept back.
+   */
   searchPlans: (
     repo: string,
     query: string,
     includeIgnored = false,
     onlyMarkdown = true,
     limit = 60,
+    perFile = 5,
   ) =>
-    invoke<{ relPath: string; line: number; text: string }[]>("search_plans", {
+    invoke<{
+      hits: { relPath: string; line: number; text: string; more: number }[];
+      capped: boolean;
+    }>("search_plans", {
       repo,
       query,
       includeIgnored,
       onlyMarkdown,
       limit,
-    }).then((hits) =>
-      hits.map((h: any) => ({ relPath: h.rel_path, line: h.line, text: h.text })),
-    ),
+      perFile,
+    }).then((found: any) => ({
+      hits: (found?.hits ?? []).map((h: any) => ({
+        relPath: h.rel_path,
+        line: h.line,
+        text: h.text,
+        more: h.more ?? 0,
+      })),
+      // The command reports its own truncation: a repository whose matches
+      // happen to come to exactly `limit` is complete, and only the search
+      // knows that the count cannot say it.
+      capped: found?.capped ?? false,
+    })),
 
   /** Development only: profiler output, to a file anyone can read. */
   perfLog: (line: string) => rawInvoke<void>("perf_log", { line }),

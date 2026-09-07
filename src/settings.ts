@@ -132,6 +132,18 @@ export type Settings = {
    */
   chatScope: "repo" | "all";
   /**
+   * Whether `*` in the palette searches inside every open repository's files,
+   * or only the active one's.
+   *
+   * All of them by default, which is the opposite call to `chatScope` and for
+   * the opposite reason: a chat belongs to where it was had, but "search all
+   * files" that quietly means "this repository's files" is a search that
+   * answers "no such thing" when it meant "not here". The narrowing is the
+   * option, so the chip is for focusing a search, never for discovering that
+   * the rest of the world existed all along.
+   */
+  searchScope: "repo" | "all";
+  /**
    * What orders the files in the tree.
    *
    * By name is the order a tree is read in, and the one to fall back to. By
@@ -231,6 +243,7 @@ export const DEFAULTS: Settings = {
   implementPrompt: IMPLEMENT_PROMPT,
   rewritePrompt: REWRITE_PROMPT,
   chatScope: "repo" as const,
+  searchScope: "all" as const,
   treeSort: "name" as const,
   imageFolder: "assets",
   sourceLineNumbers: true,
