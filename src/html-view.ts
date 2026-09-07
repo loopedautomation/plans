@@ -12,6 +12,7 @@
  * The markdown itself is untouched either way — the node still serialises back
  * to exactly the source it came from.
  */
+import { diffWords } from "diff";
 import { $prose, $view } from "@milkdown/utils";
 import { Plugin, PluginKey } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
@@ -129,6 +130,228 @@ export function withReply(value: string, author: string, text: string): string {
     .filter(Boolean);
   const reply = author ? `@${author}: ${text}` : text;
   return `<!--\n${[...lines, reply].join("\n")}\n-->`;
+}
+
+/* ===========================================================================
+   Suggestions: a comment with a diff in it.
+   ---------------------------------------------------------------------------
+   A suggestion is one more thing a person or an agent says *about* the
+   document, so it goes where the other things they say go — into the file, as
+   a comment, invisible to every markdown tool that does not know the form.
+   The document never lies about what it currently says; the proposal sits
+   beside it.
+
+   The grammar, and why it is this one:
+
+       <!--
+       @claude suggests:
+       the block exactly as it reads now
+       ---
+       what it should say instead
+       -->
+
+   A signed head, the old text, a lone `---`, the new text. The head cannot be
+   read as a thread turn — `TURN` wants `@name:` with the colon against the
+   handle, and `@claude suggests:` puts a word between them — so an ordinary
+   multi-turn comment never parses as a suggestion, and a suggestion never
+   parses as a thread. The separator is a marker rather than `- `/`+ ` line
+   prefixes because a proposal for a list item, or for any paragraph that
+   opens with `- `, would need escaping the moment it was prefixed, and the
+   old side has to survive verbatim: it is the address.
+
+   That is the whole of the location logic. A line number rots the moment
+   anything above it moves; a quote self-locates, and when it matches nothing
+   the card says so rather than being silently wrong.
+   =========================================================================== */
+
+/** `@name suggests:`, or `suggests:` where git had no name to sign with. */
+const SUGGESTS = new RegExp(`^(?:@(${HANDLE})\\s+)?suggests:$`);
+
+/** The line between the two sides. Exactly one, or this is not a suggestion. */
+const SPLIT = "---";
+
+export type Suggestion = { who: string | null; old: string; new: string };
+
+/**
+ * A suggestion, or null for anything else a comment might be.
+ *
+ * Strict on purpose, in both directions: a body missing the head, missing the
+ * separator, carrying two of them, or proposing a change to nothing at all is
+ * not a suggestion and renders as the comment it is. Better a proposal that
+ * shows up as prose than prose that shows up as a proposal with buttons.
+ */
+export function suggestion(value: string): Suggestion | null {
+  const body = value.match(COMMENT)?.[1];
+  if (body == null) return null;
+  const lines = body.split(/\r?\n/);
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const head = lines.shift()?.trim() ?? "";
+  const m = head.match(SUGGESTS);
+  if (!m) return null;
+  const at = lines.flatMap((l, i) => (l.trim() === SPLIT ? [i] : []));
+  if (at.length !== 1) return null;
+  const old = lines.slice(0, at[0]).join("\n").trim();
+  const next = lines.slice(at[0] + 1).join("\n").trim();
+  if (!old) return null;
+  return { who: m[1] ?? null, old, new: next };
+}
+
+/** The block a suggestion is written as — the parser's inverse. */
+export function suggestionBlock(who: string, old: string, next: string): string {
+  const head = who ? `@${who} suggests:` : "suggests:";
+  return `<!--\n${head}\n${old.trim()}\n${SPLIT}\n${next.trim()}\n-->`;
+}
+
+/**
+ * Whitespace is not content.
+ *
+ * The quote is written from what ProseMirror had; the file is what remark
+ * serialised, and the two disagree about wrapping and about runs of spaces
+ * often enough that a byte-exact comparison would miss the very paragraph the
+ * suggestion was written against. Anything looser than this starts guessing.
+ */
+function normal(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** Where a suggestion applies: a node's own range, or null when it is stale. */
+export type Span = { from: number; to: number };
+
+/**
+ * The nearest block before `before` whose text is the quote.
+ *
+ * Proximity *and* a quote: proximity alone was what the comment placement
+ * rule was always one step short of, and a quote alone would find the first
+ * paragraph in the document that happens to read the same. Blocks that
+ * contain the suggestion are skipped — a proposal cannot be about the
+ * paragraph it is sitting inside, and replacing that range would take the
+ * proposal with it.
+ */
+export function suggestionTarget(doc: PMNode, before: number, old: string): Span | null {
+  const want = normal(old);
+  if (!want) return null;
+  const hits: Span[] = [];
+  doc.descendants((node, pos) => {
+    if (pos >= before) return false;
+    if (!node.isTextblock) return;
+    if (pos + node.nodeSize > before) return false;
+    if (normal(node.textContent) === want) hits.push({ from: pos, to: pos + node.nodeSize });
+    return false;
+  });
+  return hits.length ? hits[hits.length - 1] : null;
+}
+
+/** What the card can do about a suggestion, decided by whoever draws it. */
+type SuggestionActs = {
+  /** Replace the target with the proposal; absent when nothing matched. */
+  accept: (() => void) | null;
+  /** Put the proposal in where the block sits, for a stale one. */
+  insert: () => void;
+  /** Take the block away and leave the document as it stands. */
+  reject: () => void;
+};
+
+/** Old against new, word by word, the way a redline reads. */
+function wordDiff(old: string, next: string): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "md-suggestion-diff";
+  for (const part of diffWords(old, next)) {
+    const piece = document.createElement("span");
+    piece.className = part.added
+      ? "md-suggestion-in"
+      : part.removed
+        ? "md-suggestion-out"
+        : "md-suggestion-same";
+    piece.textContent = part.value;
+    el.appendChild(piece);
+  }
+  return el;
+}
+
+/**
+ * The suggestion card: who proposed it, what it changes, and two buttons.
+ *
+ * Unlike a comment this is not behind a marker. A proposal nobody can see is
+ * a proposal nobody answers, and the card is the only place the change is
+ * shown — the target paragraph above is left exactly as it reads, so nobody's
+ * cursor lands in a battlefield of marks while they are typing in it.
+ *
+ * Read-only surfaces (the share page) get the card without its buttons: the
+ * proposal is part of the conversation the page exists to show, and there is
+ * nobody there to accept it.
+ */
+function suggestionCard(
+  s: Suggestion,
+  stale: boolean,
+  acts: SuggestionActs,
+): { dom: HTMLElement; destroy: () => void } {
+  const dom = document.createElement("span");
+  dom.className = stale ? "md-suggestion stale" : "md-suggestion";
+  dom.setAttribute("data-type", "html");
+
+  const head = document.createElement("span");
+  head.className = "md-suggestion-who";
+  const who = s.who ? profileOf(s.who) : null;
+  if (who) {
+    head.append(faceDom(who), handleDom(s.who!, colorFor(who.login)));
+  } else if (s.who && htmlContext.tint) {
+    head.appendChild(handleDom(s.who, colorFor(s.who)));
+  } else if (s.who) {
+    const name = document.createElement("span");
+    name.className = "md-suggestion-handle";
+    name.textContent = `@${shortHandle(s.who)}`;
+    name.title = `@${s.who}`;
+    head.appendChild(name);
+  }
+  const verb = document.createElement("span");
+  verb.className = "md-suggestion-verb";
+  verb.textContent = stale ? "suggested — the text it changes is gone" : "suggests";
+  head.appendChild(verb);
+
+  const body = stale ? document.createElement("span") : wordDiff(s.old, s.new);
+  if (stale) {
+    body.className = "md-suggestion-diff";
+    const piece = document.createElement("span");
+    piece.className = "md-suggestion-in";
+    piece.textContent = s.new || "(nothing — it proposed a deletion)";
+    body.appendChild(piece);
+  }
+
+  dom.append(head, body);
+
+  if (!htmlContext.readOnly) {
+    const acted = document.createElement("span");
+    acted.className = "md-suggestion-acts";
+    const button = (label: string, title: string, run: () => void) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "md-suggestion-act";
+      b.textContent = label;
+      b.title = title;
+      // Inside the editor's DOM: without this a click moves the caret and the
+      // transaction below is dispatched against a selection that just moved.
+      b.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        run();
+      });
+      return b;
+    };
+    if (acts.accept) {
+      acted.appendChild(
+        button("Accept", "Replace the passage above with this", acts.accept),
+      );
+    } else {
+      acted.appendChild(
+        button("Insert here", "Put the proposed text in where this card sits", acts.insert),
+      );
+    }
+    acted.appendChild(button("Reject", "Take the proposal away, unchanged", acts.reject));
+    dom.appendChild(acted);
+  }
+
+  return { dom, destroy: () => {} };
 }
 
 /**
@@ -401,6 +624,10 @@ function resolveAssets(root: HTMLElement, repo: string, relPath: string) {
  * it, and its comments render as they always have. `tint` colours handles
  * without a member list — the share page, whose readers are anonymous and
  * which never carries the members — from the same hash the cursors use.
+ *
+ * `readOnly` is the share page again: a suggestion card there is the proposal
+ * without its buttons, because there is nobody on that side of the link who
+ * could accept one.
  */
 export const htmlContext: {
   repo: string;
@@ -408,7 +635,8 @@ export const htmlContext: {
   author: string;
   profiles: Record<string, Profile> | null;
   tint: boolean;
-} = { repo: "", relPath: "", author: "", profiles: null, tint: false };
+  readOnly: boolean;
+} = { repo: "", relPath: "", author: "", profiles: null, tint: false, readOnly: false };
 
 /**
  * The bridge between rendered HTML and the app.
@@ -420,6 +648,21 @@ export const htmlContext: {
  */
 export type HtmlEdit = { from: number; to: number; value: string };
 
+/**
+ * Settling a suggestion, in one transaction.
+ *
+ * The block always goes — resolution leaves no trace in the file, exactly as
+ * resolving a thread is deleting it; the CRDT history and, after copy-out,
+ * git are the audit log. `target` is what the proposal replaces, absent for a
+ * reject; an empty range is "insert here", which is what a stale card offers.
+ */
+export type SuggestionApply = {
+  block: Span;
+  target?: Span;
+  /** The proposal as markdown. Empty against a range deletes it. */
+  markdown?: string;
+};
+
 export const htmlBridge: {
   /** Set by App: show the raw fragment for editing. */
   request: ((edit: HtmlEdit) => void) | null;
@@ -430,6 +673,25 @@ export const htmlBridge: {
   /** Set by Editor: put a comment in at the cursor. */
   /** Insert a comment at the cursor, or — `atTop` — under the first heading. */
   comment: ((value: string, atTop?: boolean) => void) | null;
+  /**
+   * Set by Editor: the text of the block the cursor is in.
+   *
+   * A suggestion's old side is a whole block, not whatever was selected: it
+   * has to match a node exactly or it can never find its own target. So the
+   * quote is read here rather than from the selection, and the person edits
+   * the block as it stands into the block they want.
+   */
+  block: (() => string) | null;
+  /**
+   * Set by Editor: put a suggestion in as its own block after the cursor's.
+   *
+   * Its own block, not at the cursor like a comment: a proposal that shared a
+   * paragraph with its target could never quote it, since the paragraph would
+   * then contain the quote of itself.
+   */
+  suggest: ((value: string) => void) | null;
+  /** Set by Editor: accept or reject a suggestion, in one transaction. */
+  resolve: ((edit: SuggestionApply) => void) | null;
   /** Set by Editor: put the cursor at the end of the document and focus it. */
   focusEnd: (() => void) | null;
   /**
@@ -458,6 +720,9 @@ export const htmlBridge: {
   apply: null,
   insert: null,
   comment: null,
+  block: null,
+  suggest: null,
+  resolve: null,
   focusEnd: null,
   collect: null,
   focusNext: false,
@@ -466,6 +731,38 @@ export const htmlBridge: {
 /** Whether a fragment is one complete comment, fences and all. */
 export function isComment(value: string): boolean {
   return COMMENT.test(value);
+}
+
+/**
+ * A suggestion drawn where it sits.
+ *
+ * `at` is read twice on purpose: once now, to decide whether the card is the
+ * live one or the stale one, and again when a button is pressed, because the
+ * document may well have moved on between the two — in a room it certainly
+ * has. The proposal that was stale when drawn can still be accepted if its
+ * paragraph came back, and one that was live can turn out not to be.
+ */
+function drawSuggestion(
+  s: Suggestion,
+  at: () => { doc: PMNode; block: Span },
+): { dom: HTMLElement; destroy: () => void } {
+  const now = at();
+  const found = suggestionTarget(now.doc, now.block.from, s.old);
+  const act = (kind: "accept" | "insert" | "reject") => () => {
+    const { doc, block } = at();
+    if (kind === "reject") return void htmlBridge.resolve?.({ block });
+    const hit = kind === "accept" ? suggestionTarget(doc, block.from, s.old) : null;
+    htmlBridge.resolve?.({
+      block,
+      target: hit ?? { from: block.from, to: block.from },
+      markdown: s.new,
+    });
+  };
+  return suggestionCard(s, !found, {
+    accept: found ? act("accept") : null,
+    insert: act("insert"),
+    reject: act("reject"),
+  });
 }
 
 export const htmlView = $view(htmlSchema.node, () => (node, view, getPos, decorations) => {
@@ -477,6 +774,32 @@ export const htmlView = $view(htmlSchema.node, () => (node, view, getPos, decora
     });
   const value = String(node.attrs.value ?? "");
   const comment = value.match(COMMENT);
+
+  /*
+   * A suggestion written by the app arrives as one node, fences and all —
+   * `nodesFor` keeps a complete comment whole — so it is drawn here as well
+   * as in the run gathered by the decoration plugin below.
+   */
+  const sugg = suggestion(value);
+  if (sugg) {
+    const where = () => {
+      const at = getPos() ?? 0;
+      const $at = view.state.doc.resolve(at);
+      // Alone in its paragraph, the paragraph is the block: accepting it
+      // should not leave an empty one where the card was.
+      const block =
+        $at.parent.isTextblock && $at.parent.childCount === 1
+          ? { from: $at.before(), to: $at.after() }
+          : { from: at, to: at + node.nodeSize };
+      return { doc: view.state.doc, block };
+    };
+    const { dom, destroy } = drawSuggestion(sugg, where);
+    for (const d of decorations ?? []) {
+      const cls = (d as unknown as { type?: { attrs?: { class?: string } } }).type?.attrs?.class;
+      if (cls) dom.classList.add(...cls.split(" "));
+    }
+    return { dom, ignoreMutation: () => true, stopEvent: () => true, destroy };
+  }
 
   if (comment) {
     const { dom, destroy } = commentCard(value, (next) =>
@@ -686,6 +1009,20 @@ function commentRuns(doc: PMNode): Run[] {
   return runs;
 }
 
+/** Everything a run occupies: its html nodes and the blocks holding them. */
+function runSpan(run: Run): Span {
+  return {
+    from: Math.min(run.from, ...run.blocks.map(([f]) => f)),
+    to: Math.max(run.to, ...run.blocks.map(([, t]) => t)),
+  };
+}
+
+/** Where a gathered run sits in the document as it is now, found by its text. */
+function runBlock(doc: PMNode, html: string): Span | null {
+  const hit = commentRuns(doc).find((r) => r.html === html);
+  return hit ? runSpan(hit) : null;
+}
+
 function pictureRuns(doc: PMNode): Run[] {
   const runs: Run[] = [];
   let open: { from: number; parts: string[]; blocks: [number, number][] } | null = null;
@@ -806,14 +1143,33 @@ function pictureDecorations(doc: PMNode, repo: string, relPath: string): Decorat
       seen.add(key);
       out.push(Decoration.inline(from, to, { class: "md-hidden" }));
     }
+    /*
+     * A suggestion is a comment with a diff in it, so it arrives as a run the
+     * same way a thread does and is drawn in place of the comment card. The
+     * block it occupies — the enclosing paragraphs, already hidden above — is
+     * what accepting takes away.
+     */
+    const sugg = suggestion(run.html);
     let card: { dom: HTMLElement; destroy: () => void } | null = null;
     out.push(
       Decoration.widget(
         run.to,
-        () => {
-          card = commentCard(run.html, (next) =>
-            htmlBridge.apply?.({ from: run.from, to: run.to, value: next }),
-          );
+        (view) => {
+          card = sugg
+            ? drawSuggestion(sugg, () => {
+                /*
+                 * Read out of the live document, not out of the one these
+                 * decorations were built from: between the two a teammate may
+                 * have typed above the card, and every position here would be
+                 * off by what they wrote. The run finds itself by its own text
+                 * — the same rule the quote follows.
+                 */
+                const live = view.state.doc;
+                return { doc: live, block: runBlock(live, run.html) ?? runSpan(run) };
+              })
+            : commentCard(run.html, (next) =>
+                htmlBridge.apply?.({ from: run.from, to: run.to, value: next }),
+              );
           card.dom.setAttribute("contenteditable", "false");
           return card.dom;
         },
