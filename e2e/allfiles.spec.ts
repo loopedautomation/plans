@@ -126,7 +126,8 @@ test("the palette search scope toggles between markdown and every file", async (
   await page.locator(".palette-input").fill("*answer");
   await expect(page.locator(".palette-empty")).toContainText(/nothing matches/i);
   await page.locator(".palette-scope").click();
-  await expect(page.locator(".palette-row").first()).toContainText(/answer/i);
+  await expect(page.locator(".palette-row.head").first()).toContainText(/util\.ts/i);
+  await expect(page.locator(".palette-row.hit").first()).toContainText(/answer/i);
 });
 
 test("the git panel lists every changed file, whatever the tree shows", async ({ page }) => {

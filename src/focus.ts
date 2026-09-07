@@ -85,7 +85,26 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active = true) 
     const box = ref.current;
     if (!box) return;
     const from = document.activeElement as HTMLElement | null;
-    if (!box.contains(document.activeElement)) (tabbable(box)[0] ?? box).focus();
+    const claim = () => {
+      if (!box.contains(document.activeElement)) (tabbable(box)[0] ?? box).focus();
+    };
+    claim();
+    // A box hidden for the frame it takes to measure — a menu placed after
+    // its first render — cannot take focus yet: `focus()` on a hidden element
+    // is a no-op. The moment its style changes, claim again — as a microtask,
+    // before anything else can see the box shown and unfocused — and once
+    // more after the next paint, for a box shown some other way.
+    const shown = new MutationObserver(() => {
+      claim();
+      if (box.contains(document.activeElement)) shown.disconnect();
+    });
+    if (!box.contains(document.activeElement)) {
+      shown.observe(box, { attributes: true, attributeFilter: ["style", "class", "hidden"] });
+    }
+    const again = requestAnimationFrame(() => {
+      claim();
+      shown.disconnect();
+    });
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Tab") return;
@@ -107,6 +126,8 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active = true) 
     // scrim, a textarea inside it — cannot take the key first.
     document.addEventListener("keydown", onKey, true);
     return () => {
+      cancelAnimationFrame(again);
+      shown.disconnect();
       document.removeEventListener("keydown", onKey, true);
       // Only if that place still exists, and only if nothing has already
       // claimed focus on the way out — a sheet that closes by opening the
