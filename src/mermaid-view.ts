@@ -76,7 +76,9 @@ function applyTheme() {
   const signature = `${v("--paper")}${v("--ink")}`;
   if (signature === themed) return;
   themed = signature;
-  const series = [1, 2, 3, 4, 5, 6].map((i) => v(`--chart-${i}`)).filter(Boolean);
+  const series = [1, 2, 3, 4, 5, 6]
+    .map((i) => v(`--chart-${i}`))
+    .filter(Boolean);
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
@@ -86,6 +88,14 @@ function applyTheme() {
     suppressErrorRendering: true,
     fontFamily: v("--mono") || "monospace",
     theme: "base",
+    // A sankey link multiplies its gradient into the paper, which on a dark
+    // paper is black. Drawn plainly, the half-opacity gradient shows instead.
+    themeCSS: [
+      ".link { mix-blend-mode: normal !important; }",
+      // The timeline draws its axis and drop lines in the section *label*
+      // colour, which is the paper here; they take the line ink instead.
+      `.lineWrapper line { stroke: ${v("--ink-3")} !important; }`,
+    ].join(" "),
     themeVariables: {
       background: v("--paper"),
       primaryColor: v("--shade"),
@@ -117,6 +127,33 @@ function applyTheme() {
        * the day one on black.
        */
       ...Object.fromEntries(series.map((c, i) => [`pie${i + 1}`, c])),
+      /*
+       * The section scale — timeline, mindmap, and anything else that colours
+       * by index. Left unset, mermaid derives twelve steps by rotating the
+       * hue of `primaryColor`, and a grey has no hue to rotate: every section
+       * came out black. Each step is a chart token, its label the paper.
+       */
+      ...Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => i).flatMap((i) => [
+          [`cScale${i}`, series[i % series.length]],
+          [`cScaleInv${i}`, v("--ink-3")],
+          [`cScaleLabel${i}`, v("--paper")],
+          [`cScalePeer${i}`, v("--rule-strong")],
+        ]),
+      ),
+      /* Git graph: a branch per chart token, in order; labels on paper. */
+      ...Object.fromEntries(
+        Array.from({ length: 8 }, (_, i) => i).flatMap((i) => [
+          [`git${i}`, series[i % series.length]],
+          [`gitInv${i}`, v("--paper")],
+          [`gitBranchLabel${i}`, v("--paper")],
+        ]),
+      ),
+      commitLabelColor: v("--ink"),
+      commitLabelBackground: v("--paper"),
+      tagLabelColor: v("--ink"),
+      tagLabelBackground: v("--shade"),
+      tagLabelBorder: v("--rule-strong"),
       pieStrokeColor: v("--paper"),
       pieOuterStrokeColor: v("--rule-strong"),
       pieTitleTextColor: v("--ink"),
@@ -168,7 +205,12 @@ function fit(stage: HTMLElement, contain = false) {
 }
 
 /** Draw into an existing element; failures show the message, not a blank box. */
-async function draw(host: HTMLElement, stage: HTMLElement, source: string, contain = false) {
+async function draw(
+  host: HTMLElement,
+  stage: HTMLElement,
+  source: string,
+  contain = false,
+) {
   const at = `${paper()}:${source}`;
   const hit = cache.get(at);
   if (hit) {
@@ -188,7 +230,9 @@ async function draw(host: HTMLElement, stage: HTMLElement, source: string, conta
     host.classList.add("bad");
     // Into the stage, not the host: writing to the host would take the stage
     // and the reset chip with it, leaving the next redraw nothing to draw in.
-    stage.textContent = String(e instanceof Error ? e.message : e).split("\n")[0];
+    stage.textContent = String(e instanceof Error ? e.message : e).split(
+      "\n",
+    )[0];
   }
 }
 
@@ -297,7 +341,8 @@ function steer(
   let from: { px: number; py: number; x: number; y: number } | null = null;
   frame.addEventListener("pointerdown", (e) => {
     // Never start a pan under a button that is sitting on top of the picture.
-    if (k <= 1 || e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    if (k <= 1 || e.button !== 0 || (e.target as HTMLElement).closest("button"))
+      return;
     e.preventDefault();
     e.stopPropagation();
     frame.setPointerCapture(e.pointerId);
@@ -312,7 +357,8 @@ function steer(
   const release = (e: PointerEvent) => {
     if (!from) return;
     from = null;
-    if (frame.hasPointerCapture(e.pointerId)) frame.releasePointerCapture(e.pointerId);
+    if (frame.hasPointerCapture(e.pointerId))
+      frame.releasePointerCapture(e.pointerId);
   };
   frame.addEventListener("pointerup", release);
   frame.addEventListener("pointercancel", release);
@@ -414,7 +460,10 @@ function maximise(source: string) {
   document.body.append(scrim);
 }
 
-function build(doc: PMNode): { set: DecorationSet; blocks: { from: number; to: number }[] } {
+function build(doc: PMNode): {
+  set: DecorationSet;
+  blocks: { from: number; to: number }[];
+} {
   const out: Decoration[] = [];
   const blocks: { from: number; to: number }[] = [];
   doc.descendants((node, pos) => {
@@ -480,26 +529,40 @@ function build(doc: PMNode): { set: DecorationSet; blocks: { from: number; to: n
             e.stopPropagation();
             const at = getPos();
             if (at === undefined) return;
-            const tr = view.state.tr.setMeta(key, { toggle: at } satisfies Toggle);
+            const tr = view.state.tr.setMeta(key, {
+              toggle: at,
+            } satisfies Toggle);
             /*
              * Folding with the caret still in the fence — which is where it is
              * after an edit — would be refused by the caret rule, so the caret
              * is put after the figure first. The block being folded is the one
              * the widget belongs to, which ends where the widget sits.
              */
-            const block = key.getState(view.state)?.blocks.find((b) => b.to === at);
+            const block = key
+              .getState(view.state)
+              ?.blocks.find((b) => b.to === at);
             const sel = view.state.selection;
-            if (block && shownNow() && sel.from >= block.from && sel.to <= block.to) {
+            if (
+              block &&
+              shownNow() &&
+              sel.from >= block.from &&
+              sel.to <= block.to
+            ) {
               tr.setSelection(TextSelection.near(tr.doc.resolve(block.to), 1));
             }
             view.dispatch(tr);
             src.setAttribute("aria-pressed", String(shownNow()));
           });
 
-          const at = steer(host, stage, framed.get(source) ?? { k: 1, x: 0, y: 0 }, (now) => {
-            if (now) framed.set(source, now);
-            else framed.delete(source);
-          });
+          const at = steer(
+            host,
+            stage,
+            framed.get(source) ?? { k: 1, x: 0, y: 0 },
+            (now) => {
+              if (now) framed.set(source, now);
+              else framed.delete(source);
+            },
+          );
           reset.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -557,16 +620,28 @@ function withFolds(
   for (const b of blocks) {
     if (shown.includes(b.from)) continue;
     if (sel.from >= b.from && sel.to <= b.to) continue;
-    folds.push(Decoration.node(b.from, b.to, { class: "mermaid-source-folded" }));
+    folds.push(
+      Decoration.node(b.from, b.to, { class: "mermaid-source-folded" }),
+    );
   }
   return folds.length ? set.add(doc, folds) : set;
 }
 
-function fresh(doc: PMNode, sel: { from: number; to: number }, shown: number[]): MermaidState {
+function fresh(
+  doc: PMNode,
+  sel: { from: number; to: number },
+  shown: number[],
+): MermaidState {
   const { set, blocks } = build(doc);
   // A hand-shown block that no longer starts a diagram is forgotten.
   const kept = shown.filter((p) => blocks.some((b) => b.from === p));
-  return { signature: signature(doc), set, blocks, shown: kept, all: withFolds(doc, sel, set, blocks, kept) };
+  return {
+    signature: signature(doc),
+    set,
+    blocks,
+    shown: kept,
+    all: withFolds(doc, sel, set, blocks, kept),
+  };
 }
 
 export const mermaidView = $prose(
@@ -586,7 +661,9 @@ export const mermaidView = $prose(
         apply(tr, old) {
           const meta = tr.getMeta(key) as Toggle | true | undefined;
           const sel = tr.selection;
-          let shown = tr.docChanged ? old.shown.map((p) => tr.mapping.map(p)) : old.shown;
+          let shown = tr.docChanged
+            ? old.shown.map((p) => tr.mapping.map(p))
+            : old.shown;
           if (meta && typeof meta === "object") {
             // The widget sits at the block's end; the fold is keyed by its start.
             const block = old.blocks.find((b) => b.to === meta.toggle);
@@ -612,7 +689,13 @@ export const mermaidView = $prose(
               from: tr.mapping.map(b.from),
               to: tr.mapping.map(b.to),
             }));
-            return { signature: now, set: mapped, blocks, shown, all: withFolds(tr.doc, sel, mapped, blocks, shown) };
+            return {
+              signature: now,
+              set: mapped,
+              blocks,
+              shown,
+              all: withFolds(tr.doc, sel, mapped, blocks, shown),
+            };
           }
           return fresh(tr.doc, sel, shown);
         },
