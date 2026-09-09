@@ -9,8 +9,8 @@ approved: sam
 
 The page is the document: warm, generous, set in a reading face at a reading
 size. Everything around it is the ledger. This paragraph is prose; the
-frontmatter above it is hidden behind a button, and the status it carries
-is drawn as a badge in the page head.
+frontmatter above it is drawn as a quiet block in the ledger voice, and in
+the app the status it carries is a badge in the page head.
 
 ## What a plan is made of
 

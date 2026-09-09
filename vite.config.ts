@@ -25,10 +25,31 @@ const share = (mode: string) =>
       }
     : {};
 
+/**
+ * A third entry: the design gallery.
+ *
+ * `vite build --mode design` builds `src/design` — every element of the
+ * design system drawn by the app's own components, in all three papers —
+ * into `site/design`, which the site workflow deploys with the rest of the
+ * site at `/design/`. Built, never committed, for the same reason as the
+ * reader: the gallery and the app must be the same code. See
+ * plans/distill-this-design.md.
+ */
+const design = (mode: string) =>
+  mode === "design"
+    ? {
+        root: "src/design",
+        base: "/design/",
+        publicDir: false as const,
+        build: { outDir: "../../site/design", emptyOutDir: true },
+      }
+    : {};
+
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => ({
   plugins: [react()],
   ...share(mode),
+  ...design(mode),
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

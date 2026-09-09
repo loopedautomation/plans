@@ -1,5 +1,5 @@
 ---
-status: busy
+status: done
 ---
 # Distill this design
 
@@ -98,23 +98,23 @@ someone reaches for them.
 
 ## Implementation guide
 
-- [ ] `vite.config.ts` - a `design(mode)` beside `share(mode)`: root
+- [x] `vite.config.ts` - a `design(mode)` beside `share(mode)`: root
       `src/design`, `publicDir: false`, out `../../site/design`, base
       `/design/`
-- [ ] `package.json` - `build:design`; `site.yml` installs, builds the
+- [x] `package.json` - `build:design`; `site.yml` installs, builds the
       gallery, then uploads `site/`
-- [ ] `src/design/index.html`, `main.tsx` - the entry, importing
+- [x] `src/design/index.html`, `main.tsx` - the entry, importing
       `../App.css`, applying default settings and the chosen paper
-- [ ] `src/design/Gallery.tsx` - the six sections above, each a component
+- [x] `src/design/Gallery.tsx` - the six sections above, each a component
       of its own file under `src/design/sections/`
-- [ ] `src/design/tokens.ts` - the token lists (paper and ink, git, status,
+- [x] `src/design/tokens.ts` - the token lists (paper and ink, git, status,
       code, diff, alerts, chart) with the one-line rule for each, read live
       by a `Swatch`
-- [ ] `src/design/sample.md` - the fixture the editor section renders
-- [ ] `src/design/gallery.css` - the gallery's own layout only; nothing that
+- [x] `src/design/sample.md` - the fixture the editor section renders
+- [x] `src/design/gallery.css` - the gallery's own layout only; nothing that
       restyles an app element
-- [ ] `site/index.html` - a "Design" link beside GitHub
-- [ ] `e2e/design.spec.ts` - the gallery builds and renders: every section
+- [x] `site/index.html` - a "Design" link beside GitHub
+- [x] `e2e/design.spec.ts` - the gallery builds and renders: every section
       heading present, every swatch non-empty in each paper, the editor
       section shows a comment card and a suggestion card
 
@@ -130,7 +130,31 @@ someone reaches for them.
 
 ## Open questions
 
-- **A link from inside the app?** Settings could offer "Design system" the
-  way it offers the settings file. Leaning no for now: the gallery is for
-  people building the app, and they have the site.
-  - Answer:
+- ~~A link from inside the app?~~ Decided: no. The gallery is for people
+  building the app, and they have the site; a Settings entry can come if
+  anyone reaches for it.
+
+## What landed
+
+The gallery went in as planned: `src/design/` is the third Vite entry,
+`pnpm build:design` writes it to `site/design/`, the site workflow builds
+it before uploading and now also runs when `src/` changes, and the site's
+header links to it. Every swatch reads its value from the live stylesheet
+when it draws, so switching paper re-reads all forty-odd of them; the e2e
+switches through the three papers and checks none came back blank and that
+the paper swatch differs between day and night.
+
+Two things were found by looking rather than by planning. A read-only editor
+draws frontmatter as a block rather than hiding it, since the button that
+hides it belongs to the app's page head; the sample's prose says so instead
+of claiming otherwise. And the gallery draws the page head from the review
+flow plan, owner and reviewer states and the Approve offer, so that branch
+is merged into this one; the two ship in that order.
+
+- `vite.config.ts` `design(mode)`, `package.json` `build:design`,
+  `site/design` ignored like `server/public`.
+- `src/design/Gallery.tsx` and six sections under `sections/`;
+  `tokens.ts` lists names and rules only; `sample.md` is the editor's
+  fixture; `gallery.css` is layout and never restyles an app element.
+- `e2e/design.spec.ts` renders the gallery from the dev server at its
+  source path, which is the same page the site build serves at `/design/`.
