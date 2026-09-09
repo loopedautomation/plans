@@ -30,7 +30,8 @@ export type RemoteRoot = {
   port: number;
   user: string;
   root: string;
-  auth: "password" | "key";
+  /** "none" is a server that accepts you on identity alone, as Tailscale SSH does. */
+  auth: "password" | "key" | "none";
   hostKey: string | null;
 };
 

@@ -233,7 +233,7 @@ export default function MobileApp() {
             })}
             {!settings.remoteRoots.length && (
               <p className="mobile-empty">
-                Add a computer to browse a remote root over SSH.
+                Add a computer to open one of its repositories over SSH.
               </p>
             )}
           </main>

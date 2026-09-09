@@ -187,6 +187,23 @@ test("key authentication accepts an imported OpenSSH key without echoing a store
   await expect(page.locator("textarea")).toHaveValue("");
 });
 
+test("a computer reached over Tailscale SSH connects with no credential at all", async ({
+  page,
+}) => {
+  await boot(page, [{ ...remote, auth: "none", hostKey: server.fingerprint }]);
+  await page.locator(".row.repo.remote", { hasText: "Workstation" }).click();
+  // Straight to the files: nothing to type, nothing stored, nothing asked.
+  await expect(page.getByTestId("remote-sheet")).toHaveCount(0);
+  await expect(page.locator(".row.dir", { hasText: "plans/" })).toBeVisible();
+  await page
+    .locator(".row.repo.remote", { hasText: "Workstation" })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Connection settings…" }).click();
+  await expect(page.locator("select")).toHaveValue("none");
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(page.locator("textarea")).toHaveCount(0);
+});
+
 test("the phone shell drills through files and keeps the document read-only", async ({
   page,
 }) => {

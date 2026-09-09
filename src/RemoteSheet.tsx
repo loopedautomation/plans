@@ -156,12 +156,18 @@ export function RemoteSheet({
             />
           </label>
           <label>
-            <span>Remote root</span>
+            <span>Repository</span>
             <input
               value={value.root}
               autoCapitalize="none"
+              placeholder="~/Projects/plans"
               onChange={(e) => update("root", e.target.value)}
             />
+            <small className="remote-hint">
+              The path of one git repository on that computer, as you would
+              type it in a shell there. The app opens it the way it opens a
+              local one, and nothing outside it is reachable.
+            </small>
           </label>
           <label>
             <span>Authentication</span>
@@ -173,9 +179,16 @@ export function RemoteSheet({
             >
               <option value="password">Password</option>
               <option value="key">OpenSSH private key</option>
+              <option value="none">None (Tailscale SSH)</option>
             </select>
           </label>
-          {value.auth === "password" ? (
+          {value.auth === "none" ? (
+            <p className="remote-note">
+              No credential is stored. The server accepts you on identity
+              alone; Tailscale SSH does this, and in check mode it answers
+              with a link to confirm in a browser, which shows here.
+            </p>
+          ) : value.auth === "password" ? (
             <label>
               <span>
                 Password {remote ? "(leave blank to keep stored)" : ""}

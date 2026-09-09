@@ -197,7 +197,7 @@ export function installFakeBackend(
           message: null,
         };
       }
-      if (!state.remoteSecrets[id]?.secret) {
+      if (remote.auth !== "none" && !state.remoteSecrets[id]?.secret) {
         return {
           status: "auth-required",
           fingerprint: found.fingerprint,
