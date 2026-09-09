@@ -826,6 +826,20 @@ export function Editor({
       }
       trace("editor destroyed");
       disposed = true;
+      /*
+       * Let go of the room before the editor goes. The collab plugin
+       * dispatches every remote update and cursor move into the view, and
+       * destroy() takes the context down while the room is still live; an
+       * update arriving in that gap threw "editorState not found" from
+       * inside the plugin. Disconnecting first means nothing more arrives.
+       */
+      if (room && created.current) {
+        try {
+          crepe.editor.action((ctx) => ctx.get(collabServiceCtx).disconnect());
+        } catch (e) {
+          trace("collab disconnect failed", { error: String(e) });
+        }
+      }
       created.current = false;
       unsync?.();
       if (markdownRef && instance.current === crepe) markdownRef.current = null;

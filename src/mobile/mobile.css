@@ -1,7 +1,7 @@
 .mobile-app {
   height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   background: var(--paper);
   color: var(--ink);
   padding-top: env(safe-area-inset-top);
@@ -159,5 +159,43 @@
       100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)
     );
     overflow: auto;
+  }
+}
+
+/* The two stacks' bar, at the root of each. */
+.mobile-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+.mobile-tabs button {
+  border: 0;
+  padding: 12px 4px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mobile-tabs button.on {
+  color: var(--ink);
+}
+.mobile-account {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.mobile-status .status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+@media (max-width: 520px) {
+  .matter-sheet.signin {
+    width: calc(100vw - 20px);
   }
 }
