@@ -161,7 +161,11 @@ pub fn materialise(
     }
     sweep(folder, folder, &keep, written, &mut changed)?;
     // What was on disk and is not any more has nothing to be compared with.
-    written.retain(|rel, _| safe_rel(rel).map(|r| folder.join(r).exists()).unwrap_or(false));
+    written.retain(|rel, _| {
+        safe_rel(rel)
+            .map(|r| folder.join(r).exists())
+            .unwrap_or(false)
+    });
     Ok(changed)
 }
 
@@ -196,7 +200,10 @@ fn sweep(
             sweep(root, &p, keep, written, changed)?;
             // Ours if nothing outside was found under it: an empty folder
             // the tree dropped goes with its files.
-            if std::fs::read_dir(&p).map(|mut d| d.next().is_none()).unwrap_or(false) {
+            if std::fs::read_dir(&p)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(false)
+            {
                 let _ = std::fs::remove_dir(&p);
             }
             continue;
@@ -325,7 +332,12 @@ mod tests {
         );
 
         // A file the tree dropped, still as we wrote it, goes.
-        let changed = materialise(&tmp, &[file("plan.md", "# Plan\n"), dir("notes")], &mut written).unwrap();
+        let changed = materialise(
+            &tmp,
+            &[file("plan.md", "# Plan\n"), dir("notes")],
+            &mut written,
+        )
+        .unwrap();
         assert!(changed.is_empty());
         assert!(!tmp.join("notes/a.md").exists());
         assert!(tmp.join("notes").is_dir());
@@ -361,7 +373,12 @@ mod tests {
 
         // Once the room has taken the edit — re-serialised, say — the disk
         // follows the room again.
-        let changed = materialise(&tmp, &[file("plan.md", "# Plan\n\nDone by sed.\n\n")], &mut written).unwrap();
+        let changed = materialise(
+            &tmp,
+            &[file("plan.md", "# Plan\n\nDone by sed.\n\n")],
+            &mut written,
+        )
+        .unwrap();
         assert!(changed.is_empty());
         assert_eq!(
             std::fs::read_to_string(tmp.join("plan.md")).unwrap(),
@@ -400,7 +417,11 @@ mod tests {
         // Once the tree has it, it is an ordinary file of the tree.
         let changed = materialise(
             &tmp,
-            &[file("plan.md", "# Plan\n"), dir("notes"), file("notes/new.md", "# New\n")],
+            &[
+                file("plan.md", "# Plan\n"),
+                dir("notes"),
+                file("notes/new.md", "# New\n"),
+            ],
             &mut written,
         )
         .unwrap();
@@ -412,7 +433,12 @@ mod tests {
     fn a_path_that_climbs_is_skipped() {
         let tmp = tempdir();
         let mut written = HashMap::new();
-        materialise(&tmp, &[file("../escape.md", "no"), file("/abs.md", "no")], &mut written).unwrap();
+        materialise(
+            &tmp,
+            &[file("../escape.md", "no"), file("/abs.md", "no")],
+            &mut written,
+        )
+        .unwrap();
         assert!(!tmp.parent().unwrap().join("escape.md").exists());
         assert!(std::fs::read_dir(&tmp).unwrap().next().is_none());
         std::fs::remove_dir_all(&tmp).unwrap();
@@ -426,7 +452,10 @@ mod tests {
             Some("notes/a.md".into())
         );
         assert_eq!(under(f, Path::new("/home/me/plans/workspaces/abc")), None);
-        assert_eq!(under(f, Path::new("/home/me/plans/workspaces/abcd/x.md")), None);
+        assert_eq!(
+            under(f, Path::new("/home/me/plans/workspaces/abcd/x.md")),
+            None
+        );
         assert_eq!(under(f, Path::new("/elsewhere/x.md")), None);
     }
 
