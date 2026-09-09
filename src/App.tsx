@@ -2823,11 +2823,16 @@ export default function App() {
               : settings.rewritePrompt || REWRITE_PROMPT;
             // One pass, and through a function: the quote is someone's prose,
             // and `$&` in it must not turn into a substitution of its own.
+            // A proposal leads with the suggest skill: the grammar is exact,
+            // and a prompt's one example was not enough for an agent to get
+            // the quote, the separator and the blank-line rule right. The
+            // chat turns the slash into the skill's text before sending.
             setChatSeed(
-              template.replace(
-                /\{(file|lines|ask|quote)\}/g,
-                (m, k) => fields[k] ?? m,
-              ),
+              (proposing ? "/suggest " : "") +
+                template.replace(
+                  /\{(file|lines|ask|quote)\}/g,
+                  (m, k) => fields[k] ?? m,
+                ),
             );
             set({ showMux: true });
           })();

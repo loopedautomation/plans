@@ -2894,8 +2894,11 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
   font-size: 10.5px;
   color: var(--ink-2);
 }
-.chat-ask-title { flex: 1; min-width: 0; }
-.chat-ask-acts { display: flex; gap: 10px; flex: none; }
+/* A permission's title is often a command or a path with no space to break
+   at; without this it runs out of the card. */
+.chat-ask { min-width: 0; max-width: 100%; }
+.chat-ask-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chat-ask-acts { display: flex; flex-wrap: wrap; gap: 10px; flex: none; max-width: 100%; }
 .chat-ask-was { color: var(--ink-3); flex: none; }
 
 /*

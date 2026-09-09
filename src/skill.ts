@@ -5,6 +5,7 @@ import prText from "../skills/pr/SKILL.md?raw";
 import factoryText from "../skills/factory/SKILL.md?raw";
 import writingText from "../skills/writing/SKILL.md?raw";
 import settingsText from "../skills/settings/SKILL.md?raw";
+import suggestText from "../skills/suggest/SKILL.md?raw";
 
 /**
  * The conventions ship inside the bundle, imported at build time from the
@@ -81,6 +82,14 @@ export const SKILLS: BundledSkill[] = [
     begin: "<!-- plans:begin settings -->",
     end: "<!-- plans:end settings -->",
     claudePath: ".claude/skills/settings/SKILL.md",
+  },
+  {
+    name: "suggest",
+    label: "suggest skill",
+    text: suggestText,
+    begin: "<!-- plans:begin suggest -->",
+    end: "<!-- plans:end suggest -->",
+    claudePath: ".claude/skills/suggest/SKILL.md",
   },
 ];
 
