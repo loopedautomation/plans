@@ -8,6 +8,7 @@
     "web": "vite",
     "build": "pnpm run schema && tsc && vite build",
     "build:share": "vite build --mode share",
+    "build:design": "vite build --mode design",
     "schema": "node scripts/settings-schema.mjs",
     "schema:check": "node scripts/settings-schema.mjs --check",
     "preview": "vite preview",

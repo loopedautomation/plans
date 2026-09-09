@@ -3,7 +3,9 @@ name: site
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/site.yml"]
+    # The gallery is built from the app's own components and stylesheet, so a
+    # change to either is a change to the site.
+    paths: ["site/**", "src/**", "vite.config.ts", ".github/workflows/site.yml"]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +25,14 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The design gallery, into site/design; see plans/distill-this-design.md.
+      - run: pnpm build:design
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
