@@ -15,7 +15,11 @@ import {
 } from "../settings";
 import { RemoteNeedsAttention, useRemoteBrowser } from "../remote";
 import { WorkspacesTab } from "./WorkspacesTab";
-import { SettingsTab } from "./SettingsTab";
+import { AaSheet } from "./AaSheet";
+import { ProfileSheet } from "./ProfileSheet";
+import { Avatar } from "../Avatar";
+import { SignInSheet } from "../SignInSheet";
+import { colorFor, configured, workspace, type Account } from "../workspace";
 import SETTINGS_SCHEMA from "../settings.schema.json";
 import "../App.css";
 import "./mobile.css";
@@ -26,7 +30,7 @@ type Screen = "computers" | "files" | "document";
  * repository an agent is working in gets read over SSH. The bar is drawn
  * only at the root of each, so inside a document Back means Back.
  */
-type Tab = "workspaces" | "computers" | "settings";
+type Tab = "workspaces" | "computers";
 
 export default function MobileApp() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -34,6 +38,35 @@ export default function MobileApp() {
   const extras = useRef<Extras>({});
   const browser = useRemoteBrowser();
   const [tab, setTab] = useState<Tab>("workspaces");
+  const [account, setAccount] = useState<Account | null | undefined>(undefined);
+  const [profile, setProfile] = useState(false);
+  const [aaOpen, setAaOpen] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+  /**
+   * What Back means on the screen showing now, or null at the root of a
+   * stack. Set by whichever stack is up; read by the edge swipe below.
+   */
+  const backRef = useRef<(() => void) | null>(null);
+
+  // Who is signed in, once.
+  useEffect(() => {
+    let live = true;
+    if (!configured()) {
+      setAccount(null);
+      return;
+    }
+    void workspace.me().then(
+      (who) => live && setAccount(who),
+      (e) => {
+        if (!live) return;
+        setAccount(null);
+        setError(String((e as Error).message ?? e));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
   const [screen, setScreen] = useState<Screen>("computers");
   const [computer, setComputer] = useState<RemoteRoot | null>(null);
   const [dir, setDir] = useState("");
@@ -172,6 +205,106 @@ export default function MobileApp() {
     setScreen("computers");
   };
 
+  /*
+   * The two corners of every root screen: who you are at the left, the
+   * reader's Aa at the right, each opening a slide-over. A screen with a
+   * Back button keeps its left corner and gets Aa alone.
+   */
+  const profileButton = (
+    <button
+      type="button"
+      className="mobile-corner mobile-profile-button"
+      onClick={() => setProfile(true)}
+      aria-label={account ? `Signed in as ${account.login}` : "Sign in"}
+      data-testid="account"
+    >
+      {account ? (
+        <Avatar who={{ name: account.name ?? account.login, color: colorFor(account.login), avatar: account.avatar }} size={28} />
+      ) : (
+        <span className="avatar mobile-avatar-empty" aria-hidden />
+      )}
+      <span className="sr-only">{account?.login ?? ""}</span>
+    </button>
+  );
+  const aaButton = (
+    <button type="button" className="mobile-corner mobile-aa" onClick={() => setAaOpen(true)} aria-label="Paper and type" data-testid="aa">
+      Aa
+    </button>
+  );
+  const head = (title: string) => (
+    <header className="mobile-head">
+      {profileButton}
+      <h1>{title}</h1>
+      {aaButton}
+    </header>
+  );
+  const sheets = (
+    <>
+      {profile && (
+        <ProfileSheet
+          account={account}
+          onSignIn={() => {
+            setProfile(false);
+            setSigningIn(true);
+          }}
+          onSignOut={() => {
+            setProfile(false);
+            void workspace.signOut().finally(() => setAccount(null));
+          }}
+          onClose={() => setProfile(false)}
+        />
+      )}
+      {aaOpen && (
+        <AaSheet settings={settings} set={(patch) => setSettings((s) => ({ ...s, ...patch }))} onClose={() => setAaOpen(false)} />
+      )}
+      {signingIn && (
+        <SignInSheet
+          onDone={(who) => {
+            setSigningIn(false);
+            setAccount(who);
+          }}
+          onCancel={() => setSigningIn(false)}
+        />
+      )}
+      {error && (
+        <button className="mobile-error" onClick={() => setError(null)}>
+          {error}
+        </button>
+      )}
+    </>
+  );
+
+  /*
+   * A swipe in from the left edge goes back, as it does everywhere else on
+   * the phone. Starts within 24px of the edge, travels at least 72px right
+   * and less than that up or down; anything else is a scroll or a drag.
+   */
+  const edge = useRef<{ x: number; y: number } | null>(null);
+  const swipe = {
+    onTouchStart: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      edge.current = t && t.clientX <= 24 ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchEnd: (e: React.TouchEvent) => {
+      const at = edge.current;
+      edge.current = null;
+      const t = e.changedTouches[0];
+      if (!at || !t) return;
+      if (t.clientX - at.x >= 72 && Math.abs(t.clientY - at.y) < 72) backRef.current?.();
+    },
+  };
+  // The SSH stack's Back, by screen.
+  backRef.current =
+    tab !== "computers" || screen === "computers"
+      ? backRef.current
+      : screen === "document"
+        ? () => setScreen("files")
+        : () => {
+            if (dir) setDir(dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "");
+            else setScreen("computers");
+          };
+  if (tab === "computers" && screen === "computers") backRef.current = null;
+
   const bar = (
     <nav className="mobile-tabs" aria-label="Sections">
       <button className={tab === "workspaces" ? "on" : ""} onClick={() => setTab("workspaces")} data-testid="tab-workspaces">
@@ -180,40 +313,23 @@ export default function MobileApp() {
       <button className={tab === "computers" ? "on" : ""} onClick={() => setTab("computers")} data-testid="tab-computers">
         Computers
       </button>
-      <button className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")} data-testid="tab-settings">
-        Settings
-      </button>
     </nav>
   );
 
-  if (tab === "settings") {
-    return (
-      <div className="mobile-app">
-        <SettingsTab settings={settings} set={(patch) => setSettings((s) => ({ ...s, ...patch }))} bar={bar} />
-      </div>
-    );
-  }
-
   if (tab === "workspaces") {
     return (
-      <div className="mobile-app">
-        <WorkspacesTab bar={bar} onError={setError} />
-        {error && (
-          <button className="mobile-error" onClick={() => setError(null)}>
-            {error}
-          </button>
-        )}
+      <div className="mobile-app" {...swipe}>
+        <WorkspacesTab account={account} head={head} aa={aaButton} bar={bar} backRef={backRef} onError={setError} />
+        {sheets}
       </div>
     );
   }
 
   return (
-    <div className="mobile-app">
+    <div className="mobile-app" {...swipe}>
       {screen === "computers" && (
         <>
-          <header className="mobile-head">
-            <h1>Computers</h1>
-          </header>
+          {head("Computers")}
           <main className="mobile-list">
             {settings.remoteRoots.map((remote) => {
               const phase =
@@ -362,11 +478,7 @@ export default function MobileApp() {
         </>
       )}
 
-      {error && (
-        <button className="mobile-error" onClick={() => setError(null)}>
-          {error}
-        </button>
-      )}
+      {sheets}
 
       {sheet && (
         <RemoteSheet

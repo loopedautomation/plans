@@ -375,6 +375,54 @@ function steer(
     home();
   });
 
+  /*
+   * Two fingers on a phone. The page itself cannot be zoomed there (the
+   * shell forbids it, so that a focused field never zooms the whole app),
+   * so a pinch over a diagram has to be answered here: scale about the
+   * midpoint of the two touches, and keep what was between them between
+   * them. Touch events rather than pointers, because a pinch is one gesture
+   * and the browser hands it over whole; preventDefault is what stops the
+   * page from scrolling underneath it.
+   */
+  let pinch: { d: number; k: number; x: number; y: number; cx: number; cy: number } | null = null;
+  const span = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  frame.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault();
+      const r = frame.getBoundingClientRect();
+      pinch = {
+        d: span(e.touches),
+        k,
+        x,
+        y,
+        cx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left - r.width / 2,
+        cy: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top - r.height / 2,
+      };
+      from = null;
+    },
+    { passive: false },
+  );
+  frame.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const next = Math.max(1, Math.min(8, (pinch.k * span(e.touches)) / pinch.d));
+      x = pinch.cx - ((pinch.cx - pinch.x) * next) / pinch.k;
+      y = pinch.cy - ((pinch.cy - pinch.y) * next) / pinch.k;
+      k = next;
+      apply();
+    },
+    { passive: false },
+  );
+  const unpinch = () => {
+    pinch = null;
+  };
+  frame.addEventListener("touchend", unpinch);
+  frame.addEventListener("touchcancel", unpinch);
+
   return { home };
 }
 

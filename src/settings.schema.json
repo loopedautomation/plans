@@ -15,7 +15,8 @@
       "enum": [
         "day",
         "sepia",
-        "night"
+        "night",
+        "system"
       ],
       "default": "day"
     },

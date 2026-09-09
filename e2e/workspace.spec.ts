@@ -90,7 +90,7 @@ async function boot(browser: Browser, login: string, options: { mobile?: boolean
     [installFakeBackend.toString(), REPOS, token, base, options.mobile ? "mobile" : "desktop"] as const,
   );
   await page.goto("/");
-  await expect(page.getByTestId("account")).toHaveText(login);
+  await expect(page.getByTestId("account")).toContainText(login);
   (page as any).__faults = faults;
   return page;
 }
@@ -1263,6 +1263,13 @@ test("a phone signs in, opens the workspace's file, and what it types reaches th
   await expect(phone.locator(".mobile-head")).toContainText("Computers");
   await phone.getByTestId("tab-workspaces").click();
   await expect(phone.locator(".mobile-row", { hasText: "Pocket" })).toBeVisible();
+
+  // The profile slides in from the left with the account, and signs out.
+  await phone.getByTestId("account").click();
+  await expect(phone.getByTestId("profile")).toContainText("bob");
+  await phone.getByTestId("sign-out").click();
+  await expect(phone.getByTestId("profile")).toHaveCount(0);
+  await expect(phone.getByTestId("workspaces")).toContainText("Sign in from the top left");
 
   expect((alice as any).__faults).toEqual([]);
   expect((phone as any).__faults).toEqual([]);

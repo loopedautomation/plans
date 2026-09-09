@@ -204,11 +204,11 @@ test("a computer reached over Tailscale SSH connects with no credential at all",
   await expect(page.locator("textarea")).toHaveCount(0);
 });
 
-test("the phone's settings change the paper and the type, and are written to the file", async ({
+test("the phone's Aa sheet changes the paper and the type, and they are written to the file", async ({
   page,
 }) => {
   await boot(page, [remote], { mobile: true });
-  await page.getByTestId("tab-settings").click();
+  await page.getByTestId("aa").click();
   await expect(page.getByTestId("settings")).toBeVisible();
   await page.getByTestId("paper-night").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
@@ -220,9 +220,26 @@ test("the phone's settings change the paper and the type, and are written to the
   await expect
     .poll(async () => (await page.evaluate(() => (window as any).__fake.settingsFile?.text ?? "")) as string)
     .toMatch(/"theme": "night"[\s\S]*"fontId": "libre-baskerville"/);
-  // Back on the Computers tab the paper holds.
+  // Closed and reopened from the other tab, the paper holds.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings")).toHaveCount(0);
   await page.getByTestId("tab-computers").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
+  await page.getByTestId("aa").click();
+
+  // System follows the device, and keeps following it.
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.getByTestId("paper-system").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "day");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
+  await expect
+    .poll(async () => (await page.evaluate(() => (window as any).__fake.settingsFile?.text ?? "")) as string)
+    .toContain('"theme": "system"');
+  // A chosen paper stops following.
+  await page.getByTestId("paper-sepia").click();
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "sepia");
 });
 
 test("the phone shell drills through files and keeps the document read-only", async ({
