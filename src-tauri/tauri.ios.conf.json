@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": "pnpm web --mode mobile",
+    "beforeBuildCommand": "pnpm build --mode mobile"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Looped Plans",
+        "width": 390,
+        "height": 844,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false
+  }
+}

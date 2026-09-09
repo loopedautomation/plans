@@ -1,6 +1,7 @@
 import { FONTS, MONO_FONTS } from "./fonts";
 import { applyTheme, DEFAULT_THEME, type ThemeId } from "./theme";
 import { HANDOFF_PROMPT, IMPLEMENT_PROMPT, REWRITE_PROMPT, SUGGEST_PROMPT } from "./agent";
+import type { RemoteRoot } from "./api";
 
 /** Everything the reader can change, in one place. */
 export type Settings = {
@@ -74,6 +75,11 @@ export type Settings = {
    * it; editing it here is the same as doing those in the app.
    */
   repos: string[];
+  /**
+   * Computers browsed over SSH, in shelf order. Passwords, private keys and
+   * passphrases are deliberately absent; only the connection record is here.
+   */
+  remoteRoots: RemoteRoot[];
   /**
    * The workspaces in the sidebar, as ids, in the order you put them.
    *
@@ -243,6 +249,7 @@ export type Settings = {
 
 export const DEFAULTS: Settings = {
   repos: [],
+  remoteRoots: [],
   workspaceOrder: [],
   theme: DEFAULT_THEME,
   fontId: "work-sans",

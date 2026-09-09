@@ -10,6 +10,7 @@ import {
   type ConfigOption,
   type GitStatus,
   type PlanFile,
+  type RemoteRoot,
   type RepoInfo,
   type StatusEntry,
 } from "./api";
@@ -62,7 +63,14 @@ import { ShortcutSheet } from "./ShortcutSheet";
 import { SplitPane } from "./SplitPane";
 import { Palette, type SearchHit } from "./Palette";
 import { Dropdown } from "./Dropdown";
-import { FileTree, displayName, MARK_WORD, type Mark } from "./FileTree";
+import { FileTree, displayName, MARK_WORD, type Mark, type SourceCapabilities } from "./FileTree";
+import { RemoteSheet } from "./RemoteSheet";
+import {
+  RemoteNeedsAttention,
+  remoteIdOf,
+  remoteShelfKey,
+  useRemoteBrowser,
+} from "./remote";
 import { FrontmatterSheet } from "./Frontmatter";
 import { NameSheet } from "./NameSheet";
 import {
@@ -370,6 +378,8 @@ export default function App() {
   // Counts renders of the whole app, which is the cost a keystroke used to pay.
   tick("render App");
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  const remoteBrowser = useRemoteBrowser();
+  const [remoteSheet, setRemoteSheet] = useState<true | RemoteRoot | null>(null);
   const set = useCallback((patch: Partial<Settings>) => {
     setSettings((s) => {
       const next = { ...s, ...patch };
@@ -834,6 +844,10 @@ export default function App() {
     () => repos.find((r) => r.path === activeRepoPath) ?? null,
     [repos, activeRepoPath],
   );
+  const activeRemoteId = remoteIdOf(activeRepoPath);
+  const activeRemote = activeRemoteId
+    ? (settings.remoteRoots.find((remote) => remote.id === activeRemoteId) ?? null)
+    : null;
 
   /**
    * The repository a buffer belongs to, which is not always one in the list:
@@ -1437,7 +1451,9 @@ export default function App() {
     // so a tab pointing at one would come back empty and unopenable.
     localStorage.setItem(
       KEY.tabs,
-      JSON.stringify(tabs.filter((t) => t.repo !== MEMORY)),
+      JSON.stringify(
+        tabs.filter((t) => t.repo !== MEMORY && !remoteIdOf(t.repo)),
+      ),
     );
   }, [tabs]);
 
@@ -2490,7 +2506,12 @@ export default function App() {
     (markdown: string) => {
       // A dropped file's folder is a writable root like any repo; only a
       // memory buffer has nowhere to go.
-      if (!activeRepoPath || activeRepoPath === MEMORY || !activePath) return;
+      if (
+        !activeRepoPath ||
+        activeRepoPath === MEMORY ||
+        remoteIdOf(activeRepoPath) ||
+        !activePath
+      ) return;
       setContent(markdown);
       setDirty(true);
       pending.current = {
@@ -2547,6 +2568,7 @@ export default function App() {
    */
   const shareTarget = useMemo(() => {
     if (!activePath) return null;
+    if (remoteIdOf(activeRepoPath)) return null;
     const ws = wsIdOf(activePath);
     if (ws) {
       const file = wsFileOf(activePath);
@@ -2566,7 +2588,7 @@ export default function App() {
       path: activePath,
       name: activePath.split("/").pop() ?? activePath,
     };
-  }, [activePath, activeRepoOrPath, workspaces]);
+  }, [activePath, activeRepoPath, activeRepoOrPath, workspaces]);
 
   /**
    * What the share sheet is about: a folder picked in the tree, or the open
@@ -2833,7 +2855,12 @@ export default function App() {
         wsSourceEcho.current = mainWriteReplace.current?.(text) ?? null;
         return;
       }
-      if (!activeRepoPath || activeRepoPath === MEMORY || !activePath) return;
+      if (
+        !activeRepoPath ||
+        activeRepoPath === MEMORY ||
+        remoteIdOf(activeRepoPath) ||
+        !activePath
+      ) return;
       // The same rule as opening: frontmatter is a markdown convention, so a
       // YAML file that happens to start with `---` keeps its header in the body.
       const split =
@@ -2882,6 +2909,13 @@ export default function App() {
         paneRoute.current.paneFocus === "split"
           ? paneRoute.current.split.path
           : activePath;
+      const targetRepo =
+        focusedOnly &&
+        paneRoute.current.split &&
+        paneRoute.current.paneFocus === "split"
+          ? paneRoute.current.split.repo
+          : activeRepoPath;
+      if (remoteIdOf(targetRepo)) return;
       if (
         next === "write" &&
         target &&
@@ -2939,7 +2973,12 @@ export default function App() {
         lastMatter.current = next;
         return;
       }
-      if (!activeRepoPath || activeRepoPath === MEMORY || !activePath) return;
+      if (
+        !activeRepoPath ||
+        activeRepoPath === MEMORY ||
+        remoteIdOf(activeRepoPath) ||
+        !activePath
+      ) return;
       setMatter(next);
       setDirty(true);
       /*
@@ -3402,10 +3441,14 @@ export default function App() {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       await flush();
       try {
-        const { content: text, stamp: at } = await api.readPlan(
-          repoPath,
-          relPath,
-        );
+        const remoteId = remoteIdOf(repoPath);
+        const remote = remoteId
+          ? settings.remoteRoots.find((item) => item.id === remoteId)
+          : null;
+        if (remoteId && !remote) throw new Error("This remote root was forgotten.");
+        const { content: text, stamp: at } = remote
+          ? await remoteBrowser.readFile(remote, relPath)
+          : await api.readPlan(repoPath, relPath);
         stamp.current = at;
         // Reading it is the answer to "has this changed since I read it".
         tabStamps.current.set(`${repoPath}::${relPath}`, at);
@@ -3434,6 +3477,13 @@ export default function App() {
         trace("opened", { relPath, chars: text.length });
         setActiveRepoPath(repoPath);
         setActivePath(relPath);
+        if (remote) {
+          // SSH documents have one read-only renderer in this slice. Carrying
+          // over a local split or raw-source mode would quietly reintroduce
+          // capabilities that the remote source does not have.
+          setSplit(null);
+          setSplitOverride(null);
+        }
         setMatter(split.matter);
         setContent(split.body);
         setDocKey(`${repoPath}::${relPath}::${Date.now()}`);
@@ -3451,10 +3501,11 @@ export default function App() {
           )
             ? prev
             : [...prev, { repo: repoPath, path: relPath }];
-          if (mode)
+          const openedMode = remote ? "write" : mode;
+          if (openedMode)
             return next.map((t) =>
               t.repo === repoPath && t.path === relPath
-                ? { ...t, view: mode }
+                ? { ...t, view: openedMode }
                 : t,
             );
           return md
@@ -3476,6 +3527,12 @@ export default function App() {
           return next;
         });
       } catch (e) {
+        if (e instanceof RemoteNeedsAttention) {
+          const id = remoteIdOf(repoPath);
+          const remote = settings.remoteRoots.find((item) => item.id === id);
+          if (remote) setRemoteSheet(remote);
+          return;
+        }
         /**
          * A path that no longer exists is usually a stale tree — something was
          * renamed or moved and the list has not caught up. Refresh and try
@@ -3484,7 +3541,14 @@ export default function App() {
          */
         const missing = /could not read|No such file/i.test(String(e));
         if (missing && !retrying) {
-          await refreshFiles();
+          const id = remoteIdOf(repoPath);
+          const remote = settings.remoteRoots.find((item) => item.id === id);
+          if (remote) {
+            const dir = relPath.includes("/") ? relPath.slice(0, relPath.lastIndexOf("/")) : "";
+            await remoteBrowser.listDir(remote, dir, true).catch(() => {});
+          } else {
+            await refreshFiles();
+          }
           return openFileRef.current?.(repoPath, relPath, true);
         }
         trace("open failed", { relPath, error: String(e) });
@@ -3494,7 +3558,15 @@ export default function App() {
         );
       }
     },
-    [flush, notify, settings.showFrontmatter, refreshFiles, openSplitFile],
+    [
+      flush,
+      notify,
+      settings.showFrontmatter,
+      settings.remoteRoots,
+      refreshFiles,
+      openSplitFile,
+      remoteBrowser,
+    ],
   );
 
   /**
@@ -3606,7 +3678,8 @@ export default function App() {
         else parts.push(seg);
       }
       const rel = parts.join("/");
-      if (/\.(md|markdown|mdx)$/i.test(rel)) void openFile(repo, rel);
+      if (/\.(md|markdown|mdx)$/i.test(rel) || remoteIdOf(repo))
+        void openFile(repo, rel);
       else
         void api
           .revealInFinder(repo, rel)
@@ -3740,7 +3813,7 @@ export default function App() {
   useEffect(() => {
     // A memory buffer has nothing on disk to have changed under it.
     if (settings.watchSeconds <= 0 || !activeRepoPath || !activePath) return;
-    if (activeRepoPath === MEMORY) return;
+    if (activeRepoPath === MEMORY || remoteIdOf(activeRepoPath)) return;
     const t = setInterval(async () => {
       if (busy || conflict || writing.current || pending.current) return;
       const at = await api
@@ -3796,6 +3869,20 @@ export default function App() {
 
   openFileRef.current = openFile;
 
+  // A sleeping laptop gets one ordinary reconnect when it becomes visible;
+  // there is intentionally no SSH polling loop behind remote documents.
+  useEffect(() => {
+    if (!activeRemote) return;
+    const visible = () => {
+      if (document.visibilityState !== "visible") return;
+      const shelfPath = remoteShelfKey(activeRemote.id);
+      if (activePath) void openFile(shelfPath, activePath, false, true);
+      else void remoteBrowser.listDir(activeRemote, "", true).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", visible);
+    return () => document.removeEventListener("visibilitychange", visible);
+  }, [activePath, activeRemote, openFile, remoteBrowser]);
+
   /**
    * Watch the buffers you are *not* looking at.
    *
@@ -3823,6 +3910,7 @@ export default function App() {
       const watching = tabs.filter(
         (b) =>
           b.repo !== MEMORY &&
+          !remoteIdOf(b.repo) &&
           !(b.repo === activeRepoPath && b.path === activePath),
       );
       // Tabs that have gone keep no stamp; otherwise the map grows forever.
@@ -6109,6 +6197,7 @@ export default function App() {
 
   /** ⌘\ — open the most recent other buffer beside this one, or close the split. */
   const toggleSplit = useCallback(() => {
+    if (remoteIdOf(activeRepoPath)) return;
     if (split) {
       setSplit(null);
       return;
@@ -6118,6 +6207,7 @@ export default function App() {
       .find(
         (t) =>
           t.repo !== MEMORY &&
+          !remoteIdOf(t.repo) &&
           !(t.repo === activeRepoPath && t.path === activePath),
       );
     if (!other) {
@@ -6233,10 +6323,10 @@ export default function App() {
         search: () => setPalette({ commands: false, text: true }),
         // The convention every app that comments uses.
         comment: () => {
-          if (view === "write" && activePath) newComment();
+          if (view === "write" && activePath && !activeRemote) newComment();
         },
         rename: () => {
-          if (activeRepoPath && activePath && activeRepoPath !== MEMORY) {
+          if (activeRepoPath && activePath && activeRepoPath !== MEMORY && !activeRemote) {
             renameFile(activeRepoPath, activePath);
           }
         },
@@ -6268,24 +6358,26 @@ export default function App() {
         "tab.next2": () => cycleTab(1),
         "tab.prev2": () => cycleTab(-1),
         "tab.closeAll": () => void closeAllTabs(),
-        showMux: () => showPanel("showMux"),
-        showGit: () => showPanel("showGit"),
+        showMux: () => !activeRemote && showPanel("showMux"),
+        showGit: () => !activeRemote && showPanel("showGit"),
         showAllFiles: () => set({ showAllFiles: !settings.showAllFiles }),
         showCompleted: () => set({ showCompleted: !settings.showCompleted }),
         showIgnored: () => set({ showIgnored: !settings.showIgnored }),
         // The same handlers the palette's commands call, so a key and a
         // command can never drift apart.
         matter: () => {
-          if (!activePath) return;
+          if (!activePath || activeRemote) return;
           if (matter === null) onMatterChange("");
           setMatterOpen(true);
         },
         move: () =>
           activeRepoPath &&
           activePath &&
+          !activeRemote &&
           setMoving({ repo: activeRepoPath, path: activePath }),
         "new.folder": () =>
           activeRepoPath &&
+          !activeRemote &&
           newFolderIn(
             activeRepoPath,
             activePath?.includes("/")
@@ -6296,15 +6388,15 @@ export default function App() {
         "chat.new": () => chat !== false && newChat(),
         "split.swap": () => void swapPanes(),
         shortcuts: () => setShortcuts((v) => !v),
-        split: toggleSplit,
-        "split.dir": () => setSplitDir((d) => (d === "row" ? "column" : "row")),
+        split: () => !activeRemote && toggleSplit(),
+        "split.dir": () => !activeRemote && setSplitDir((d) => (d === "row" ? "column" : "row")),
         "pane.1": () => setPaneFocus("main"),
         "pane.2": () => {
           if (split) setPaneFocus("split");
         },
         // The keys for what used to be ⌥-click only: pin the focused pane.
-        "v.write.pane": () => goto("write", true),
-        "v.source.pane": () => goto("source", true),
+        "v.write.pane": () => !activeRemote && goto("write", true),
+        "v.source.pane": () => !activeRemote && goto("source", true),
         "v.keyboard": () => {
           setSettingsOpen(true);
           setKeyboardOpen(true);
@@ -6389,7 +6481,7 @@ export default function App() {
         const row = el?.closest(".files")?.querySelector(".row.file.active");
         if (!el?.closest(".files") || !row) return;
         e.preventDefault();
-        if (activeRepoPath && activePath && activeRepoPath !== MEMORY) {
+        if (activeRepoPath && activePath && activeRepoPath !== MEMORY && !activeRemote) {
           void deleteFile(activeRepoPath, activePath);
         }
       } else if (e.key === "Escape" && editing) {
@@ -6443,6 +6535,7 @@ export default function App() {
     openFind,
     focusTree,
     focusTabs,
+    activeRemote,
   ]);
 
   /**
@@ -6512,9 +6605,30 @@ export default function App() {
     () => new Set(wsShelf.map((s) => s.path)),
     [wsShelf],
   );
+  const remoteShelf = useMemo(
+    () =>
+      settings.remoteRoots.map((remote) => {
+        const phase = remoteBrowser.snapshots[remote.id]?.phase ?? "disconnected";
+        return {
+          path: remoteShelfKey(remote.id),
+          name: remote.name,
+          branch:
+            phase === "connected"
+              ? "SSH"
+              : phase === "connecting"
+                ? "connecting…"
+                : phase === "attention"
+                  ? "needs attention"
+                  : "disconnected",
+          planDirs: [],
+          remote: true as const,
+        };
+      }),
+    [settings.remoteRoots, remoteBrowser.snapshots],
+  );
   const shelf = useMemo(
-    () => [...shownRepos, ...wsShelf],
-    [shownRepos, wsShelf],
+    () => [...shownRepos, ...remoteShelf, ...wsShelf],
+    [shownRepos, remoteShelf, wsShelf],
   );
   const shelfFiles = useMemo(() => {
     const out: Record<string, PlanFile[]> = { ...shownByRepo };
@@ -6533,8 +6647,25 @@ export default function App() {
           status: e.status ?? null,
         }));
     }
+    for (const remote of settings.remoteRoots) {
+      out[remoteShelfKey(remote.id)] = (remoteBrowser.snapshots[remote.id]?.entries ?? [])
+        .filter(
+          (entry) =>
+            entry.kind === "file" &&
+            (settings.showAllFiles || /\.(md|markdown)$/i.test(entry.path)),
+        )
+        .map((entry) => ({
+          relPath: entry.path,
+          name: entry.name,
+          dir: entry.path.includes("/")
+            ? entry.path.slice(0, entry.path.lastIndexOf("/"))
+            : "",
+          modified: entry.modified,
+          status: entry.status,
+        }));
+    }
     return out;
-  }, [shownByRepo, workspaces, wsTrees]);
+  }, [shownByRepo, workspaces, wsTrees, settings.remoteRoots, settings.showAllFiles, remoteBrowser.snapshots]);
   const shelfDirs = useMemo(() => {
     const out: Record<string, string[]> = { ...treeDirs };
     for (const w of workspaces) {
@@ -6542,8 +6673,31 @@ export default function App() {
         .filter((e) => e.kind === "folder")
         .map((e) => e.path);
     }
+    for (const remote of settings.remoteRoots) {
+      out[remoteShelfKey(remote.id)] = (remoteBrowser.snapshots[remote.id]?.entries ?? [])
+        .filter((entry) => entry.kind === "dir")
+        .map((entry) => entry.path);
+    }
     return out;
-  }, [treeDirs, workspaces, wsTrees]);
+  }, [treeDirs, workspaces, wsTrees, settings.remoteRoots, remoteBrowser.snapshots]);
+
+  const shelfCapabilities = useMemo(() => {
+    const out: Record<string, SourceCapabilities> = {};
+    for (const remote of settings.remoteRoots) {
+      out[remoteShelfKey(remote.id)] = {
+        mutate: false,
+        drag: false,
+        git: false,
+        terminal: false,
+        split: false,
+        reorder: false,
+        refresh: true,
+        connectionSettings: true,
+        forget: true,
+      };
+    }
+    return out;
+  }, [settings.remoteRoots]);
 
   /*
    * One set of handlers for both kinds of heading.
@@ -6609,6 +6763,57 @@ export default function App() {
     },
     [wsDelete, deleteDirOne],
   );
+
+  const saveRemote = useCallback(
+    (remote: RemoteRoot) => {
+      const next = settings.remoteRoots.some((item) => item.id === remote.id)
+        ? settings.remoteRoots.map((item) => (item.id === remote.id ? remote : item))
+        : [...settings.remoteRoots, remote];
+      set({ remoteRoots: next });
+    },
+    [set, settings.remoteRoots],
+  );
+
+  const forgetRemote = useCallback(
+    async (shelfPath: string) => {
+      const id = remoteIdOf(shelfPath);
+      const remote = settings.remoteRoots.find((item) => item.id === id);
+      if (!remote) return;
+      if (!(await confirmed(`Forget ${remote.name}? Nothing on that computer is touched.`, { ok: "Forget" }))) return;
+      remoteBrowser.forget(remote.id);
+      await api.remoteSecretClear(remote.id).catch(() => {});
+      set({ remoteRoots: settings.remoteRoots.filter((item) => item.id !== remote.id) });
+      setTabs((all) => all.filter((tab) => tab.repo !== shelfPath));
+      if (activeRepoPath === shelfPath) {
+        setActiveRepoPath(repos[0]?.path ?? null);
+        setActivePath(null);
+        setContent("");
+      }
+      setRemoteSheet(null);
+    },
+    [activeRepoPath, remoteBrowser, repos, set, settings.remoteRoots],
+  );
+
+  const refreshRemote = useCallback(
+    async (shelfPath: string, path: string) => {
+      const id = remoteIdOf(shelfPath);
+      const remote = settings.remoteRoots.find((item) => item.id === id);
+      if (!remote) return;
+      const entry = remoteBrowser.snapshots[remote.id]?.entries.find((item) => item.path === path);
+      try {
+        if (path && entry?.kind === "file") {
+          await openFile(shelfPath, path, false, true);
+        } else {
+          await remoteBrowser.listDir(remote, path, true);
+        }
+      } catch (e) {
+        if (e instanceof RemoteNeedsAttention) setRemoteSheet(remote);
+        else notify(`Could not refresh ${path || remote.name}: ${e}`, "error");
+      }
+    },
+    [notify, openFile, remoteBrowser, settings.remoteRoots],
+  );
+
   /**
    * Opening a workspace's heading is what puts a socket into its tree, and
    * shutting it again is what takes it out — as long as nothing of that
@@ -6623,9 +6828,29 @@ export default function App() {
         if (!expanded.has(key)) void openTree(id);
         else if (!tabs.some((t) => wsIdOf(t.path) === id)) closeWorkspace(id);
       }
+      const remoteId = remoteIdOf(repo);
+      if (remoteId && !expanded.has(key)) {
+        const remote = settings.remoteRoots.find((item) => item.id === remoteId);
+        const dir = key.slice(key.lastIndexOf("::") + 2);
+        if (remote) {
+          void remoteBrowser.listDir(remote, dir).catch((e) => {
+            if (e instanceof RemoteNeedsAttention) setRemoteSheet(remote);
+            else notify(`Could not open ${dir || remote.name}: ${e}`, "error");
+          });
+        }
+      }
       toggleNode(key);
     },
-    [expanded, tabs, openTree, closeWorkspace, toggleNode],
+    [
+      expanded,
+      tabs,
+      openTree,
+      closeWorkspace,
+      toggleNode,
+      settings.remoteRoots,
+      remoteBrowser,
+      notify,
+    ],
   );
 
   /**
@@ -7118,7 +7343,7 @@ export default function App() {
               Plans
             </span>
 
-            {repos.length > 0 || workspaces.length > 0 ? (
+            {repos.length > 0 || settings.remoteRoots.length > 0 || workspaces.length > 0 ? (
               <>
                 {/*
                   * Repositories and workspaces in one picker. In a workspace
@@ -7132,10 +7357,33 @@ export default function App() {
                   value={activeWsId ? wsShelfPath(activeWsId) : (activeRepoPath ?? "")}
                   onChange={(v) => {
                     if (v === "__add") void addRepo();
+                    else if (v === "__remote") setRemoteSheet(true);
                     else if (v === "__members" && activeWsId) setWsMembers(activeWsId);
                     else if (v === "__share" && activeWsId) shareFolder(wsShelfPath(activeWsId), "");
                     else if (wsIdOf(v)) void openWorkspaceFile(wsIdOf(v)!, FIRST_WS_FILE);
-                    else setActiveRepoPath(v);
+                    else {
+                      const id = remoteIdOf(v);
+                      if (id) {
+                        const remote = settings.remoteRoots.find((item) => item.id === id);
+                        setActiveRepoPath(v);
+                        setActivePath(null);
+                        setContent("");
+                        setMatter(null);
+                        setExpanded((open) => new Set(open).add(`${v}::`));
+                        if (remote)
+                          void remoteBrowser.listDir(remote, "").catch((e) => {
+                            if (e instanceof RemoteNeedsAttention) setRemoteSheet(remote);
+                            else notify(`Could not open ${remote.name}: ${e}`, "error");
+                          });
+                      } else {
+                        if (activeRemoteId) {
+                          setActivePath(null);
+                          setContent("");
+                          setMatter(null);
+                        }
+                        setActiveRepoPath(v);
+                      }
+                    }
                   }}
                   choices={[
                     ...repos.map((r) => ({
@@ -7143,11 +7391,17 @@ export default function App() {
                       label: r.name,
                       note: r.branch,
                     })),
+                    ...settings.remoteRoots.map((remote, i) => ({
+                      value: remoteShelfKey(remote.id),
+                      label: remote.name,
+                      note: remoteBrowser.snapshots[remote.id]?.phase ?? "disconnected",
+                      apart: i === 0 && repos.length > 0,
+                    })),
                     ...workspaces.map((w, i) => ({
                       value: wsShelfPath(w.id),
                       label: w.name,
                       note: "workspace",
-                      apart: i === 0 && repos.length > 0,
+                      apart: i === 0 && (repos.length > 0 || settings.remoteRoots.length > 0),
                     })),
                     ...(activeWsId
                       ? [
@@ -7161,6 +7415,11 @@ export default function App() {
                       value: "__add",
                       label: "Add a repository…",
                       apart: !activeWsId,
+                      always: true,
+                    },
+                    {
+                      value: "__remote",
+                      label: "Connect to a computer…",
                       always: true,
                     },
                   ]}
@@ -7197,9 +7456,14 @@ export default function App() {
                 )}
               </>
             ) : (
-              <button className="rail-btn on" onClick={addRepo}>
-                Add a repository
-              </button>
+              <>
+                <button className="rail-btn on" onClick={addRepo}>
+                  Add a repository
+                </button>
+                <button className="rail-btn" onClick={() => setRemoteSheet(true)}>
+                  Connect to a computer
+                </button>
+              </>
             )}
 
             <span className="rail-spacer" data-tauri-drag-region />
@@ -7215,6 +7479,7 @@ export default function App() {
             diff against, so it is Write or nothing. */}
             {activePath &&
               !settingsOpen &&
+              !activeRemoteId &&
               (activeRepoPath !== MEMORY || wsIdOf(activePath)) && (
                 /* One switch, one state, both panes — and ⌥-click pins only the
              focused pane, so one file can sit rich on one side and raw on
@@ -7259,7 +7524,7 @@ export default function App() {
               )}
 
             {/* Not in a workspace: nothing there is a repository's to commit. */}
-            {!wsIdOf(activePath) && (
+            {!wsIdOf(activePath) && !activeRemoteId && (
               <button
                 className={`rail-btn ${gitOpen ? "on" : ""}`}
                 onClick={() => showPanel("showGit")}
@@ -7348,6 +7613,7 @@ export default function App() {
             <FileTree
               repos={shelf}
               workspaces={wsShelfPaths}
+              capabilities={shelfCapabilities}
               needs={needsByShelf}
               filesByRepo={shelfFiles}
               marks={liveMarks}
@@ -7364,7 +7630,15 @@ export default function App() {
               expanded={expanded}
               onToggle={shelfToggle}
               onOpen={shelfOpen}
-              onForgetRepo={forgetRepo}
+              onForgetRepo={(repo) =>
+                remoteIdOf(repo) ? void forgetRemote(repo) : forgetRepo(repo)
+              }
+              onRefreshSource={(repo, path) => void refreshRemote(repo, path)}
+              onSettingsSource={(repo) => {
+                const id = remoteIdOf(repo);
+                const remote = settings.remoteRoots.find((item) => item.id === id);
+                if (remote) setRemoteSheet(remote);
+              }}
               onRenameRepo={renameRepo}
               onReorderRepo={reorderRepo}
               onReorderWorkspace={reorderWorkspace}
@@ -7640,7 +7914,7 @@ export default function App() {
                                   pressTab("main", t.repo, t.path, e)
                                 }
                                 onContextMenu={(e) => {
-                                  if (t.repo === MEMORY) return;
+                                  if (t.repo === MEMORY || remoteIdOf(t.repo)) return;
                                   e.preventDefault();
                                   setTabMenu({
                                     x: e.clientX,
@@ -7795,7 +8069,7 @@ export default function App() {
                                   profiles={activeProfiles}
                                   commented={commented}
                                   me={account?.login ?? null}
-                                  onSetStatus={(v) => setStatus(v)}
+                                  onSetStatus={activeRemote ? undefined : (v) => setStatus(v)}
                                   onApprove={
                                     account && wsIdOf(activePath) ? approve : undefined
                                   }
@@ -7812,7 +8086,7 @@ export default function App() {
                             );
                           })()}
                         {/* Only where there is one to edit. */}
-                        {matter !== null && (
+                        {matter !== null && !activeRemote && (
                           <button
                             className={`rail-btn ${matterOpen ? "on" : ""}`}
                             onClick={() => setMatterOpen((o) => !o)}
@@ -7904,13 +8178,14 @@ export default function App() {
                       that document must never exist for a file it could
                       rewrite. Memory buffers are the app's own prose. */}
                       {(activeRepoPath === MEMORY ||
-                        isMarkdownPath(activePath)) && (
+                        isMarkdownPath(activePath) ||
+                        activeRemote) && (
                         <div
                           className={`surface ${view === "write" ? "" : "aside"} ${
                             wsIdOf(activePath) && settings.showFrontmatter ? "matter-apart" : ""
                           }`}
                           onContextMenu={(e) => {
-                            if (view !== "write") return;
+                            if (view !== "write" || activeRemote) return;
                             e.preventDefault();
                             setPageMenu({
                               x: e.clientX,
@@ -7937,6 +8212,7 @@ export default function App() {
                             author={author}
                             profiles={activeProfiles}
                             onChange={onChange}
+                            readOnly={!!activeRemote}
                             onOpenLink={(href) =>
                               activeRepoPath &&
                               activePath &&
@@ -7954,6 +8230,7 @@ export default function App() {
                         <SourceView
                           value={wsIdOf(activePath) ? wsSource : source}
                           onChange={onSourceChange}
+                          readOnly={!!activeRemote}
                           settings={settings}
                           docKey={docKey}
                           active={view === "source"}
@@ -8217,14 +8494,18 @@ export default function App() {
             </span>
           )}
           {busy && <span className="saving">{busy}…</span>}
-          {changeCount > 0 && (
+          {!activeRemote && changeCount > 0 && (
             <span>
               <b>{changeCount}</b> uncommitted
             </span>
           )}
-          <span>
-            {renderKeys("mod+g")} git · {renderKeys("mod+,")} settings
-          </span>
+          {activeRemote ? (
+            <span>read-only SSH · {renderKeys("mod+,")} settings</span>
+          ) : (
+            <span>
+              {renderKeys("mod+g")} git · {renderKeys("mod+,")} settings
+            </span>
+          )}
         </footer>
       )}
 
@@ -8417,6 +8698,29 @@ export default function App() {
           );
         })()}
 
+      {remoteSheet && (
+        <RemoteSheet
+          remote={remoteSheet === true ? null : remoteSheet}
+          initialResult={
+            remoteSheet === true
+              ? null
+              : (remoteBrowser.snapshots[remoteSheet.id]?.attention ?? null)
+          }
+          onSave={saveRemote}
+          onConnected={(remote) => {
+            const shelfPath = remoteShelfKey(remote.id);
+            setRemoteSheet(null);
+            setActiveRepoPath(shelfPath);
+            setExpanded((open) => new Set(open).add(`${shelfPath}::`));
+            void remoteBrowser.listDir(remote, "", true).catch((e) =>
+              notify(`Connected, but could not list ${remote.name}: ${e}`, "error"),
+            );
+          }}
+          onCancel={() => setRemoteSheet(null)}
+          onForget={remoteSheet === true ? undefined : (remote) => void forgetRemote(remoteShelfKey(remote.id))}
+        />
+      )}
+
       {sharing && sheetTarget && (
         <ShareSheet
           name={sheetTarget.name}
@@ -8529,8 +8833,8 @@ export default function App() {
         onOpenSettingsFile={openSettingsFile}
         zen={zen}
         onZen={() => setZen((z) => !z)}
-        canInsertHtml={view === "write" && !!activePath}
-        canNewFolder={!!activeRepoPath}
+        canInsertHtml={view === "write" && !!activePath && !activeRemote}
+        canNewFolder={!!activeRepoPath && !activeRemote}
         onNewFolder={() =>
           activeRepoPath &&
           newFolderIn(
@@ -8540,7 +8844,7 @@ export default function App() {
               : "",
           )
         }
-        canRename={!!activePath && !!activeRepoPath}
+        canRename={!!activePath && !!activeRepoPath && !activeRemote}
         onRename={() =>
           activeRepoPath && activePath && renameFile(activeRepoPath, activePath)
         }
@@ -8585,14 +8889,17 @@ export default function App() {
         onReleaseNotes={() => void showNotes()}
         gitCommands={gitCommands}
         skillFiles={
-          activeRepoPath
+          activeRepoPath && !activeRemote
             ? SKILLS.map((k) => ({ name: k.name, label: k.label }))
             : []
         }
         onOpenSkill={(name) => void openSkill(name)}
-        hasMatter={matter !== null}
-        canEdit={!!activePath}
-        canHandOff={!!activePath && chat !== false}
+        hasMatter={matter !== null && !activeRemote}
+        canEdit={!!activePath && !activeRemote}
+        canMutateSource={!activeRemote}
+        canChangeView={!activeRemote}
+        canSplit={!activeRemote}
+        canHandOff={!!activePath && !activeRemote && chat !== false}
         onHandOff={(kind) => void handOff(kind)}
         onCopyAgentCommand={() => void copyAgentCommand()}
         canShare={!!shareTarget && !!account}
@@ -8640,7 +8947,7 @@ export default function App() {
         onSwapPanes={() => void swapPanes()}
         onPaneView={(v) => goto(v, true)}
         canSplitSame={
-          !!activePath && !!activeRepoPath && activeRepoPath !== MEMORY
+          !!activePath && !!activeRepoPath && activeRepoPath !== MEMORY && !activeRemote
         }
         onSplitSame={splitSame}
       />

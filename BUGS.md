@@ -11,6 +11,8 @@ Remember to add changesets for any patched bugs - fixed bugs belong in the chang
 
 ## Open
 
+- Some questions asking for permission are overflowing
+
 <br />
 
 ## Watch for

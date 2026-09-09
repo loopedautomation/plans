@@ -1,0 +1,163 @@
+.mobile-app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--paper);
+  color: var(--ink);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mobile-head {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(54px, auto) minmax(0, 1fr) minmax(54px, auto);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.mobile-head h1 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font: 600 20px var(--doc-font);
+}
+.mobile-head > span {
+  min-width: 0;
+  text-align: center;
+}
+.mobile-head b,
+.mobile-head small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mobile-head small {
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.mobile-head button,
+.mobile-foot button {
+  border: 0;
+  color: var(--ink-2);
+  padding: 10px 4px;
+}
+
+.mobile-list {
+  overflow: auto;
+  overscroll-behavior-y: contain;
+}
+.mobile-row {
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+.mobile-row b,
+.mobile-row small {
+  display: block;
+}
+.mobile-computer-row {
+  padding: 0;
+}
+.mobile-computer {
+  min-width: 0;
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  padding: 10px 8px 10px 16px;
+  text-align: left;
+}
+.mobile-more {
+  align-self: stretch;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  padding: 0 14px;
+  color: var(--ink-2);
+  font-size: 11px;
+}
+.mobile-row small {
+  margin-top: 3px;
+  color: var(--ink-2);
+}
+.mobile-state,
+.mobile-status {
+  color: var(--ink-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.mobile-state.connected {
+  color: var(--git-new);
+}
+.mobile-state.attention,
+.mobile-error {
+  color: var(--diff-del);
+}
+.mobile-empty {
+  margin: 32px 20px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.mobile-foot {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--rule);
+}
+.mobile-primary {
+  color: var(--ink) !important;
+  font-weight: 600;
+}
+.mobile-toggle {
+  justify-content: space-between;
+  color: var(--ink-2);
+}
+.mobile-document {
+  min-height: 0;
+  overflow: auto;
+}
+.mobile-document .editor-host {
+  min-height: 100%;
+}
+.mobile-error {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 30;
+  padding: 12px;
+  border: 1px solid var(--diff-del);
+  background: var(--raised);
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 520px) {
+  .remote-scrim {
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .matter-sheet.remote-sheet {
+    width: calc(100vw - 20px);
+    max-height: calc(
+      100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+    overflow: auto;
+  }
+}

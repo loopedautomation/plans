@@ -4,6 +4,7 @@ use std::process::Command;
 
 pub mod agent;
 pub mod mux;
+pub mod remote;
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -2105,9 +2106,25 @@ fn window_buttons_useful() -> bool {
     )
 }
 
+/// The shell to mount. Kept in Rust so iPad desktop user agents and Android
+/// WebViews never have to guess which bundle Tauri built them into.
+#[tauri::command]
+fn target_kind() -> &'static str {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        "mobile"
+    } else {
+        "desktop"
+    }
+}
+
 pub fn run() {
     #[cfg(target_os = "linux")]
     linux_webkit_env();
+
+    #[cfg(target_os = "android")]
+    if let Err(e) = android_keyring::set_android_keyring_credential_builder() {
+        eprintln!("plans: Android credential store unavailable: {e}");
+    }
 
     let builder = tauri::Builder::default();
 
@@ -2169,6 +2186,7 @@ pub fn run() {
     builder
         .manage(agent::Agents::default())
         .manage(agent::scratch::Scratch::default())
+        .manage(remote::RemoteManager::default())
         .manage(CliOpen(std::sync::Mutex::new(
             std::env::current_dir()
                 .ok()
@@ -2179,6 +2197,7 @@ pub fn run() {
             cli_open_path,
             install_cli,
             window_buttons_useful,
+            target_kind,
             updates_possible,
             cli_status,
             list_plans,
@@ -2211,6 +2230,12 @@ pub fn run() {
             workspace_token_get,
             workspace_token_set,
             workspace_token_clear,
+            remote::remote_connect,
+            remote::remote_list,
+            remote::remote_read,
+            remote::remote_disconnect,
+            remote::remote_secret_set,
+            remote::remote_secret_clear,
             git_status,
             git_diff,
             git_head_text,

@@ -53,6 +53,13 @@ sudo apt install ./Looped.Plans_*_amd64.deb
 
 ## What it does
 
+- **Browse another computer over SSH.** Save a host, user and remote root,
+  verify its SHA-256 host-key fingerprint, and authenticate with a password or
+  imported OpenSSH private key. The desktop shelf and the iOS/Android shell use
+  the same lazy SFTP reader: folders load when opened, documents are read-only,
+  and credentials stay in the device credential store. Remote editing, git,
+  terminals, agent chat and offline caching are deliberately not part of this
+  first slice.
 - **Every markdown file, in every open repo.** Add any local git repository;
   the app remembers them between launches and shows them all at once, at the top
   level of one tree. `.git`, `node_modules`, `target` and the usual build
@@ -192,15 +199,24 @@ pnpm install
 pnpm dev         # the app, with hot reload
 pnpm web         # only the web half, in a browser
 pnpm app:build   # produces a bundled .app / installer under src-tauri/target/release/bundle
+pnpm tauri ios dev       # the read-only phone shell in an iOS simulator/device
+pnpm tauri android dev   # the same shell in an Android emulator/device
 ```
+
+The iOS project is checked in under `src-tauri/gen/apple`. Before the first
+Android build, install the Android SDK and NDK and run
+`pnpm tauri android init --ci --skip-targets-install`; Tauri requires that
+toolchain even when it is only generating the Gradle project.
 
 ## Layout
 
 | Path                                      | What lives there                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------ |
 | `src-tauri/src/lib.rs`                    | All Rust commands: repo discovery, file I/O with fingerprints, git |
+| `src-tauri/src/remote.rs`                 | SSH sessions, host-key pins and confined read-only SFTP operations |
 | `src/api.ts`                              | Typed wrapper over the Rust commands                               |
 | `src/App.tsx`                             | Layout, repo and buffer state, autosave, conflict handling         |
+| `src/mobile/MobileApp.tsx`                | Computers, Files and Document shell for iOS and Android            |
 | `src/FileTree.tsx`                        | The tree, its git marks and its context menus                      |
 | `src/Editor.tsx`                          | Milkdown Crepe instance and its serialiser settings                |
 | `src/SourceView.tsx`                      | The raw markdown, as CodeMirror                                    |
@@ -234,4 +250,3 @@ pnpm app:build   # produces a bundled .app / installer under src-tauri/target/re
   that does not parse keeps the last good settings rather than resetting them.
   `localStorage` still holds a copy, but only as a warm start for the first
   frame — the file is what counts.
-

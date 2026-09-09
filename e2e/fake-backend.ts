@@ -39,14 +39,27 @@ export type FakeUpdate = { version: string; notes: string };
 /** What `~/.plans/templates/` holds, when a test cares that it holds something. */
 export type FakeTemplate = { name: string; text: string };
 
+export type FakeRemote = {
+  id: string;
+  fingerprint: string;
+  files: Record<string, string>;
+  /** Refuse the next read/list after the manager's retry, for disconnected UI tests. */
+  failNext?: boolean;
+};
+
 /** Installed before any app code runs, so the app never sees a real backend. */
 export function installFakeBackend(
   repos: FakeRepo[],
   update?: FakeUpdate,
   templates?: FakeTemplate[],
+  remotes: FakeRemote[] = [],
+  target: "desktop" | "mobile" = "desktop",
 ) {
   const state = {
     repos: repos.map((r) => ({ ...r, files: { ...r.files } })),
+    remotes: remotes.map((r) => ({ ...r, files: { ...r.files } })),
+    remoteSecrets: {} as Record<string, { secret: string; passphrase?: string | null }>,
+    remoteConnected: new Set<string>(),
     /** Every command the app has issued, for asserting on writes. */
     calls: [] as { cmd: string; args: Record<string, unknown> }[],
     /**
@@ -164,6 +177,91 @@ export function installFakeBackend(
   const repo = (path: string) => state.repos.find((r) => r.path === path);
 
   const handlers: Record<string, (a: Record<string, any>) => unknown> = {
+    target_kind: () => target,
+    remote_secret_set: ({ id, secret }) => {
+      state.remoteSecrets[id] = secret;
+      return null;
+    },
+    remote_secret_clear: ({ id }) => {
+      delete state.remoteSecrets[id];
+      return null;
+    },
+    remote_connect: ({ id, remote }) => {
+      const found = state.remotes.find((item) => item.id === id);
+      if (!found) throw new Error(`could not connect to ${remote.host}`);
+      if (remote.hostKey !== found.fingerprint) {
+        return {
+          status: "trust-required",
+          fingerprint: found.fingerprint,
+          previous: remote.hostKey ?? null,
+          message: null,
+        };
+      }
+      if (!state.remoteSecrets[id]?.secret) {
+        return {
+          status: "auth-required",
+          fingerprint: found.fingerprint,
+          previous: null,
+          message: "A credential is required.",
+        };
+      }
+      state.remoteConnected.add(id);
+      return {
+        status: "connected",
+        fingerprint: found.fingerprint,
+        previous: null,
+        message: null,
+      };
+    },
+    remote_disconnect: ({ id }) => {
+      state.remoteConnected.delete(id);
+      return null;
+    },
+    remote_list: ({ id, relativeDir }) => {
+      const found = state.remotes.find((item) => item.id === id);
+      if (!found || !state.remoteConnected.has(id)) throw new Error("remote is disconnected");
+      if (found.failNext) {
+        found.failNext = false;
+        state.remoteConnected.delete(id);
+        throw new Error("connection lost");
+      }
+      const parent = String(relativeDir ?? "");
+      const seen = new Map<string, "file" | "dir">();
+      for (const path of Object.keys(found.files)) {
+        if (parent && !path.startsWith(`${parent}/`)) continue;
+        const rest = parent ? path.slice(parent.length + 1) : path;
+        if (!rest) continue;
+        const [name, ...tail] = rest.split("/");
+        seen.set(name, tail.length ? "dir" : "file");
+      }
+      return [...seen]
+        .map(([name, kind]) => {
+          const path = parent ? `${parent}/${name}` : name;
+          const content = found.files[path] ?? "";
+          return {
+            path,
+            name,
+            kind,
+            modified: 0,
+            size: content.length,
+            status:
+              kind === "file"
+                ? /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1]
+                    .split(/\r?\n/)
+                    .map((line) => /^status\s*:\s*(.+)$/.exec(line)?.[1]?.trim())
+                    .find(Boolean) ?? null
+                : null,
+          };
+        })
+        .sort((a, b) => Number(a.kind === "file") - Number(b.kind === "file") || a.name.localeCompare(b.name));
+    },
+    remote_read: ({ id, relativePath }) => {
+      const found = state.remotes.find((item) => item.id === id);
+      if (!found || !state.remoteConnected.has(id)) throw new Error("remote is disconnected");
+      const content = found.files[relativePath];
+      if (content === undefined) throw new Error(`could not read ${relativePath}`);
+      return { content, stamp: hash(content) };
+    },
     open_repo: ({ path }) => {
       const r = repo(path);
       if (!r) throw new Error(`${path} is not inside a git repository`);

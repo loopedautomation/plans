@@ -150,6 +150,12 @@ type Props = {
   onNewComment: () => void;
   hasMatter: boolean;
   canEdit: boolean;
+  /** The active source accepts new files and explicit saves. */
+  canMutateSource: boolean;
+  /** This source has raw/diff surfaces rather than one read-only renderer. */
+  canChangeView: boolean;
+  /** This source may be placed in the desktop's second editing pane. */
+  canSplit: boolean;
   /** False when there is no tmux, so the action is absent rather than broken. */
   canHandOff: boolean;
   onHandOff: (kind: HandoffKind) => void;
@@ -270,17 +276,20 @@ function buildCommands(p: Props): Command[] {
    * has a command to name and a hint to render; the rest are addressed by the
    * file they came from, since two templates may well be called the same thing.
    */
-  p.templates.forEach((t, i) => {
-    add({
-      id: i === 0 ? "new" : `new.${t.file}`,
-      group: "Plans",
-      label: `New: ${t.name}`,
-      hint: t.fileName,
-      terms: "new file template create",
-      run: () => p.onNewFromTemplate(t),
+  if (p.canMutateSource) {
+    p.templates.forEach((t, i) => {
+      add({
+        id: i === 0 ? "new" : `new.${t.file}`,
+        group: "Plans",
+        label: `New: ${t.name}`,
+        hint: t.fileName,
+        terms: "new file template create",
+        run: () => p.onNewFromTemplate(t),
+      });
     });
-  });
-  add({ id: "save", group: "Plans", label: "Save now", run: p.onSave });
+  }
+  if (p.canEdit)
+    add({ id: "save", group: "Plans", label: "Save now", run: p.onSave });
   if (p.canEdit) {
     add({
       id: "find",
@@ -594,13 +603,15 @@ function buildCommands(p: Props): Command[] {
     label: p.zen ? "Leave zen" : "Zen — the page alone",
     run: p.onZen,
   });
-  add({ id: "v.write", group: "Go", label: "Write", run: () => p.onView("write") });
-  add({
-    id: "v.source",
-    group: "Go",
-    label: "Source — the raw markdown",
-    run: () => p.onView("source"),
-  });
+  if (p.canChangeView) {
+    add({ id: "v.write", group: "Go", label: "Write", run: () => p.onView("write") });
+    add({
+      id: "v.source",
+      group: "Go",
+      label: "Source — the raw markdown",
+      run: () => p.onView("source"),
+    });
+  }
   if (p.openCount > 0) {
     add({
       id: "tabs.closeAll",
@@ -873,14 +884,16 @@ function buildCommands(p: Props): Command[] {
     run: () => set({ searchScope: s.searchScope === "all" ? "repo" : "all" }),
   });
 
-  add({
-    id: "split",
-    group: "Go",
-    label: p.splitOpen ? "Close the split" : "Split — another file beside this one",
-    terms: "pane side by side two editors column",
-    run: p.onSplit,
-  });
-  if (p.splitOpen) {
+  if (p.canSplit) {
+    add({
+      id: "split",
+      group: "Go",
+      label: p.splitOpen ? "Close the split" : "Split — another file beside this one",
+      terms: "pane side by side two editors column",
+      run: p.onSplit,
+    });
+  }
+  if (p.canSplit && p.splitOpen) {
     add({
       id: "split.dir",
       group: "Go",

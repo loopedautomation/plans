@@ -504,6 +504,24 @@ button, .rail, .bar, .tabs, .ctx {
 .tree { display: flex; flex-direction: column; }
 .tree-repo { display: flex; flex-direction: column; }
 .tree-repo + .tree-repo { margin-top: 6px; border-top: 1px solid var(--rule); padding-top: 6px; }
+.row.repo.remote .repo-branch { color: var(--ink-2); }
+
+/* SSH connection details share the ordinary modal paper, but form a compact
+   two-column ledger so host/user/root can be scanned before trusting a key. */
+.matter-sheet.remote-sheet { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 32vh); overflow-y: auto; }
+.remote-fields { display: grid; grid-template-columns: minmax(0, 1fr) 100px; gap: 14px 16px; padding: 18px 20px; }
+.remote-fields label { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: var(--ink-2); font-size: 10px; }
+.remote-fields label:not(.remote-port) { grid-column: 1 / -1; }
+.remote-fields input, .remote-fields select, .remote-fields textarea { width: 100%; border: 0; border-bottom: 1px solid var(--rule-strong); border-radius: 0; padding: 7px 0; background: transparent; color: var(--ink); font-size: 12px; }
+.remote-fields textarea { min-height: 112px; resize: vertical; border: 1px solid var(--rule); padding: 8px; }
+.remote-fields input[type="file"] { border: 0; color: var(--ink-2); }
+.remote-trust { margin: 0 20px 18px; padding: 12px; border: 1px solid var(--git-mod); background: var(--shade); }
+.remote-trust p { margin: 0 0 10px; color: var(--ink-2); line-height: 1.5; }
+.remote-trust code { display: block; overflow-wrap: anywhere; margin: 5px 0; }
+.remote-trust .act { margin-top: 12px; }
+.remote-error { margin: 0 20px 16px; color: var(--diff-del); line-height: 1.45; }
+.remote-actions { display: flex; gap: 8px; }
+.act.warn { color: var(--diff-del); }
 
 /* One row type for repos, folders and files. No disclosure arrows and no
    status glyphs: a folder is told from a file by its register — tracked

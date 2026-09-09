@@ -22,6 +22,36 @@ export type PlanFile = {
   status: string | null;
 };
 
+/** A saved SFTP root. Credentials live in the platform credential store. */
+export type RemoteRoot = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  root: string;
+  auth: "password" | "key";
+  hostKey: string | null;
+};
+
+export type RemoteSecret = { secret: string; passphrase?: string | null };
+
+export type RemoteConnect = {
+  status: "connected" | "trust-required" | "auth-required";
+  fingerprint: string | null;
+  previous: string | null;
+  message: string | null;
+};
+
+export type RemoteEntry = {
+  path: string;
+  name: string;
+  kind: "file" | "dir";
+  modified: number;
+  size: number;
+  status: string | null;
+};
+
 export type StatusEntry = {
   path: string;
   index: string;
@@ -141,7 +171,22 @@ function camelStatus(s: any): GitStatus {
 }
 
 export const api = {
+  /** Which React shell belongs in this Tauri target. */
+  targetKind: () => invoke<"desktop" | "mobile">("target_kind"),
+
   openRepo: (path: string) => invoke<any>("open_repo", { path }).then(camelRepo),
+
+  // --- read-only SSH remote roots -------------------------------------------
+  remoteConnect: (remote: RemoteRoot) =>
+    invoke<RemoteConnect>("remote_connect", { id: remote.id, remote }),
+  remoteList: (id: string, relativeDir: string) =>
+    invoke<RemoteEntry[]>("remote_list", { id, relativeDir }),
+  remoteRead: (id: string, relativePath: string) =>
+    invoke<{ content: string; stamp: string }>("remote_read", { id, relativePath }),
+  remoteDisconnect: (id: string) => invoke<void>("remote_disconnect", { id }),
+  remoteSecretSet: (id: string, secret: RemoteSecret) =>
+    invoke<void>("remote_secret_set", { id, secret }),
+  remoteSecretClear: (id: string) => invoke<void>("remote_secret_clear", { id }),
 
   /** The path passed to `plans <path>` at launch, if any. One-shot. */
   cliOpenPath: () => invoke<string | null>("cli_open_path"),

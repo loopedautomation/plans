@@ -83,6 +83,7 @@ function literalValue(node) {
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (ts.isObjectLiteralExpression(node) && node.properties.length === 0) return {};
+  if (ts.isArrayLiteralExpression(node) && node.elements.length === 0) return [];
   if (ts.isIdentifier(node)) {
     // `theme: DEFAULT_THEME` — annotated `: ThemeId`, so the checker widens it
     // away. The declaration still has the literal.
@@ -144,6 +145,10 @@ function shapeOf(name, type) {
     // a union of string literals, which is exactly an enum.
     if (type.flags & F.BooleanLike) return { type: "boolean" };
     const parts = type.types.filter((t) => !(t.flags & F.Undefined));
+    const values = parts.filter((t) => !(t.flags & F.Null));
+    if (values.length === 1 && values.length !== parts.length) {
+      return { anyOf: [shapeOf(name, values[0]), { type: "null" }] };
+    }
     if (parts.every((t) => t.isStringLiteral())) {
       return { type: "string", enum: parts.map((t) => t.value) };
     }
@@ -163,6 +168,19 @@ function shapeOf(name, type) {
       type: "object",
       additionalProperties: shapeOf(`${name}[]`, index.type),
     };
+  }
+  if (type.flags & F.Object) {
+    const properties = {};
+    const required = [];
+    for (const prop of checker.getPropertiesOfType(type)) {
+      const decl = prop.valueDeclaration ?? prop.declarations?.[0];
+      properties[prop.getName()] = shapeOf(
+        `${name}.${prop.getName()}`,
+        checker.getTypeOfSymbolAtLocation(prop, decl),
+      );
+      if (!(prop.flags & ts.SymbolFlags.Optional)) required.push(prop.getName());
+    }
+    return { type: "object", additionalProperties: false, properties, required };
   }
   fail(`${name}: no schema for ${checker.typeToString(type)}`);
 }
