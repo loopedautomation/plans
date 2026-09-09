@@ -21,6 +21,8 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   height: 100%;
   -webkit-user-select: none;
   user-select: none;
+  /* The reading face for everything a person reads; the mono for the caps. */
+  font-family: var(--doc-font);
   background: var(--paper);
   color: var(--ink);
   padding-top: env(safe-area-inset-top);
@@ -32,9 +34,10 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 .mobile-stack[hidden] { display: none; }
-.mobile-app, .mobile-row, .mobile-computer, .mobile-empty, .mobile-choice, .mobile-face, .mobile-setting-name, .mobile-sheet-head button { font-size: var(--m-body); }
-.mobile-row small, .mobile-head small, .mobile-computer small, .mobile-setting-name small, .mobile-face small, .mobile-profile small { font-size: var(--m-sub); font-family: var(--doc-font); }
-.mobile-tabs button, .mobile-more, .mobile-state, .mobile-status, .mobile-settings h2, .mobile-setting-name b, .mobile-profile-server, .mobile-account { font-size: var(--m-cap); font-family: var(--mono); }
+.mobile-app :is(.mobile-row, .mobile-computer, .mobile-empty, .mobile-choice, .mobile-face, .mobile-setting-name, .mobile-sheet-head button, .mobile-head button, .mobile-foot button) { font-size: var(--m-body); font-family: var(--doc-font); }
+.mobile-app :is(.mobile-row small, .mobile-head small, .mobile-computer small, .mobile-setting-name small, .mobile-face small, .mobile-profile small) { font-size: var(--m-sub); font-family: var(--doc-font); }
+.mobile-app :is(.mobile-tabs button, .mobile-more, .mobile-state, .mobile-status, .mobile-settings h2, .mobile-setting-name b, .mobile-profile-server, .mobile-account, .mobile-profile .rail-btn, .mobile-toggle label, .mobile-toggle button) { font-size: var(--m-cap); font-family: var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.mobile-app :is(.mobile-setting-name b, .mobile-profile-server, .mobile-account, .mobile-state, .mobile-status) { text-transform: none; letter-spacing: 0.03em; }
 
 .mobile-head {
   min-height: 58px;
