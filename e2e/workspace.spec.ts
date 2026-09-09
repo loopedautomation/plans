@@ -367,8 +367,10 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   await expect(field).toHaveValue("Yes, the room first. @alice ");
   await field.press("Enter");
 
+  // Alice's marker: the word, and the two faces of the thread ahead of it.
+  await expect(alice.locator(".md-comment-mark .md-comment-word")).toHaveText("comment +2");
+  await expect(alice.locator(".md-comment-mark .md-comment-faces .avatar")).toHaveCount(2);
   // Alice's card: two turns, each a member with the face their cursor wears.
-  await expect(alice.locator(".md-comment-mark")).toHaveText("comment +2");
   await alice.locator(".md-comment-mark").click();
   // The email is drawn short, and kept whole on hover.
   await expect(alice.locator(".md-comment-handle")).toHaveText(["@alice", "@bob"]);
@@ -384,7 +386,7 @@ test("two accounts make a two-voice thread, signed by login, and it travels into
   const url = await alice.getByTestId("share-link").inputValue();
   await alice.keyboard.press("Escape");
   const reader = await readerFor(browser, idOf(url));
-  await expect(reader.locator(".md-comment-mark")).toHaveText("comment +2", { timeout: 20_000 });
+  await expect(reader.locator(".md-comment-mark .md-comment-word")).toHaveText("comment +2", { timeout: 20_000 });
   await reader.locator(".md-comment-mark").click();
   await expect(reader.locator(".md-comment-handle")).toHaveText(["@alice", "@bob"]);
   await expect(reader.locator(".md-comment-handle").first()).toHaveCSS("color", /rgb\(/);

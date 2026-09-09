@@ -326,12 +326,31 @@
   font-size: 8.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  /* The amber the modified git state wears: a comment is a mark on the page,
+     not part of it, and in ink it vanished into the prose. */
+  color: var(--git-mod);
+  border-color: var(--git-mod);
 }
-/* A thread whose latest turn names you is a thread asking for you. */
-.md-comment-mark.for-you { color: var(--git-mod); border-color: var(--git-mod); }
+/* A thread whose latest turn names you is a thread asking for you: filled. */
+.md-comment-mark.for-you {
+  color: var(--paper);
+  background: var(--git-mod);
+}
 .md-comment-mark:hover { color: var(--ink); border-color: var(--ink-3); }
-.md-comment.open .md-comment-mark { color: var(--ink); border-color: var(--ink); }
+.md-comment.open .md-comment-mark { color: var(--ink); border-color: var(--ink); background: none; }
+/* The faces sit in the marker ahead of the word, overlapping like the
+   presence row does; the button is inline, so it is flex only when it has
+   faces to lay out. */
+.md-comment-mark:has(.md-comment-faces) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px 1px 2px;
+  vertical-align: middle;
+}
+.md-comment-faces { display: inline-flex; align-items: center; }
+.md-comment-faces .avatar { width: 14px !important; height: 14px !important; font-size: 8px !important; box-shadow: none; }
+.md-comment-faces .avatar + .avatar { margin-left: -4px; }
 
 .md-comment-card { display: none; }
 .md-comment.open .md-comment-card {
@@ -895,6 +914,12 @@
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink);
+  /* The field sits inside the editor's contenteditable, in a widget marked
+     non-editable. WebKit draws no caret in an input there unless the input
+     says for itself that its text is selectable. */
+  -webkit-user-select: text;
+  user-select: text;
+  caret-color: var(--ink);
 }
 .md-comment-field:focus { outline: none; border-color: var(--ink-3); }
 .md-comment-send {

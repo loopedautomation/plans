@@ -11,7 +11,6 @@ Remember to add changesets for any patched bugs - fixed bugs belong in the chang
 
 ## Open
 
-- Some questions asking for permission are overflowing
 
 <br />
 
@@ -33,6 +32,23 @@ Not bugs yet — places the same class of mistake would land next.
   green test proves the harness agrees with the code, not that the app works.
 
 ## Fixed
+
+### Accepting a suggestion threw the page to the bottom
+
+The resolving transaction ended in `scrollIntoView()`, out of habit. The
+selection it scrolled to was wherever the caret last sat — for a file just
+opened, the end of the document — and not the card that was pressed, whose
+buttons swallow the mousedown precisely so the caret does not move. The
+pattern: `scrollIntoView` follows the selection, and is only right when the
+edit also put the selection where the person is looking.
+
+### The reply box had no caret
+
+An `<input>` inside a widget that ProseMirror marks `contenteditable=false`,
+inside the editor's `contenteditable=true`, is a place WebKit draws no caret.
+Typing worked; nothing showed where. The field now declares its own text
+selectable and its own caret colour. Same family as the drag and paste bugs
+above: a thing that works in a browser test and not in the app.
 
 ### Presence wore colours the paper does not have
 

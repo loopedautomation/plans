@@ -576,7 +576,10 @@ export function Editor({
             tr.replaceWith(from, to, content);
           }
         }
-        view.dispatch(tr.scrollIntoView());
+        // No scrollIntoView: the selection is wherever the caret last was,
+        // often the end of the document, and scrolling to it is the page
+        // jumping away from the card that was just pressed.
+        view.dispatch(tr);
       });
     };
 

@@ -355,7 +355,28 @@ function commentCard(
   const mark = document.createElement("button");
   mark.className = "md-comment-mark";
   mark.type = "button";
-  mark.textContent = turns.length > 1 ? `comment +${turns.length}` : "comment";
+  /*
+   * Who is in the thread, on the marker itself: each distinct voice the
+   * member list can put a face to, in the order they spoke, the same face
+   * the card draws beside their turn. A handle nobody can look up leaves
+   * the word alone, so a repository's comments read as they always have.
+   */
+  const faces = document.createElement("span");
+  faces.className = "md-comment-faces";
+  const seen = new Set<string>();
+  for (const t of turns) {
+    const key = t.who?.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    const who = profileOf(key);
+    if (!who) continue;
+    seen.add(key);
+    faces.appendChild(faceDom(who));
+  }
+  if (faces.childElementCount) mark.appendChild(faces);
+  const word = document.createElement("span");
+  word.className = "md-comment-word";
+  word.textContent = turns.length > 1 ? `comment +${turns.length}` : "comment";
+  mark.appendChild(word);
   mark.title = body;
   /*
    * Named in the latest turn, this thread is asking for you: tint the mark.
