@@ -366,6 +366,69 @@
 }
 
 /* ---------------------------------------------------------------------------
+   A suggestion: a comment with a diff in it.
+   ---------------------------------------------------------------------------
+   Unlike a comment this is not behind a marker. A proposal nobody can see is
+   a proposal nobody answers, so the card stands under the paragraph it is
+   about — and the paragraph itself is left alone, so nobody is typing in a
+   battlefield of marks. The card is the only place the change is shown.
+   --------------------------------------------------------------------------- */
+.md-suggestion {
+  display: block;
+  margin: 8px 0;
+  padding: 9px 12px 10px;
+  background: var(--raised);
+  border: 1px solid var(--rule-strong);
+  border-left: 2px solid var(--git-new);
+  border-radius: 4px;
+  white-space: normal;
+}
+/* Stale: the text it changes is no longer there, so it is a note, not an
+   offer. The left edge says as much before the words do. */
+.md-suggestion.stale { border-left-color: var(--ink-3); }
+
+.md-suggestion-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.md-suggestion-who .avatar { box-shadow: none; }
+.md-suggestion-handle { text-transform: none; letter-spacing: 0.04em; font-size: 10px; }
+.md-suggestion-verb { color: var(--ink-3); }
+
+.md-suggestion-diff {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+.md-suggestion-in { color: var(--git-new); }
+.md-suggestion-out { color: var(--git-mod); text-decoration: line-through; }
+
+.md-suggestion-acts { display: flex; gap: 6px; margin-top: 8px; }
+.md-suggestion-act {
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  padding: 2px 8px;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.md-suggestion-act:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* ---------------------------------------------------------------------------
    Mermaid: the diagram sits under its source, as a figure under a caption.
    --------------------------------------------------------------------------- */
 /* A diagram's fence, folded under its picture until the caret or the

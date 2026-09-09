@@ -860,6 +860,81 @@ test("an agent in a workspace reads what was just typed and writes into everyone
   expect((bob as any).__faults).toEqual([]);
 });
 
+/**
+ * The gap this closes: in a room there is no "mine" to keep, so the whole-file
+ * conflict bar a repository falls back on cannot exist. An agent asked to
+ * tighten a paragraph rewrites it under everyone's cursors, and the only gate
+ * was a permission question asked before anyone could see what it would write.
+ *
+ * A suggestion is the same write, one step short: the agent puts a proposal in
+ * the file, it reaches every screen the way every other write does, and either
+ * person can accept it — which is an ordinary edit of the room, so the other
+ * person sees the result the same moment. See plans/diffs-in-worksapces.md.
+ */
+test("an agent proposes a change, both people see the card, and either may accept it", async ({
+  browser,
+}) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Proposals", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Proposals");
+
+  const id = await only(await session("alice"));
+  const dir = `/scratch/${id}`;
+
+  const bob = await boot(browser, "bob");
+  await invite(alice, "Proposals", "bob");
+  await bob.reload();
+  await expect(bob.getByTestId("account")).toHaveText("bob");
+  await heading(bob, "Proposals").click();
+  await row(bob, "plan").click();
+  await expect(editor(bob).locator("h1")).toHaveText("Proposals");
+
+  // The agent writes the file, as it always did. What it wrote is a proposal.
+  await alice.evaluate(
+    ([repo, ws]) =>
+      (window as any).__fake.emit("agent-fs", {
+        repo,
+        requestId: "s1",
+        op: "write",
+        workspace: ws,
+        path: "plan.md",
+        content: [
+          "# Proposals",
+          "",
+          "The poll picks up a teammate's edits through the existing watcher.",
+          "",
+          "<!--",
+          "@claude suggests:",
+          "The poll picks up a teammate's edits through the existing watcher.",
+          "---",
+          "The stamp poll notices a teammate's write and reloads a clean buffer.",
+          "-->",
+          "",
+        ].join("\n"),
+      }),
+    [dir, id] as const,
+  );
+
+  // It lands as a card on both screens, and neither document has changed yet.
+  await expect(alice.locator(".md-suggestion")).toHaveCount(1, { timeout: 10_000 });
+  await expect(bob.locator(".md-suggestion")).toHaveCount(1, { timeout: 10_000 });
+  await expect(editor(bob)).toContainText("The poll picks up a teammate's edits");
+  await expect(editor(bob)).not.toContainText("The stamp poll notices");
+
+  // Bob accepts. It is an ordinary edit of the room, so alice has it too.
+  await bob.locator(".md-suggestion-act", { hasText: "Accept" }).click();
+  await expect(editor(bob)).toContainText("The stamp poll notices a teammate's write");
+  await expect(editor(alice)).toContainText("The stamp poll notices a teammate's write", {
+    timeout: 10_000,
+  });
+  await expect(editor(alice)).not.toContainText("The poll picks up a teammate's edits");
+  await expect(alice.locator(".md-suggestion")).toHaveCount(0);
+
+  expect((alice as any).__faults).toEqual([]);
+  expect((bob as any).__faults).toEqual([]);
+});
+
 test("a workspace file's frontmatter sits behind the button, hidden from the page, and reaches the room", async ({
   browser,
 }) => {

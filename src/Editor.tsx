@@ -3,13 +3,21 @@ import { Crepe, CrepeFeature } from "@milkdown/crepe";
 import { remarkPluginsCtx, remarkStringifyOptionsCtx } from "@milkdown/core";
 import remarkFrontmatter from "remark-frontmatter";
 import { $prose, replaceAll } from "@milkdown/utils";
+import type { SuggestionApply } from "./html-view";
 import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { languages } from "@codemirror/language-data";
 import { LanguageDescription } from "@codemirror/language";
 import { yaml } from "@codemirror/lang-yaml";
 import { codeTheme } from "./code-theme";
-import { htmlBridge, htmlContext, htmlView, isComment, pictureView } from "./html-view";
-import { editorViewCtx } from "@milkdown/core";
+import {
+  htmlBridge,
+  htmlContext,
+  htmlView,
+  isComment,
+  pictureView,
+  suggestionResolvers,
+} from "./html-view";
+import { editorViewCtx, parserCtx } from "@milkdown/core";
 import { mermaidView } from "./mermaid-view";
 import { alertView } from "./alert-view";
 import { pasteLink } from "./paste-link";
@@ -300,6 +308,7 @@ export function Editor({
       htmlContext.author = author;
       htmlContext.profiles = profiles ?? null;
       htmlContext.tint = !!tintHandles;
+      htmlContext.readOnly = readOnly;
       imageContext.repo = repo;
       imageContext.relPath = relPath;
       imageContext.folder = imageFolder;
@@ -491,6 +500,87 @@ export function Editor({
     };
 
     /**
+     * The block the cursor is in, as plain text — a suggestion's quote.
+     *
+     * The whole block, not the selection: the old side of a suggestion is what
+     * finds its own target later, and it can only do that by matching a node
+     * exactly. Half a paragraph would match nothing and every such suggestion
+     * would arrive stale.
+     */
+    bridge.block = () => {
+      let text = "";
+      crepe.editor.action((ctx) => {
+        const { $to } = ctx.get(editorViewCtx).state.selection;
+        if ($to.parent.isTextblock) text = $to.parent.textContent;
+      });
+      return text;
+    };
+
+    /**
+     * A suggestion goes in as its own block, after the one it is about.
+     *
+     * Not at the cursor, where a comment goes: the proposal quotes the block
+     * above it, and a proposal living *inside* that block would be quoting a
+     * paragraph that contains its own quote — which resolves to nothing, and
+     * would take the proposal with it if it did.
+     */
+    bridge.suggest = (value) => {
+      touched = true;
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const nodes = nodesFor(value, view.state.schema);
+        if (!nodes.length) return;
+        const { $to } = view.state.selection;
+        const at = $to.depth > 0 ? $to.after(1) : view.state.doc.content.size;
+        const para = view.state.schema.nodes.paragraph.create(null, nodes);
+        view.dispatch(view.state.tr.insert(at, para).scrollIntoView());
+      });
+    };
+
+    /**
+     * Accepting or rejecting a suggestion: one transaction, two edits.
+     *
+     * The block always goes; the proposal replaces its target when there is
+     * one. Both moves are ordinary editor edits, so in a workspace they are
+     * Yjs updates that merge with whatever everyone else is typing, and in a
+     * repository they dirty the buffer and take the normal save path. Nothing
+     * splices text in behind the save-and-watch machinery's back.
+     *
+     * The block is deleted first and the target mapped through that deletion,
+     * rather than assuming the block sits after the target: a proposal put in
+     * by hand can end up either side of the paragraph it quotes.
+     */
+    // Registered against this editor's own view rather than on the shared
+    // bridge, so a card in one pane can only ever settle its own document.
+    const resolve = ({ block, target, markdown }: SuggestionApply) => {
+      touched = true;
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const tr = view.state.tr.delete(block.from, block.to);
+        if (target) {
+          const from = tr.mapping.map(target.from, -1);
+          const to = tr.mapping.map(target.to, 1);
+          const parsed = markdown?.trim() ? ctx.get(parserCtx)(markdown) : null;
+          const content = parsed?.content ?? null;
+          if (!content || content.size === 0) {
+            if (to > from) tr.delete(from, to);
+          } else if (from === to) {
+            // Nothing matched the quote: the proposal goes in where the card
+            // stood, which is the one place it is certainly about.
+            tr.insert(from, content);
+          } else if (parsed!.childCount === 1 && parsed!.firstChild!.isTextblock) {
+            // The target stays what it was — a heading stays a heading — and
+            // only its words change.
+            tr.replaceWith(from + 1, to - 1, parsed!.firstChild!.content);
+          } else {
+            tr.replaceWith(from, to, content);
+          }
+        }
+        view.dispatch(tr.scrollIntoView());
+      });
+    };
+
+    /**
      * Put the cursor at the end of the document and take focus.
      *
      * Unlike its neighbours above this deliberately does not set `touched`.
@@ -648,6 +738,8 @@ export function Editor({
         }
         created.current = true;
         trace("editor created");
+        // The view exists only now; the cards read the resolver through it.
+        crepe.editor.action((ctx) => suggestionResolvers.set(ctx.get(editorViewCtx), resolve));
         // Set after create() rather than passed to it: Crepe only has a
         // setter, and the view has to exist for it to reach.
         if (readOnly) crepe.setReadonly(true);
@@ -745,6 +837,11 @@ export function Editor({
       bridge.apply = null;
       bridge.insert = null;
       bridge.comment = null;
+      bridge.block = null;
+      bridge.suggest = null;
+      if (created.current) {
+        crepe.editor.action((ctx) => suggestionResolvers.delete(ctx.get(editorViewCtx)));
+      }
       bridge.collect = null;
       /*
        * The reason the bridge is a bridge. A focus request outliving the editor
@@ -843,6 +940,7 @@ export function Editor({
       htmlContext.author = author;
       htmlContext.profiles = profiles ?? null;
       htmlContext.tint = !!tintHandles;
+      htmlContext.readOnly = readOnly;
       imageContext.repo = repo;
       imageContext.relPath = relPath;
       imageContext.folder = imageFolder;
@@ -865,7 +963,8 @@ export function Editor({
     if (headless) return;
     htmlContext.profiles = profiles ?? null;
     htmlContext.tint = !!tintHandles;
-  }, [profiles, tintHandles, headless]);
+    htmlContext.readOnly = readOnly;
+  }, [profiles, tintHandles, readOnly, headless]);
 
   // Toggling spellcheck shouldn't rebuild the document, so it's set on the
   // live contenteditable rather than passed at construction.

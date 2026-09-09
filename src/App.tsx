@@ -32,6 +32,7 @@ import {
   lineHint,
   quoteBlock,
   REWRITE_PROMPT,
+  SUGGEST_PROMPT,
   type HandoffKind,
 } from "./agent";
 import { DiffView, prefetchHead } from "./DiffView";
@@ -122,7 +123,7 @@ import {
 import { PerfHud } from "./PerfHud";
 import { start, tick, timed, trace } from "./perf";
 import { confirmed } from "./confirm";
-import { authorSlug, htmlBridge, type HtmlEdit } from "./html-view";
+import { authorSlug, htmlBridge, suggestionBlock, type HtmlEdit } from "./html-view";
 import {
   inDoneFolder,
   isDone,
@@ -941,6 +942,41 @@ export default function App() {
       },
     });
   }, [author, activePath, activeProfiles, settings.commentSigner]);
+
+  /**
+   * Propose a change yourself, the same way an agent does.
+   *
+   * Nothing about the format knows whether an agent or a person wrote it, so
+   * this is the comment path with a second field: the block as it reads now,
+   * offered for editing, and what comes back is the new side. The quote is
+   * read from the editor rather than from the selection — it has to match a
+   * whole node to find its target later — so what you are shown to edit is
+   * the paragraph the selection sits in, not the words you happened to drag
+   * across.
+   */
+  const suggestHere = useCallback(() => {
+    const me = author;
+    const old = htmlBridge.block?.() ?? "";
+    if (!old.trim()) return;
+    setAsking({
+      title: "Suggest",
+      placeholder: "What should it say instead?",
+      note: me
+        ? `Lands under the paragraph as a proposal signed @${me}. Anyone reading can accept or reject it.`
+        : "Lands under the paragraph as a proposal. Anyone reading can accept or reject it.",
+      confirm: "Suggest",
+      multiline: true,
+      initial: old,
+      allowEmpty: true,
+      run: (value) => {
+        const next = value.trim();
+        // The same text back is not a proposal, and an empty one is a
+        // proposal to delete the paragraph — which is a real thing to ask.
+        if (next === old.trim()) return;
+        htmlBridge.suggest?.(suggestionBlock(me, old, next));
+      },
+    });
+  }, [author]);
 
   const notify = useCallback(
     (text: string, kind: "info" | "error" = "info") => {
@@ -2697,7 +2733,13 @@ export default function App() {
   );
 
   /**
-   * Rewrite the selected passage, by asking the agent to.
+   * Rewrite the selected passage, or propose a rewrite of it, by asking the
+   * agent to.
+   *
+   * One path, two prompts. A suggestion is not a different kind of handoff —
+   * it is the same turn asking for a proposal in the file instead of the
+   * change itself, which is why the flush, the quote and the line hint below
+   * are shared rather than copied.
    *
    * A third seed on the path handoff already walks: the turn names the file,
    * quotes the passage and carries the instruction, and the agent edits the
@@ -2713,17 +2755,20 @@ export default function App() {
    * whatever it found instead. The conflict bar is already on screen saying
    * what happened.
    */
-  const rewriteSelection = useCallback(
-    (selection: string) => {
+  const askAboutSelection = useCallback(
+    (selection: string, kind: "rewrite" | "suggest" = "rewrite") => {
       const text = selection.replace(/\s+$/, "");
       const r = activeRepoPath;
       const f = activePath;
       if (!text || !r || !f) return;
+      const proposing = kind === "suggest";
       setAsking({
-        title: "Rewrite",
+        title: proposing ? "Suggest a rewrite" : "Rewrite",
         placeholder: "What should change about it?",
-        note: "Sent to the agent, which edits the file — the page reloads when it lands.",
-        confirm: "Rewrite",
+        note: proposing
+          ? "Sent to the agent, which writes a proposal into the file — it arrives as a card you can accept or reject."
+          : "Sent to the agent, which edits the file — the page reloads when it lands.",
+        confirm: proposing ? "Suggest" : "Rewrite",
         multiline: true,
         run: (value) => {
           const ask = value.trim();
@@ -2747,7 +2792,9 @@ export default function App() {
               ask,
               quote: quoteBlock(text),
             };
-            const template = settings.rewritePrompt || REWRITE_PROMPT;
+            const template = proposing
+              ? settings.suggestPrompt || SUGGEST_PROMPT
+              : settings.rewritePrompt || REWRITE_PROMPT;
             // One pass, and through a function: the quote is someone's prose,
             // and `$&` in it must not turn into a substitution of its own.
             setChatSeed(
@@ -2761,7 +2808,15 @@ export default function App() {
         },
       });
     },
-    [activeRepoPath, activePath, flush, set, settings.rewritePrompt, source],
+    [
+      activeRepoPath,
+      activePath,
+      flush,
+      set,
+      settings.rewritePrompt,
+      settings.suggestPrompt,
+      source,
+    ],
   );
 
   const onSourceChange = useCallback(
@@ -8128,23 +8183,50 @@ export default function App() {
           >
             New comment…
           </button>
+          {/* Proposing needs nobody but you: no agent, no chat, and it works
+              in memory too, since the proposal is only text in the file. */}
+          {pageMenu.selection.trim() !== "" && (
+            <button
+              className="ctx-item"
+              role="menuitem"
+              onClick={() => {
+                setPageMenu(null);
+                suggestHere();
+              }}
+            >
+              Suggest…
+            </button>
+          )}
           {/* Only with something selected, and only where there is an agent
               to send it to: a menu item that scolds you for not selecting
               first is worse than one that is absent. */}
           {pageMenu.selection.trim() !== "" &&
             chat !== false &&
             activeRepoPath !== MEMORY && (
-              <button
-                className="ctx-item"
-                role="menuitem"
-                onClick={() => {
-                  const selection = pageMenu.selection;
-                  setPageMenu(null);
-                  rewriteSelection(selection);
-                }}
-              >
-                Rewrite…
-              </button>
+              <>
+                <button
+                  className="ctx-item"
+                  role="menuitem"
+                  onClick={() => {
+                    const selection = pageMenu.selection;
+                    setPageMenu(null);
+                    askAboutSelection(selection);
+                  }}
+                >
+                  Rewrite…
+                </button>
+                <button
+                  className="ctx-item"
+                  role="menuitem"
+                  onClick={() => {
+                    const selection = pageMenu.selection;
+                    setPageMenu(null);
+                    askAboutSelection(selection, "suggest");
+                  }}
+                >
+                  Suggest a rewrite…
+                </button>
+              </>
             )}
         </div>
       )}
