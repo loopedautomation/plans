@@ -23,7 +23,7 @@ export function ProfileSheet({ account, onSignIn, onSignOut, onClose }: Props) {
           <b>{account.name ?? account.login}</b>
           <small>{account.login}</small>
           <small className="mobile-profile-server">{serverUrl()}</small>
-          <button type="button" className="mobile-primary" onClick={onSignOut} data-testid="sign-out">
+          <button type="button" className="rail-btn" onClick={onSignOut} data-testid="sign-out">
             Sign out
           </button>
         </div>
@@ -34,7 +34,7 @@ export function ProfileSheet({ account, onSignIn, onSignOut, onClose }: Props) {
             {configured() ? "Sign in to open yours." : "No workspace server is configured on this phone."}
           </p>
           {configured() && (
-            <button type="button" className="mobile-primary" onClick={onSignIn} data-testid="sign-in">
+            <button type="button" className="rail-btn" onClick={onSignIn} data-testid="sign-in">
               Sign in
             </button>
           )}

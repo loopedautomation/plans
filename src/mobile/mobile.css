@@ -8,18 +8,33 @@
 html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 .mobile-app input, .mobile-app textarea, .mobile-app select, .mobile-app button { font-size: 16px; }
 .mobile-app input[type="range"], .mobile-app input[type="checkbox"] { font-size: inherit; }
-.mobile-tabs button, .mobile-more, .mobile-face small { font-size: 11px; }
+/*
+ * One type scale, in the manner of the phone's own: a title, a body, a
+ * secondary line and the ledger's caps. Nothing in the shell sets a size
+ * outside these four; the document's text is the reader's own setting.
+ */
 .mobile-app {
+  --m-title: 600 17px var(--doc-font);
+  --m-body: 16px;
+  --m-sub: 13px;
+  --m-cap: 11px;
   height: 100%;
   -webkit-user-select: none;
   user-select: none;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
   background: var(--paper);
   color: var(--ink);
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
+.mobile-stack {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+.mobile-stack[hidden] { display: none; }
+.mobile-app, .mobile-row, .mobile-computer, .mobile-empty, .mobile-choice, .mobile-face, .mobile-setting-name, .mobile-sheet-head button { font-size: var(--m-body); }
+.mobile-row small, .mobile-head small, .mobile-computer small, .mobile-setting-name small, .mobile-face small, .mobile-profile small { font-size: var(--m-sub); font-family: var(--doc-font); }
+.mobile-tabs button, .mobile-more, .mobile-state, .mobile-status, .mobile-settings h2, .mobile-setting-name b, .mobile-profile-server, .mobile-account { font-size: var(--m-cap); font-family: var(--mono); }
 
 .mobile-head {
   min-height: 58px;
@@ -33,7 +48,7 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 
 .mobile-head h1 {
   margin: 0;
-  font: 600 20px var(--doc-font);
+  font: var(--m-title);
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -233,7 +248,6 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   border: 1px solid var(--rule);
   border-radius: 8px;
   font-family: var(--doc-font);
-  font-size: 15px;
 }
 .mobile-choice.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .mobile-sample { margin: 0 0 12px; color: var(--ink); }
@@ -249,10 +263,9 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   background: var(--paper);
   color: var(--ink);
   text-align: left;
-  font-size: 15px;
 }
 .mobile-face.on { border-color: var(--ink); }
-.mobile-face small { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-align: right; }
+.mobile-face small { color: var(--ink-3); text-align: right; }
 .mobile-setting {
   display: flex;
   align-items: center;
@@ -260,9 +273,9 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   gap: 12px;
   padding: 10px 0;
 }
-.mobile-setting-name { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
-.mobile-setting-name b { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--ink-2); }
-.mobile-setting-name small { color: var(--ink-3); font-size: 12px; }
+.mobile-setting-name { display: flex; flex-direction: column; gap: 2px; }
+.mobile-setting-name b { font-weight: 400; color: var(--ink-2); }
+.mobile-setting-name small { color: var(--ink-3); }
 .mobile-slider { flex-direction: column; align-items: stretch; }
 .mobile-slider .mobile-setting-name { flex-direction: row; justify-content: space-between; }
 .mobile-slider input[type="range"] { width: 100%; accent-color: var(--ink); }
@@ -273,8 +286,7 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 .mobile-profile-button { justify-self: start; }
 .mobile-aa {
   justify-self: end;
-  font-family: var(--doc-font);
-  font-size: 18px;
+  font: var(--m-title);
   color: var(--ink);
   letter-spacing: -0.02em;
 }
@@ -320,9 +332,9 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   justify-content: space-between;
   padding: 12px 16px;
   border-bottom: 1px solid var(--rule);
-  font: 600 16px var(--doc-font);
+  font: var(--m-title);
 }
-.mobile-sheet-head button { border: 0; background: none; color: var(--ink-2); font-size: 16px; }
+.mobile-sheet-head button { border: 0; background: none; color: var(--ink-2); }
 .mobile-sheet-body { overflow: auto; min-height: 0; overscroll-behavior: contain; }
 .mobile-profile {
   display: flex;
@@ -332,8 +344,8 @@ html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
   padding: 20px 16px;
 }
 .mobile-profile .avatar { margin-bottom: 8px; }
-.mobile-profile b { font-family: var(--doc-font); font-size: 18px; }
-.mobile-profile small { font-family: var(--mono); font-size: 11px; color: var(--ink-2); }
+.mobile-profile b { font: var(--m-title); }
+.mobile-profile small { color: var(--ink-2); }
 .mobile-profile-server { color: var(--ink-3) !important; }
-.mobile-profile .mobile-primary { margin-top: 18px; border: 1px solid var(--rule-strong); border-radius: 8px; padding: 10px 16px; background: none; }
+.mobile-profile .rail-btn { margin-top: 18px; padding: 8px 14px; font-size: var(--m-cap); }
 .mobile-profile .mobile-empty { margin: 0 0 6px; }

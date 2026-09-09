@@ -208,7 +208,7 @@ test("the phone's Aa sheet changes the paper and the type, and they are written 
   page,
 }) => {
   await boot(page, [remote], { mobile: true });
-  await page.getByTestId("aa").click();
+  await page.locator('[data-testid="aa"]:visible').click();
   await expect(page.getByTestId("settings")).toBeVisible();
   await page.getByTestId("paper-night").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
@@ -223,9 +223,9 @@ test("the phone's Aa sheet changes the paper and the type, and they are written 
   // Closed and reopened from the other tab, the paper holds.
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("settings")).toHaveCount(0);
-  await page.getByTestId("tab-computers").click();
+  await page.locator('[data-testid="tab-computers"]:visible').click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
-  await page.getByTestId("aa").click();
+  await page.locator('[data-testid="aa"]:visible').click();
 
   // System follows the device, and keeps following it.
   await page.emulateMedia({ colorScheme: "light" });
@@ -250,7 +250,7 @@ test("the phone shell drills through files and keeps the document read-only", as
     secret: "password",
     mobile: true,
   });
-  await page.getByTestId("tab-computers").click();
+  await page.locator('[data-testid="tab-computers"]:visible').click();
   await expect(page.getByRole("heading", { name: "Computers" })).toBeVisible();
   await page
     .getByRole("button", { name: "Connection settings for Workstation" })
@@ -258,13 +258,13 @@ test("the phone shell drills through files and keeps the document read-only", as
   await expect(page.getByTestId("remote-sheet")).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Browse Workstation" }).click();
-  await expect(page.locator(".mobile-head")).toContainText("Workstation");
+  await expect(page.locator(".mobile-head:visible")).toContainText("Workstation");
   await page.getByRole("button", { name: "plans/" }).click();
   await page.getByRole("button", { name: /ssh\.md/ }).click();
   await expect(page.locator(".mobile-document .milkdown")).toContainText(
     "Remote prose",
   );
-  await expect(page.locator(".mobile-document .ProseMirror")).toHaveAttribute(
+  await expect(page.locator(".mobile-stack:not([hidden]) .mobile-document .ProseMirror")).toHaveAttribute(
     "contenteditable",
     "false",
   );
