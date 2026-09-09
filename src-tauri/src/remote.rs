@@ -6,8 +6,9 @@
 //! retries a failed read once with a fresh session.
 
 use crate::{stamp_of, PlanText, R};
-use russh::client;
+use russh::client::{self, AuthResult, KeyboardInteractiveAuthResponse};
 use russh::keys::{decode_secret_key, key::PrivateKeyWithHashAlg, HashAlg, PublicKeyOrCertificate};
+use russh::MethodKind;
 use russh_sftp::client::SftpSession;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -37,6 +38,11 @@ pub struct RemoteRoot {
 pub enum RemoteAuth {
     Password,
     Key,
+    /// No credential: the server accepts the connection on identity alone, as
+    /// Tailscale SSH does. If the server answers with a keyboard-interactive
+    /// prompt instead (Tailscale's "check mode" sends a URL to confirm in a
+    /// browser), the prompt's text is what the sheet shows.
+    None,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -133,6 +139,77 @@ struct RemoteSession {
 struct HostHandler {
     expected: Option<String>,
     seen: Arc<Mutex<Option<String>>>,
+}
+
+/// The "none" method, and the fallback a Tailscale SSH server in check mode
+/// takes: a keyboard-interactive exchange whose only prompt is a URL to open.
+///
+/// Ok(true) is authenticated; Ok(false) is a plain refusal; Err carries the
+/// server's own words when it asked for something, so the sheet can show the
+/// URL rather than "rejected".
+async fn authenticate_none(
+    ssh: &mut client::Handle<HostHandler>,
+    user: &str,
+) -> Result<Result<bool, String>, String> {
+    let first = ssh
+        .authenticate_none(user.to_string())
+        .await
+        .map_err(|e| format!("authentication failed: {e}"))?;
+    let remaining = match first {
+        AuthResult::Success => return Ok(Ok(true)),
+        AuthResult::Failure {
+            remaining_methods, ..
+        } => remaining_methods,
+    };
+    if !remaining.contains(&MethodKind::KeyboardInteractive) {
+        return Ok(Ok(false));
+    }
+    let mut answer = ssh
+        .authenticate_keyboard_interactive_start(user.to_string(), None)
+        .await
+        .map_err(|e| format!("authentication failed: {e}"))?;
+    // A server that only wants to tell us something (a URL, a notice) sends
+    // prompts with nothing to type. Answer each with nothing, once; whatever
+    // it said is kept, so that when it then refuses (check mode does, until
+    // the link has been visited) the person sees the link and not "rejected".
+    let mut said: Vec<String> = Vec::new();
+    let mut rounds = 0;
+    loop {
+        match answer {
+            KeyboardInteractiveAuthResponse::Success => return Ok(Ok(true)),
+            KeyboardInteractiveAuthResponse::Failure { .. } => {
+                return Ok(if said.is_empty() {
+                    Ok(false)
+                } else {
+                    Err(said.join("\n"))
+                });
+            }
+            KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => {
+                said.extend(
+                    [name, instructions]
+                        .into_iter()
+                        .chain(prompts.iter().map(|p| p.prompt.clone()))
+                        .filter(|t| !t.trim().is_empty()),
+                );
+                if rounds >= 1 || prompts.iter().any(|p| !p.echo) {
+                    return Ok(Err(if said.is_empty() {
+                        "The server asked for something this app cannot answer.".to_string()
+                    } else {
+                        said.join("\n")
+                    }));
+                }
+                rounds += 1;
+                answer = ssh
+                    .authenticate_keyboard_interactive_respond(vec![String::new(); prompts.len()])
+                    .await
+                    .map_err(|e| format!("authentication failed: {e}"))?;
+            }
+        }
+    }
 }
 
 fn host_key_matches(expected: Option<&str>, presented: &str) -> bool {
@@ -407,40 +484,49 @@ impl RemoteManager {
         };
         let fingerprint =
             fingerprint.ok_or_else(|| "SSH server did not present a host key".to_string())?;
-        let Some(secret) = self.credential(&remote.id).await? else {
-            return Ok(ConnectResult::auth(
-                fingerprint,
-                "A credential is required.",
-            ));
-        };
-        let authenticated = match remote.auth {
-            RemoteAuth::Password => ssh
-                .authenticate_password(remote.user.clone(), secret.secret)
-                .await
-                .map_err(|e| format!("password authentication failed: {e}"))?
-                .success(),
-            RemoteAuth::Key => {
-                let key = match decode_secret_key(&secret.secret, secret.passphrase.as_deref()) {
-                    Ok(key) => key,
-                    Err(e) => {
-                        return Ok(ConnectResult::auth(
-                            fingerprint,
-                            format!("Private key: {e}"),
-                        ))
-                    }
-                };
-                let hash = ssh
-                    .best_supported_rsa_hash()
+        let authenticated = if remote.auth == RemoteAuth::None {
+            match authenticate_none(&mut ssh, &remote.user).await? {
+                Ok(ok) => ok,
+                Err(prompt) => return Ok(ConnectResult::auth(fingerprint, prompt)),
+            }
+        } else {
+            let Some(secret) = self.credential(&remote.id).await? else {
+                return Ok(ConnectResult::auth(
+                    fingerprint,
+                    "A credential is required.",
+                ));
+            };
+            match remote.auth {
+                RemoteAuth::Password => ssh
+                    .authenticate_password(remote.user.clone(), secret.secret)
                     .await
-                    .map_err(|e| format!("could not negotiate key authentication: {e}"))?
-                    .flatten();
-                ssh.authenticate_publickey(
-                    remote.user.clone(),
-                    PrivateKeyWithHashAlg::new(Arc::new(key), hash),
-                )
-                .await
-                .map_err(|e| format!("key authentication failed: {e}"))?
-                .success()
+                    .map_err(|e| format!("password authentication failed: {e}"))?
+                    .success(),
+                RemoteAuth::Key => {
+                    let key = match decode_secret_key(&secret.secret, secret.passphrase.as_deref())
+                    {
+                        Ok(key) => key,
+                        Err(e) => {
+                            return Ok(ConnectResult::auth(
+                                fingerprint,
+                                format!("Private key: {e}"),
+                            ))
+                        }
+                    };
+                    let hash = ssh
+                        .best_supported_rsa_hash()
+                        .await
+                        .map_err(|e| format!("could not negotiate key authentication: {e}"))?
+                        .flatten();
+                    ssh.authenticate_publickey(
+                        remote.user.clone(),
+                        PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+                    )
+                    .await
+                    .map_err(|e| format!("key authentication failed: {e}"))?
+                    .success()
+                }
+                RemoteAuth::None => unreachable!("handled above"),
             }
         };
         if !authenticated {
@@ -613,6 +699,7 @@ mod tests {
     use super::*;
     use russh::keys::{Algorithm, PrivateKey};
     use russh::server::{Auth, ChannelOpenHandle, Msg, Server as _, Session};
+    use russh::MethodSet;
     use russh::{Channel, ChannelId};
     use russh_sftp::protocol::{
         Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode,
@@ -675,6 +762,44 @@ mod tests {
         async fn auth_password(&mut self, _: &str, password: &str) -> Result<Auth, Self::Error> {
             Ok(if password == "reader-password" {
                 Auth::Accept
+            } else {
+                Auth::reject()
+            })
+        }
+
+        /// "tailnet" is a Tailscale SSH server: identity is the credential.
+        /// "checked" is one in check mode: it wants a browser visit first.
+        async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
+            Ok(match user {
+                "tailnet" => Auth::Accept,
+                "checked" => Auth::Reject {
+                    proceed_with_methods: Some(MethodSet::from(
+                        &[MethodKind::KeyboardInteractive][..],
+                    )),
+                    partial_success: false,
+                },
+                _ => Auth::reject(),
+            })
+        }
+
+        async fn auth_keyboard_interactive<'a>(
+            &'a mut self,
+            user: &str,
+            _: &str,
+            response: Option<russh::server::Response<'a>>,
+        ) -> Result<Auth, Self::Error> {
+            if user != "checked" {
+                return Ok(Auth::reject());
+            }
+            // The first round carries the link; a reply to it is not enough
+            // on its own, which is what check mode does until you visit it.
+            Ok(if response.is_none() {
+                Auth::Partial {
+                    name: "Tailscale SSH".into(),
+                    instructions: "To authenticate, visit: https://login.tailscale.com/a/abc123"
+                        .into(),
+                    prompts: std::borrow::Cow::Borrowed(&[]),
+                }
             } else {
                 Auth::reject()
             })
@@ -785,12 +910,18 @@ mod tests {
 
     impl TestDir {
         fn new() -> Self {
+            // Two tests can start in the same nanosecond; the counter keeps
+            // their directories apart.
+            static SEQ: AtomicUsize = AtomicUsize::new(0);
             let nonce = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let path = std::env::temp_dir()
-                .join(format!("plans-remote-test-{}-{nonce}", std::process::id()));
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let path = std::env::temp_dir().join(format!(
+                "plans-remote-test-{}-{nonce}-{seq}",
+                std::process::id()
+            ));
             std::fs::create_dir(&path).unwrap();
             Self(path)
         }
@@ -848,6 +979,84 @@ mod tests {
         assert!(host_key_matches(Some("SHA256:abc"), "SHA256:abc"));
         assert!(!host_key_matches(Some("SHA256:abc"), "SHA256:abd"));
         assert!(!host_key_matches(None, "SHA256:abc"));
+    }
+
+    #[tokio::test]
+    async fn none_auth_connects_on_identity_and_surfaces_a_check_mode_link() {
+        let root = TestDir::new();
+        std::fs::write(root.path().join("plan.md"), b"# Over the tailnet\n").unwrap();
+        let host_key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+        let fingerprint = host_key
+            .public_key()
+            .fingerprint(HashAlg::Sha256)
+            .to_string();
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: std::time::Duration::from_millis(0),
+            auth_rejection_time_initial: Some(std::time::Duration::from_millis(0)),
+            keys: vec![host_key],
+            ..Default::default()
+        });
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut server = TestSshServer {
+            fail_read_once: Arc::new(AtomicBool::new(false)),
+            connections: Arc::new(AtomicUsize::new(0)),
+        };
+        let mut running = server.run_on_socket(server_config, &listener);
+        let stop = running.handle();
+
+        let client = async {
+            let manager = RemoteManager::default();
+            let remote = RemoteRoot {
+                id: "tailnet".into(),
+                name: "Laptop".into(),
+                host: "127.0.0.1".into(),
+                port,
+                user: "tailnet".into(),
+                root: root.path().to_string_lossy().into_owned(),
+                auth: RemoteAuth::None,
+                host_key: Some(fingerprint.clone()),
+            };
+            manager
+                .configs
+                .write()
+                .await
+                .insert(remote.id.clone(), remote.clone());
+            // No secret was ever stored, and none is asked for.
+            assert_eq!(
+                manager.establish(&remote).await.unwrap().status,
+                ConnectStatus::Connected
+            );
+            let text = manager.read(&remote.id, "plan.md").await.unwrap();
+            assert_eq!(text.content, "# Over the tailnet\n");
+
+            // Check mode: the server's link comes back as the message, so the
+            // sheet can show it rather than "rejected".
+            let checked = RemoteRoot {
+                id: "checked".into(),
+                user: "checked".into(),
+                ..remote.clone()
+            };
+            manager
+                .configs
+                .write()
+                .await
+                .insert(checked.id.clone(), checked.clone());
+            let result = manager.establish(&checked).await.unwrap();
+            assert_eq!(result.status, ConnectStatus::AuthRequired);
+            assert!(result
+                .message
+                .as_deref()
+                .unwrap_or("")
+                .contains("https://login.tailscale.com/a/abc123"));
+        };
+
+        tokio::select! {
+            result = &mut running => panic!("test SSH server stopped early: {result:?}"),
+            () = client => {}
+        }
+        stop.shutdown("test complete".into());
+        let _ = running.await;
     }
 
     #[tokio::test]

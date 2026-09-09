@@ -519,6 +519,9 @@ button, .rail, .bar, .tabs, .ctx {
 .remote-trust p { margin: 0 0 10px; color: var(--ink-2); line-height: 1.5; }
 .remote-trust code { display: block; overflow-wrap: anywhere; margin: 5px 0; }
 .remote-trust .act { margin-top: 12px; }
+/* The line under a field, and the paragraph where a field would be. */
+.remote-hint { display: block; margin-top: 4px; color: var(--ink-3); font-size: 10.5px; line-height: 1.5; }
+.remote-note { margin: 0 0 8px; color: var(--ink-2); font-size: 11.5px; line-height: 1.5; }
 .remote-error { margin: 0 20px 16px; color: var(--diff-del); line-height: 1.45; }
 .remote-actions { display: flex; gap: 8px; }
 .act.warn { color: var(--diff-del); }
