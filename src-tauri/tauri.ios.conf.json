@@ -17,6 +17,10 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "iOS": {
+      "developmentTeam": "WK688NT7TC",
+      "minimumSystemVersion": "15.0"
+    }
   }
 }

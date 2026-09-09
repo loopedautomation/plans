@@ -1092,6 +1092,12 @@ fn templates_open() -> R<()> {
         // from the first quoted argument — the path.
         exec("cmd", &["/C", "start", "", path.as_str()]).map(|_| ())
     }
+    // A phone has no Finder, no shell and no terminal to hand the path to.
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = path;
+        Err("Not available on this device.".to_string())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1212,6 +1218,12 @@ fn settings_open(app: tauri::AppHandle) -> R<()> {
         // The empty string is `start`'s window title, which it otherwise takes
         // the path for — and then opens nothing.
         exec("cmd", &["/C", "start", "", path.as_str()]).map(|_| ())
+    }
+    // A phone has no Finder, no shell and no terminal to hand the path to.
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = path;
+        Err("Not available on this device.".to_string())
     }
 }
 
@@ -1491,6 +1503,12 @@ fn open_in_terminal(repo: String) -> R<()> {
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("failed to open a terminal: {e}"))
+    }
+    // A phone has no Finder, no shell and no terminal to hand the path to.
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = path;
+        Err("Not available on this device.".to_string())
     }
 }
 
@@ -1979,7 +1997,6 @@ fn git_log(repo: String, scope: Vec<String>, limit: u32) -> R<String> {
     git(&repo, &args)
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// In development, wear a different face.
 ///
 /// A dev build and an installed one are the same window with the same title,
@@ -2117,6 +2134,7 @@ fn target_kind() -> &'static str {
     }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
     linux_webkit_env();

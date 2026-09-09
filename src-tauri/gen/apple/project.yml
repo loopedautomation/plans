@@ -2,7 +2,7 @@ name: plans
 options:
   bundleIdPrefix: com.ratulmaharaj.plans
   deploymentTarget:
-    iOS: 14.0
+    iOS: 15.0
 fileGroups: [../../src]
 configs:
   debug: debug
