@@ -32,6 +32,26 @@ Not bugs yet — places the same class of mistake would land next.
 
 ## Fixed
 
+### Presence wore colours the paper does not have
+
+A person's face, handle and cursor were coloured by hashing their login to
+a hue — the one chromatic colour in the app that was not a git state, an
+alert or a chart ink. The hash now picks one of the six chart tokens, and
+what travels in awareness is the token itself, so the colour follows the
+paper. The receiving side also recomputes it from the login rather than
+trusting what was sent, so a peer on an older build still wears the ink.
+The pattern: a palette rule is only a rule where every colour goes through
+it; anything that mints a colour of its own is outside it.
+
+### ERD tables had white bands
+
+An entity's attribute rows alternated white and off-white on every paper,
+night included. Mermaid's base theme derives the odd row as `mainBkg`
+lightened by 75, which saturates to white, and nothing in our theme
+variables named the rows. Found by reading mermaid's theme class for what
+it derived when not told: `rowOdd` and `rowEven` are set now. Same family
+as the pie colours — every mermaid default is a colour we did not choose.
+
 ### A workspace chat's answer came back three times over
 
 Every streamed chunk landed three times in the bubble, and only in a
