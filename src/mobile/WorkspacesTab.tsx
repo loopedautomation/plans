@@ -10,11 +10,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "../Editor";
-import { SignInSheet } from "../SignInSheet";
 import { statusTone } from "../matter";
 import {
   colorFor,
-  configured,
   openRoom,
   token,
   treeEntries,
@@ -49,14 +47,18 @@ function settled(room: Room, ms = 4000): Promise<void> {
 const titleOf = (name: string) => name.replace(/\.(md|markdown)$/i, "").replace(/[-_]+/g, " ");
 
 type Props = {
-  /** Drawn under the list, at the root of the stack. */
+  /** Undefined until the phone has asked who is signed in. */
+  account: Account | null | undefined;
+  /** The root screen's header — profile at the left, Aa at the right — and the bar under it. */
+  head: (title: string) => React.ReactNode;
+  aa: React.ReactNode;
   bar: React.ReactNode;
+  /** Where the edge swipe lands: this stack's Back, or null at its root. */
+  backRef: React.MutableRefObject<(() => void) | null>;
   onError: (message: string | null) => void;
 };
 
-export function WorkspacesTab({ bar, onError }: Props) {
-  const [account, setAccount] = useState<Account | null | undefined>(undefined);
-  const [signingIn, setSigningIn] = useState(false);
+export function WorkspacesTab({ account, head, aa, bar, backRef, onError }: Props) {
   const [list, setList] = useState<Workspace[]>([]);
   const [screen, setScreen] = useState<Screen>("list");
   const [current, setCurrent] = useState<Workspace | null>(null);
@@ -74,25 +76,7 @@ export function WorkspacesTab({ bar, onError }: Props) {
     [account],
   );
 
-  // Who is signed in, once, and the list whenever that changes.
-  useEffect(() => {
-    let live = true;
-    if (!configured()) {
-      setAccount(null);
-      return;
-    }
-    void workspace.me().then(
-      (who) => live && setAccount(who),
-      (e) => {
-        if (!live) return;
-        setAccount(null);
-        onError(String((e as Error).message ?? e));
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [onError]);
+  // The list, whenever who is signed in changes.
   useEffect(() => {
     if (!account) {
       setList([]);
@@ -175,17 +159,27 @@ export function WorkspacesTab({ bar, onError }: Props) {
     return (at === -1 ? "" : e.path.slice(0, at)) === dir;
   });
 
+  backRef.current =
+    screen === "list"
+      ? null
+      : screen === "document"
+        ? () => {
+            closeDoc();
+            setScreen("folder");
+          }
+        : () => {
+            if (dir) setDir(dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "");
+            else leaveFolder();
+          };
+
   if (screen === "list") {
     return (
       <>
-        <header className="mobile-head">
-          <h1>Workspaces</h1>
-        </header>
+        {head("Workspaces")}
         <main className="mobile-list" data-testid="workspaces">
           {account === undefined ? null : !account ? (
             <p className="mobile-empty">
-              A workspace is a folder of files, edited together and live.{" "}
-              {configured() ? "Sign in to open one." : "No workspace server is configured on this phone."}
+              A workspace is a folder of files, edited together and live. Sign in from the top left to open yours.
             </p>
           ) : list.length === 0 ? (
             <p className="mobile-empty">None yet. Make one on your computer, or ask to be invited.</p>
@@ -202,38 +196,7 @@ export function WorkspacesTab({ bar, onError }: Props) {
             ))
           )}
         </main>
-        <footer className="mobile-foot mobile-toggle">
-          {account ? (
-            <>
-              <span className="mobile-account" data-testid="account">
-                {account.login}
-              </span>
-              <button
-                onClick={() => {
-                  void workspace.signOut().finally(() => setAccount(null));
-                }}
-              >
-                Sign out
-              </button>
-            </>
-          ) : configured() ? (
-            <button className="mobile-primary" onClick={() => setSigningIn(true)}>
-              Sign in
-            </button>
-          ) : (
-            <span />
-          )}
-        </footer>
         {bar}
-        {signingIn && (
-          <SignInSheet
-            onDone={(who) => {
-              setSigningIn(false);
-              setAccount(who);
-            }}
-            onCancel={() => setSigningIn(false)}
-          />
-        )}
       </>
     );
   }
@@ -254,7 +217,7 @@ export function WorkspacesTab({ bar, onError }: Props) {
             <b>{current.name}</b>
             <small>{dir || "/"} · {tree?.status ?? "connecting"}</small>
           </span>
-          <span />
+          {aa}
         </header>
         <main className="mobile-list" data-testid="folder">
           {here.map((e) => (
@@ -296,7 +259,7 @@ export function WorkspacesTab({ bar, onError }: Props) {
               {current.name} · {open.entry.path}
             </small>
           </span>
-          <span />
+          {aa}
         </header>
         <main className="mobile-document">
           <Editor

@@ -102,7 +102,7 @@ test("the schema is rewritten beside the file on every launch", async ({ page })
 
   const { schema } = await fake(page);
   const parsed = JSON.parse(schema!);
-  expect(parsed.properties.theme.enum).toEqual(["day", "sepia", "night"]);
+  expect(parsed.properties.theme.enum).toEqual(["day", "sepia", "night", "system"]);
   // RANGES is where the bounds come from; the type alone cannot say this.
   expect(parsed.properties.measure.minimum).toBe(52);
   // The two keys that are bookkeeping rather than settings say so.

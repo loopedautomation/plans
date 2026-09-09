@@ -1,3 +1,4 @@
+import { resolveTheme } from "./theme";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
 import { EditProvider, FileDiff } from "@pierre/diffs/react";
@@ -172,7 +173,7 @@ export function DiffView({ repo, relPath, buffer, settings, epoch, onEdit }: Pro
         fileDiff={fileDiff}
         options={{
           diffStyle: settings.diffStyle,
-          themeType: settings.theme === "night" ? "dark" : "light",
+          themeType: resolveTheme(settings.theme) === "night" ? "dark" : "light",
           overflow: settings.diffWrap ? "wrap" : "scroll",
           disableLineNumbers: !settings.diffLineNumbers,
           disableFileHeader: true,

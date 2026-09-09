@@ -1,5 +1,5 @@
 /**
- * The phone's settings: the paper, the type and the two file toggles.
+ * Aa: the paper, the type and the file toggles, in a sheet from the bottom.
  *
  * These are the same keys the desktop writes to settings.json, applied the
  * same way (`applySettings`), so a paper chosen here is the paper the phone
@@ -10,12 +10,12 @@
 import { FONTS, MONO_FONTS } from "../fonts";
 import { RANGES, type Settings } from "../settings";
 import { THEMES } from "../theme";
+import { Sheet } from "./Sheet";
 
 type Props = {
   settings: Settings;
   set: (patch: Partial<Settings>) => void;
-  /** Drawn under the list, at the root of the stack. */
-  bar: React.ReactNode;
+  onClose: () => void;
 };
 
 const SAMPLE = "The plan is read more often than it is written, and by more people than wrote it.";
@@ -54,13 +54,10 @@ function Slider({
   );
 }
 
-export function SettingsTab({ settings, set, bar }: Props) {
+export function AaSheet({ settings, set, onClose }: Props) {
   return (
-    <>
-      <header className="mobile-head">
-        <h1>Settings</h1>
-      </header>
-      <main className="mobile-list mobile-settings" data-testid="settings">
+    <Sheet side="bottom" title="Aa" onClose={onClose} testid="settings">
+      <div className="mobile-settings">
         <section>
           <h2>Paper</h2>
           <div className="mobile-choices" role="radiogroup" aria-label="Paper">
@@ -151,8 +148,7 @@ export function SettingsTab({ settings, set, bar }: Props) {
             <input type="checkbox" checked={settings.spellcheck} onChange={(e) => set({ spellcheck: e.target.checked })} />
           </label>
         </section>
-      </main>
-      {bar}
-    </>
+      </div>
+    </Sheet>
   );
 }
