@@ -1,0 +1,89 @@
+/* The gallery's own layout. Nothing here restyles an app element: the
+   elements are the app's, and this only says where on the page they go. */
+body { overflow: auto; }
+.gallery {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 48px 28px 120px;
+  font-family: var(--doc-font);
+  font-size: var(--doc-size);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.gallery-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 40px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.gallery-head h1 { margin: 0; font-size: 1.6em; font-weight: 500; }
+.gallery-head .papers { display: inline-flex; gap: 6px; }
+.gallery-section { margin: 56px 0; }
+.gallery-section h2 {
+  margin: 0 0 8px;
+  font-size: 1.25em;
+  font-weight: 500;
+}
+.gallery-section > p { max-width: 70ch; margin: 0 0 20px; color: var(--ink-2); }
+.gallery-section blockquote {
+  margin: 0 0 20px;
+  padding-left: 14px;
+  border-left: 2px solid var(--rule-strong);
+  color: var(--ink-2);
+  max-width: 70ch;
+}
+.gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 20px;
+  margin: 14px 0;
+}
+.gallery-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+@media (max-width: 700px) { .gallery-pair { grid-template-columns: 1fr; } }
+
+/* A caption in the ledger voice, under or beside an element. */
+.gallery-cap {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* Swatches: the token's value read from the live stylesheet. */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px 20px; margin: 0; padding: 0; list-style: none; }
+.swatch { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+.swatch-chip {
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+}
+.swatch-name { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
+.swatch-value { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-left: 8px; }
+.swatch-rule { font-size: 0.85em; color: var(--ink-2); }
+
+/* A frame around a ledger element, so a small thing has somewhere to sit. */
+.gallery-frame {
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--paper);
+}
+.gallery-frame .files { width: 100%; }
+.gallery-frame .page-head { padding: 0; }
+.gallery-frame .palette { position: static; transform: none; width: 100%; box-shadow: none; }
+.gallery-frame .matter-sheet { position: static; transform: none; box-shadow: var(--shadow); }
+.gallery-frame .palette-scrim, .gallery-frame .sheet-scrim { display: none; }
+
+/* Type specimens. */
+.specimen { margin: 18px 0; }
+.specimen p { margin: 4px 0 0; max-width: 70ch; }
+.specimen .gallery-cap { display: block; }
+
+/* The editor, as the page: the same host the app uses. */
+.gallery-editor { border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.gallery-editor .editor-host .milkdown .ProseMirror { padding-bottom: 34px; }
