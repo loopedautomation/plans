@@ -21,4 +21,9 @@ const platform = typeof navigator === "undefined" ? "" : navigator.platform;
 
 export const IS_WINDOWS = /^Win/i.test(platform);
 export const IS_LINUX = !IS_WINDOWS && /Linux/i.test(platform);
-export const IS_MAC = !IS_WINDOWS && !IS_LINUX;
+export const IS_IOS = /iPhone|iPad|iPod/i.test(platform);
+export const IS_ANDROID = /Android/i.test(
+  typeof navigator === "undefined" ? "" : navigator.userAgent,
+);
+export const IS_MOBILE = IS_IOS || IS_ANDROID;
+export const IS_MAC = !IS_WINDOWS && !IS_LINUX && !IS_MOBILE;

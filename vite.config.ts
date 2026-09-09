@@ -26,29 +26,40 @@ const share = (mode: string) =>
     : {};
 
 // https://vite.dev/config/
-export default defineConfig(async ({ mode }) => ({
-  plugins: [react()],
-  ...share(mode),
+export default defineConfig(async ({ mode }) => {
+  // Native release builds carry one shell. Development keeps both so the
+  // browser fake can exercise phone and desktop flows from the same server.
+  const appTarget =
+    mode === "mobile"
+      ? "mobile"
+      : mode === "production"
+        ? "desktop"
+        : "runtime";
+  return {
+    plugins: [react()],
+    ...share(mode),
+    define: { __PLANS_BUILD_TARGET__: JSON.stringify(appTarget) },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
-  clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
-  server: {
-    port: 1420,
-    strictPort: true,
-    host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
-      : undefined,
-    watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+    // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
+    //
+    // 1. prevent Vite from obscuring rust errors
+    clearScreen: false,
+    // 2. tauri expects a fixed port, fail if that port is not available
+    server: {
+      port: 1420,
+      strictPort: true,
+      host: host || false,
+      hmr: host
+        ? {
+            protocol: "ws",
+            host,
+            port: 1421,
+          }
+        : undefined,
+      watch: {
+        // 3. tell Vite to ignore watching `src-tauri`
+        ignored: ["**/src-tauri/**"],
+      },
     },
-  },
-}));
+  };
+});

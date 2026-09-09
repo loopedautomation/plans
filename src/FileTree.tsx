@@ -183,12 +183,26 @@ export function displayName(name: string, showExtensions: boolean) {
  * A top-level heading: a repository on disk, or a workspace on the server.
  * The tree draws both the same way and asks `workspaces` which is which.
  */
-export type Shelf = RepoInfo & { workspace?: boolean };
+export type Shelf = RepoInfo & { workspace?: boolean; remote?: boolean };
+
+/** Actions a source can honestly perform. Remote roots deliberately expose a reader. */
+export type SourceCapabilities = {
+  mutate: boolean;
+  drag: boolean;
+  git: boolean;
+  terminal: boolean;
+  split: boolean;
+  reorder: boolean;
+  refresh?: boolean;
+  connectionSettings?: boolean;
+  forget?: boolean;
+};
 
 type Props = {
   repos: Shelf[];
   /** The paths in `repos` that are workspaces, not folders on disk. */
   workspaces: Set<string>;
+  capabilities?: Record<string, SourceCapabilities>;
   filesByRepo: Record<string, PlanFile[]>;
   /** "<repo>::<relPath>" -> mark. */
   marks: Map<string, Mark>;
@@ -199,6 +213,8 @@ type Props = {
   onToggle: (key: string) => void;
   onOpen: (repoPath: string, relPath: string) => void;
   onForgetRepo: (repoPath: string) => void;
+  onRefreshSource?: (repoPath: string, path: string) => void;
+  onSettingsSource?: (repoPath: string) => void;
   /** Give the repo heading a name of the reader's choosing — an alias, not a move. */
   onRenameRepo: (repoPath: string) => void;
   /**
@@ -328,6 +344,16 @@ function dirKeys(nodes: Node[], repoPath: string, out: string[] = []): string[] 
 export const FileTree = memo(function FileTree(p: Props) {
   /** Whether this heading is a workspace, and so has no disk under it. */
   const isWs = (repoPath: string) => p.workspaces.has(repoPath);
+  const caps = (repoPath: string): SourceCapabilities =>
+    p.capabilities?.[repoPath] ?? {
+      mutate: true,
+      drag: true,
+      git: true,
+      terminal: true,
+      split: true,
+      reorder: true,
+    };
+  const isRemote = (repoPath: string) => !!p.capabilities?.[repoPath]?.connectionSettings;
   const [menu, setMenu] = useState<MenuAt | null>(null);
   /** Whether this menu's template list is showing. Per opening, not per tree. */
   const [newOpen, setNewOpen] = useState(false);
@@ -435,6 +461,7 @@ export const FileTree = memo(function FileTree(p: Props) {
    */
   const dragHandle = (repo: string, path: string, kind: Carried["kind"]) => ({
     onPointerDown: (e: React.PointerEvent) => {
+      if (!caps(repo).drag) return;
       if (e.button !== 0) return;
       pressed.current = { repo, path, kind, x: e.clientX, y: e.clientY };
     },
@@ -471,6 +498,7 @@ export const FileTree = memo(function FileTree(p: Props) {
    */
   const allowed = (it: Carried | null, repoPath: string, dir: string) => {
     if (!it) return false;
+    if (!caps(it.repo).drag || !caps(repoPath).mutate) return false;
     // Across a boundary only a file travels, and never out of a workspace
     // onto disk: a repository's file dropped on a workspace becomes a shared
     // copy of it, and a workspace's file dropped on another workspace moves
@@ -928,11 +956,42 @@ export const FileTree = memo(function FileTree(p: Props) {
             {menu.kind === "repo"
               ? isWs(menu.repo)
                 ? "Workspace"
+                : isRemote(menu.repo)
+                  ? "Remote root"
                 : "Repository"
               : menu.path || "/"}
           </p>
 
-          {menu.kind === "file" ? (
+          {isRemote(menu.repo) && (
+            <>
+              {menu.kind === "file" && (
+                <button {...menuItem()} onClick={() => act(() => p.onOpen(menu.repo, menu.path))}>
+                  Open
+                </button>
+              )}
+              <button
+                {...menuItem()}
+                onClick={() => act(() => p.onRefreshSource?.(menu.repo, menu.path))}
+              >
+                Refresh
+              </button>
+              <button
+                {...menuItem()}
+                onClick={() => act(() => p.onSettingsSource?.(menu.repo))}
+              >
+                Connection settings…
+              </button>
+              <span className="ctx-rule" />
+              <button
+                {...menuItem("warn")}
+                onClick={() => act(() => p.onForgetRepo(menu.repo))}
+              >
+                Forget this computer
+              </button>
+            </>
+          )}
+
+          {!isRemote(menu.repo) && (menu.kind === "file" ? (
             <>
               <button
                 {...menuItem()}
@@ -971,9 +1030,9 @@ export const FileTree = memo(function FileTree(p: Props) {
             </>
           ) : (
             newFileItems(menu.repo, menu.path)
-          )}
+          ))}
 
-          {menu.kind !== "file" && (
+          {!isRemote(menu.repo) && menu.kind !== "file" && (
             <button
               {...menuItem()}
               onClick={() => act(() => p.onNewFolder(menu.repo, menu.path))}
@@ -982,7 +1041,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             </button>
           )}
 
-          {menu.kind === "file" && (
+          {!isRemote(menu.repo) && menu.kind === "file" && (
             <>
               <button
                 {...menuItem()}
@@ -1010,7 +1069,7 @@ export const FileTree = memo(function FileTree(p: Props) {
 
           {/* Everything below is about a place on disk, which is exactly what
               a workspace does not have. */}
-          {!isWs(menu.repo) && (
+          {!isWs(menu.repo) && !isRemote(menu.repo) && (
             <>
               {/* The absolute path: what a terminal, an agent prompt, or
                   another app can actually open. menu.repo is the repository's
@@ -1046,7 +1105,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             </>
           )}
 
-          {menu.kind === "file" && menu.mark !== "clean" && (
+          {caps(menu.repo).git && menu.kind === "file" && menu.mark !== "clean" && (
             <>
               <span className="ctx-rule" />
               {menu.mark === "staged" ? (
@@ -1073,7 +1132,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             </>
           )}
 
-          {menu.kind === "file" && (
+          {caps(menu.repo).mutate && menu.kind === "file" && (
             <>
               <span className="ctx-rule" />
               <button
@@ -1085,7 +1144,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             </>
           )}
 
-          {menu.kind === "dir" && (
+          {caps(menu.repo).mutate && menu.kind === "dir" && (
             <>
               <span className="ctx-rule" />
               {/* A workspace folder is shareable as one page: every file under
@@ -1104,7 +1163,7 @@ export const FileTree = memo(function FileTree(p: Props) {
             </>
           )}
 
-          {menu.kind === "repo" && (
+          {!isRemote(menu.repo) && menu.kind === "repo" && (
             <>
               <span className="ctx-rule" />
               <button
@@ -1224,13 +1283,13 @@ export const FileTree = memo(function FileTree(p: Props) {
         const nodes = trees[r.path]?.nodes ?? [];
         const changed = changedByRepo[r.path] ?? 0;
         return (
-          <div className={`tree-repo ${r.workspace ? "ws-block" : ""}`} key={r.path}>
+          <div className={`tree-repo ${r.workspace ? "ws-block" : ""} ${r.remote ? "remote-block" : ""}`} key={r.path}>
             {/* Handle and drop spot at once, and not in conflict: the handle is
                 what a press on the heading starts, the drop spot is where a
                 file dragged onto it lands. Which gesture this is was settled at
                 the press, by what was pressed. */}
             <button
-              className={`row repo ${r.workspace ? "ws" : ""} ${
+              className={`row repo ${r.workspace ? "ws" : ""} ${r.remote ? "remote" : ""} ${
                 r.path === p.activeRepoPath ? "current" : ""
               } ${over === `${r.path}::root` ? "over" : ""} ${
                 dragging?.repo === r.path && dragging.path === "" ? "lifted" : ""
@@ -1275,7 +1334,7 @@ export const FileTree = memo(function FileTree(p: Props) {
                 <div role="group">{nodes.map((n) => row(n, r, 1))}</div>
               ) : (
                 <p className="none pad small">
-                  {filtering ? "Nothing matches." : r.workspace ? "Empty." : "No markdown here."}
+                  {filtering ? "Nothing matches." : r.workspace ? "Empty." : r.remote ? "No files loaded." : "No markdown here."}
                 </p>
               ))}
           </div>

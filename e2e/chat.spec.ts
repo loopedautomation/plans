@@ -71,6 +71,9 @@ async function open(page: Page, boot: Boot = {}) {
 
 /** Expand the tree until every folder is open, as app.spec.ts does. */
 async function expandAll(page: Page) {
+  // The target-selected shell is loaded lazily; wait for the repository walk
+  // to produce its first child before deciding that there is nothing to open.
+  await expect(page.locator(".row.dir, .row.file").first()).toBeVisible();
   for (let pass = 0; pass < 6; pass++) {
     const shut = page.locator('.row.repo[aria-expanded="false"], .row.dir[aria-expanded="false"]');
     const n = await shut.count();
