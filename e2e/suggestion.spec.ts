@@ -127,8 +127,9 @@ test("the grammar tells a proposal from a thread, and draws each as itself", asy
   await expect(live).not.toHaveClass(/stale/);
   await expect(live.locator(".md-suggestion-handle")).toHaveText("@ratul");
   // A word diff, not two blocks of text: what stays is neither in nor out.
-  await expect(live.locator(".md-suggestion-out")).toContainText("poll");
-  await expect(live.locator(".md-suggestion-in")).toContainText("stamp");
+  await expect(live.locator(".md-suggestion-out", { hasText: "picks up" })).toBeVisible();
+  await expect(live.locator(".md-suggestion-in", { hasText: "stamp" })).toBeVisible();
+  await expect(live.locator(".md-suggestion-out", { hasText: "poll" })).toHaveCount(0);
   await expect(live.locator(".md-suggestion-act", { hasText: "Accept" })).toBeVisible();
 
   // The one whose quote matches nothing says so, and offers the other move.
@@ -199,7 +200,8 @@ test("two proposals that read the same are still two, and each keeps its own par
   await page.keyboard.press("Meta+s");
   await page.waitForTimeout(500);
   await page.locator(".view-switch button", { hasText: "Source" }).click();
-  const source = await page.locator(".source .cm-content").innerText();
+  // innerText reads a blank CodeMirror line as two newlines; fold them back.
+  const source = (await page.locator(".source .cm-content").innerText()).replace(/\n{2,}/g, "\n\n");
   expect(source).toContain("Between the two.\n\nThe line, rewritten.");
   // The first proposal and the paragraph it quotes are exactly as they were.
   expect(source).toContain("# Twins\n\nThe line that both proposals quote.\n\n<!--");

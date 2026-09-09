@@ -905,7 +905,7 @@ test("a selected passage reaches the agent as a quote, with the ask", async ({ p
 
   const para = await selectParagraph(page, "A plan");
   await para.click({ button: "right" });
-  await page.locator(".ctx-item", { hasText: "Rewrite" }).click();
+  await page.locator(".ctx-item", { hasText: /^Rewrite/ }).click();
 
   await expect(page.locator(".matter-sheet")).toBeVisible();
   await page.locator(".matter-sheet textarea").fill("say it in fewer words");
@@ -934,7 +934,7 @@ test("with nothing selected there is no Rewrite to click", async ({ page }) => {
 
   await expect(page.locator(".ctx")).toBeVisible();
   await expect(page.locator(".ctx-item", { hasText: "New comment" })).toBeVisible();
-  await expect(page.locator(".ctx-item", { hasText: "Rewrite" })).toHaveCount(0);
+  await expect(page.locator(".ctx-item", { hasText: /^Rewrite/ })).toHaveCount(0);
 });
 
 test("the buffer is on disk before the quote is sent", async ({ page }) => {
@@ -952,7 +952,7 @@ test("the buffer is on disk before the quote is sent", async ({ page }) => {
 
   const para = await selectParagraph(page, "Edited here.");
   await para.click({ button: "right" });
-  await page.locator(".ctx-item", { hasText: "Rewrite" }).click();
+  await page.locator(".ctx-item", { hasText: /^Rewrite/ }).click();
   await page.locator(".matter-sheet textarea").fill("tighten it");
   await page.locator(".matter-sheet .act", { hasText: "Rewrite" }).click();
 
@@ -987,7 +987,7 @@ test("a refused save cancels the rewrite rather than quoting a file that isn't t
 
   const para = await selectParagraph(page, "Edited here.");
   await para.click({ button: "right" });
-  await page.locator(".ctx-item", { hasText: "Rewrite" }).click();
+  await page.locator(".ctx-item", { hasText: /^Rewrite/ }).click();
   await page.locator(".matter-sheet textarea").fill("tighten it");
   await page.locator(".matter-sheet .act", { hasText: "Rewrite" }).click();
 
@@ -1020,7 +1020,7 @@ test("a save still in flight is waited out before the quote is sent", async ({ p
 
   const para = await selectParagraph(page, "Edited here.");
   await para.click({ button: "right" });
-  await page.locator(".ctx-item", { hasText: "Rewrite" }).click();
+  await page.locator(".ctx-item", { hasText: /^Rewrite/ }).click();
   await page.locator(".matter-sheet textarea").fill("tighten it");
   await page.locator(".matter-sheet .act", { hasText: "Rewrite" }).click();
 
@@ -1050,7 +1050,7 @@ test("the rewrite prompt is editable, and is what gets sent", async ({ page }) =
 
   const para = await selectParagraph(page, "A plan");
   await para.click({ button: "right" });
-  await page.locator(".ctx-item", { hasText: "Rewrite" }).click();
+  await page.locator(".ctx-item", { hasText: /^Rewrite/ }).click();
   await page.locator(".matter-sheet textarea").fill("shorter");
   await page.locator(".matter-sheet .act", { hasText: "Rewrite" }).click();
 

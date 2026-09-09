@@ -691,13 +691,7 @@ async fn search_plans(
 /// Separate so the two caps and the `more` count can be tested against a
 /// directory of known files without standing up a Tauri app or an async
 /// runtime — the same reason `safe_join` is its own function.
-fn search_in(
-    root: &Path,
-    files: &[PlanFile],
-    needle: &str,
-    cap: usize,
-    per_file: usize,
-) -> Search {
+fn search_in(root: &Path, files: &[PlanFile], needle: &str, cap: usize, per_file: usize) -> Search {
     let mut hits: Vec<Hit> = Vec::new();
     let mut capped = false;
     for f in files {

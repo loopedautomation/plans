@@ -3,12 +3,20 @@ import { Crepe, CrepeFeature } from "@milkdown/crepe";
 import { remarkPluginsCtx, remarkStringifyOptionsCtx } from "@milkdown/core";
 import remarkFrontmatter from "remark-frontmatter";
 import { $prose, replaceAll } from "@milkdown/utils";
+import type { SuggestionApply } from "./html-view";
 import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { languages } from "@codemirror/language-data";
 import { LanguageDescription } from "@codemirror/language";
 import { yaml } from "@codemirror/lang-yaml";
 import { codeTheme } from "./code-theme";
-import { htmlBridge, htmlContext, htmlView, isComment, pictureView } from "./html-view";
+import {
+  htmlBridge,
+  htmlContext,
+  htmlView,
+  isComment,
+  pictureView,
+  suggestionResolvers,
+} from "./html-view";
 import { editorViewCtx, parserCtx } from "@milkdown/core";
 import { mermaidView } from "./mermaid-view";
 import { alertView } from "./alert-view";
@@ -542,7 +550,9 @@ export function Editor({
      * rather than assuming the block sits after the target: a proposal put in
      * by hand can end up either side of the paragraph it quotes.
      */
-    bridge.resolve = ({ block, target, markdown }) => {
+    // Registered against this editor's own view rather than on the shared
+    // bridge, so a card in one pane can only ever settle its own document.
+    const resolve = ({ block, target, markdown }: SuggestionApply) => {
       touched = true;
       crepe.editor.action((ctx) => {
         const view = ctx.get(editorViewCtx);
@@ -728,6 +738,8 @@ export function Editor({
         }
         created.current = true;
         trace("editor created");
+        // The view exists only now; the cards read the resolver through it.
+        crepe.editor.action((ctx) => suggestionResolvers.set(ctx.get(editorViewCtx), resolve));
         // Set after create() rather than passed to it: Crepe only has a
         // setter, and the view has to exist for it to reach.
         if (readOnly) crepe.setReadonly(true);
@@ -827,7 +839,9 @@ export function Editor({
       bridge.comment = null;
       bridge.block = null;
       bridge.suggest = null;
-      bridge.resolve = null;
+      if (created.current) {
+        crepe.editor.action((ctx) => suggestionResolvers.delete(ctx.get(editorViewCtx)));
+      }
       bridge.collect = null;
       /*
        * The reason the bridge is a bridge. A focus request outliving the editor

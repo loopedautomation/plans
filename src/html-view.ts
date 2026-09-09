@@ -690,8 +690,6 @@ export const htmlBridge: {
    * then contain the quote of itself.
    */
   suggest: ((value: string) => void) | null;
-  /** Set by Editor: accept or reject a suggestion, in one transaction. */
-  resolve: ((edit: SuggestionApply) => void) | null;
   /** Set by Editor: put the cursor at the end of the document and focus it. */
   focusEnd: (() => void) | null;
   /**
@@ -722,11 +720,20 @@ export const htmlBridge: {
   comment: null,
   block: null,
   suggest: null,
-  resolve: null,
   focusEnd: null,
   collect: null,
   focusNext: false,
 };
+
+/**
+ * How each editor settles a suggestion, keyed by its own view.
+ *
+ * Not a slot on `htmlBridge`: that bridge is one per module, and with a split
+ * pane two editors are mounted at once, each overwriting the other's hooks as
+ * it comes up. A card holds the view that drew it, so a press acts on that
+ * document and never on whichever editor happened to mount last.
+ */
+export const suggestionResolvers = new WeakMap<EditorView, (edit: SuggestionApply) => void>();
 
 /** Whether a fragment is one complete comment, fences and all. */
 export function isComment(value: string): boolean {
@@ -744,15 +751,18 @@ export function isComment(value: string): boolean {
  */
 function drawSuggestion(
   s: Suggestion,
+  view: EditorView,
   at: () => { doc: PMNode; block: Span },
 ): { dom: HTMLElement; destroy: () => void } {
   const now = at();
   const found = suggestionTarget(now.doc, now.block.from, s.old);
   const act = (kind: "accept" | "insert" | "reject") => () => {
+    const resolve = suggestionResolvers.get(view);
+    if (!resolve) return;
     const { doc, block } = at();
-    if (kind === "reject") return void htmlBridge.resolve?.({ block });
+    if (kind === "reject") return void resolve({ block });
     const hit = kind === "accept" ? suggestionTarget(doc, block.from, s.old) : null;
-    htmlBridge.resolve?.({
+    resolve({
       block,
       target: hit ?? { from: block.from, to: block.from },
       markdown: s.new,
@@ -793,7 +803,7 @@ export const htmlView = $view(htmlSchema.node, () => (node, view, getPos, decora
           : { from: at, to: at + node.nodeSize };
       return { doc: view.state.doc, block };
     };
-    const { dom, destroy } = drawSuggestion(sugg, where);
+    const { dom, destroy } = drawSuggestion(sugg, view, where);
     for (const d of decorations ?? []) {
       const cls = (d as unknown as { type?: { attrs?: { class?: string } } }).type?.attrs?.class;
       if (cls) dom.classList.add(...cls.split(" "));
@@ -1164,7 +1174,7 @@ function pictureDecorations(doc: PMNode, repo: string, relPath: string): Decorat
         run.to,
         (view, getPos) => {
           card = sugg
-            ? drawSuggestion(sugg, () => {
+            ? drawSuggestion(sugg, view, () => {
                 /*
                  * Read out of the live document, not out of the one these
                  * decorations were built from: between the two a teammate may
