@@ -58,15 +58,34 @@ type Props = {
   onError: (message: string | null) => void;
 };
 
+/** The last list the server gave, so the tab paints before it answers again. */
+const LIST_KEY = "plans.mobile.workspaces.v1";
+function rememberedList(): Workspace[] {
+  try {
+    return JSON.parse(localStorage.getItem(LIST_KEY) ?? "[]") as Workspace[];
+  } catch {
+    return [];
+  }
+}
+
 export function WorkspacesTab({ account, head, aa, bar, backRef, onError }: Props) {
-  const [list, setList] = useState<Workspace[]>([]);
+  const [list, setList] = useState<Workspace[]>(rememberedList);
+  /**
+   * Rooms stay open for as long as the tab does. A tree room is opened for
+   * every workspace as soon as the list arrives, so a folder is on screen
+   * the moment it is tapped; a document room, once opened, is kept so that
+   * Back and then the same file again costs nothing. A phone has room for a
+   * few sockets, and closing them on every Back was what made each screen
+   * take a second to fill.
+   */
+  const trees = useRef(new Map<string, Room>());
+  const docs = useRef(new Map<string, Room>());
   const [screen, setScreen] = useState<Screen>("list");
   const [current, setCurrent] = useState<Workspace | null>(null);
   const [tree, setTree] = useState<Room | null>(null);
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [dir, setDir] = useState("");
   const [open, setOpen] = useState<{ entry: WorkspaceEntry; room: Room } | null>(null);
-  const rooms = useRef<Room[]>([]);
 
   const me = useCallback(
     () =>
@@ -76,76 +95,118 @@ export function WorkspacesTab({ account, head, aa, bar, backRef, onError }: Prop
     [account],
   );
 
-  // The list, whenever who is signed in changes.
+  /**
+   * Everything closes half a second after the last screen that used it, and
+   * never before: an editor bound to a room unmounts on the render a state
+   * change causes, and its teardown is asynchronous; a Y.Doc destroyed under
+   * a live binding throws from inside the collab plugin.
+   */
+  const closeAll = useCallback(() => {
+    const all = [...trees.current.values(), ...docs.current.values()];
+    trees.current.clear();
+    docs.current.clear();
+    window.setTimeout(() => all.forEach((r) => r.close()), 500);
+  }, []);
+  useEffect(() => closeAll, [closeAll]);
+
+  /** The tree room for a workspace, opened once and kept. */
+  const treeFor = useCallback(
+    async (ws: Workspace): Promise<Room | null> => {
+      const have = trees.current.get(ws.id);
+      if (have) return have;
+      const who = me();
+      const session = await token();
+      if (!who || !session) return null;
+      const again = trees.current.get(ws.id);
+      if (again) return again;
+      const room = openRoom(treeRoomId(ws.id), ws.id, session, who);
+      trees.current.set(ws.id, room);
+      return room;
+    },
+    [me],
+  );
+
+  // The list, whenever who is signed in changes: what was remembered first,
+  // then the server's answer, remembered in turn. Signed out, every room goes.
   useEffect(() => {
     if (!account) {
       setList([]);
+      try {
+        localStorage.removeItem(LIST_KEY);
+      } catch {
+        // storage is a convenience
+      }
+      closeAll();
       return;
     }
     let live = true;
     void workspace.list().then(
-      (ws) => live && setList(ws),
+      (ws) => {
+        if (!live) return;
+        setList(ws);
+        try {
+          localStorage.setItem(LIST_KEY, JSON.stringify(ws));
+        } catch {
+          // storage is a convenience
+        }
+        // Warm every folder now, so the first tap is already answered.
+        for (const w of ws) void treeFor(w);
+      },
       (e) => live && onError(String((e as Error).message ?? e)),
     );
     return () => {
       live = false;
     };
-  }, [account, onError]);
+  }, [account, onError, closeAll, treeFor]);
 
-  // Rooms close with the screen that opened them; nothing outlives the tab.
-  useEffect(() => () => rooms.current.forEach((r) => r.close()), []);
+  // The folder on screen follows its room; nothing is copied out of it.
+  useEffect(() => {
+    if (!tree) return;
+    const draw = () => setEntries(treeEntries(tree));
+    draw();
+    treeMap(tree).observe(draw);
+    const stop = tree.onSynced(draw);
+    return () => {
+      treeMap(tree).unobserve(draw);
+      stop();
+    };
+  }, [tree]);
 
-  /*
-   * After the editor has let go, never before. An editor bound to a room
-   * unmounts on the render the state change causes, and its teardown is
-   * asynchronous; a Y.Doc destroyed under a live binding throws from inside
-   * the collab plugin. The same rule, and the same moment, as the desktop.
-   */
-  const release = (room: Room) => {
-    rooms.current = rooms.current.filter((r) => r !== room);
-    window.setTimeout(() => room.close(), 500);
-  };
-
-  const closeDoc = useCallback(() => {
-    if (open) release(open.room);
-    setOpen(null);
-  }, [open]);
+  const closeDoc = useCallback(() => setOpen(null), []);
 
   const leaveFolder = useCallback(() => {
-    closeDoc();
-    if (tree) release(tree);
+    setOpen(null);
     setTree(null);
     setEntries([]);
     setCurrent(null);
     setDir("");
     setScreen("list");
-  }, [closeDoc, tree]);
+  }, []);
 
   const openWorkspace = async (ws: Workspace) => {
-    const who = me();
-    const session = await token();
-    if (!who || !session) return;
     onError(null);
-    const room = openRoom(treeRoomId(ws.id), ws.id, session, who);
-    rooms.current.push(room);
-    const draw = () => setEntries(treeEntries(room));
-    treeMap(room).observe(draw);
-    room.onSynced(draw);
-    setTree(room);
+    // The screen first: a warm room fills it at once, a cold one in a moment.
     setCurrent(ws);
     setDir("");
     setScreen("folder");
+    const room = await treeFor(ws);
+    if (!room) return;
+    setTree(room);
     await settled(room);
-    draw();
+    setEntries(treeEntries(room));
   };
 
   const openFile = async (entry: WorkspaceEntry) => {
-    const who = me();
-    const session = await token();
-    if (!who || !session || !current || !entry.doc) return;
+    if (!current || !entry.doc) return;
     onError(null);
-    const room = openRoom(entry.doc, current.id, session, who);
-    rooms.current.push(room);
+    let room = docs.current.get(entry.doc);
+    if (!room) {
+      const who = me();
+      const session = await token();
+      if (!who || !session) return;
+      room = openRoom(entry.doc, current.id, session, who);
+      docs.current.set(entry.doc, room);
+    }
     setOpen({ entry, room });
     setScreen("document");
   };

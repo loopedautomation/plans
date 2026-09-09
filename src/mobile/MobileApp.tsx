@@ -130,9 +130,13 @@ export default function MobileApp() {
     setError(null);
     setComputer(remote);
     setDir("");
+    // What was listed last time is on screen at once; the listing that
+    // follows replaces it. A computer never listed waits for its first.
+    const warm = !!browser.snapshots[remote.id]?.entries?.length;
+    if (warm) setScreen("files");
     try {
       await browser.listDir(remote, "", true);
-      setScreen("files");
+      if (!warm) setScreen("files");
     } catch (e) {
       attention(remote, e);
     }
@@ -316,17 +320,16 @@ export default function MobileApp() {
     </nav>
   );
 
-  if (tab === "workspaces") {
-    return (
-      <div className="mobile-app" {...swipe}>
-        <WorkspacesTab account={account} head={head} aa={aaButton} bar={bar} backRef={backRef} onError={setError} />
-        {sheets}
-      </div>
-    );
-  }
-
+  /*
+   * Both stacks stay mounted and one is hidden: switching tabs keeps every
+   * room, list and scroll position where it was, so coming back is instant.
+   */
   return (
     <div className="mobile-app" {...swipe}>
+      <div className="mobile-stack" hidden={tab !== "workspaces"}>
+        <WorkspacesTab account={account} head={head} aa={aaButton} bar={bar} backRef={backRef} onError={setError} />
+      </div>
+      <div className="mobile-stack" hidden={tab !== "computers"}>
       {screen === "computers" && (
         <>
           {head("Computers")}
@@ -478,6 +481,7 @@ export default function MobileApp() {
         </>
       )}
 
+      </div>
       {sheets}
 
       {sheet && (

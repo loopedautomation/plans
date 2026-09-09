@@ -90,7 +90,7 @@ async function boot(browser: Browser, login: string, options: { mobile?: boolean
     [installFakeBackend.toString(), REPOS, token, base, options.mobile ? "mobile" : "desktop"] as const,
   );
   await page.goto("/");
-  await expect(page.getByTestId("account")).toContainText(login);
+  await expect(page.locator('[data-testid="account"]:visible')).toContainText(login);
   (page as any).__faults = faults;
   return page;
 }
@@ -1242,30 +1242,30 @@ test("a phone signs in, opens the workspace's file, and what it types reaches th
 
   // Bob, on a phone: the workspaces tab is home, and the list has Pocket in it.
   const phone = await boot(browser, "bob", { mobile: true });
-  await expect(phone.locator(".mobile-tabs")).toBeVisible();
-  await phone.locator(".mobile-row", { hasText: "Pocket" }).click();
-  await expect(phone.locator(".mobile-head")).toContainText("Pocket");
+  await expect(phone.locator(".mobile-tabs:visible")).toBeVisible();
+  await phone.locator(".mobile-row:visible", { hasText: "Pocket" }).click();
+  await expect(phone.locator(".mobile-head:visible")).toContainText("Pocket");
   await phone.locator('[data-testid="folder"] .mobile-row', { hasText: "plan" }).click();
-  await expect(phone.locator(".mobile-document .ProseMirror")).toContainText("Written at the desk.", { timeout: 10_000 });
+  await expect(phone.locator(".mobile-stack:not([hidden]) .mobile-document .ProseMirror")).toContainText("Written at the desk.", { timeout: 10_000 });
 
   // The phone types; the desk sees it. The editor is the same one.
-  await phone.locator(".mobile-document .ProseMirror p").last().click();
+  await phone.locator(".mobile-stack:not([hidden]) .mobile-document .ProseMirror p").last().click();
   await phone.keyboard.press("End");
   await phone.keyboard.press("Enter");
   await phone.keyboard.type("Read on the train.");
   await expect(editor(alice)).toContainText("Read on the train.", { timeout: 10_000 });
 
   // Back closes the room and lands on the folder; the other tab is the SSH shell.
-  await phone.locator(".mobile-head button", { hasText: "Back" }).click();
+  await phone.locator(".mobile-head:visible button", { hasText: "Back" }).click();
   await expect(phone.getByTestId("folder")).toBeVisible();
-  await phone.locator(".mobile-head button", { hasText: "Back" }).click();
-  await phone.getByTestId("tab-computers").click();
-  await expect(phone.locator(".mobile-head")).toContainText("Computers");
-  await phone.getByTestId("tab-workspaces").click();
-  await expect(phone.locator(".mobile-row", { hasText: "Pocket" })).toBeVisible();
+  await phone.locator(".mobile-head:visible button", { hasText: "Back" }).click();
+  await phone.locator('[data-testid="tab-computers"]:visible').click();
+  await expect(phone.locator(".mobile-head:visible")).toContainText("Computers");
+  await phone.locator('[data-testid="tab-workspaces"]:visible').click();
+  await expect(phone.locator(".mobile-row:visible", { hasText: "Pocket" })).toBeVisible();
 
   // The profile slides in from the left with the account, and signs out.
-  await phone.getByTestId("account").click();
+  await phone.locator('[data-testid="account"]:visible').click();
   await expect(phone.getByTestId("profile")).toContainText("bob");
   await phone.getByTestId("sign-out").click();
   await expect(phone.getByTestId("profile")).toHaveCount(0);
