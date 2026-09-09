@@ -204,6 +204,27 @@ test("a computer reached over Tailscale SSH connects with no credential at all",
   await expect(page.locator("textarea")).toHaveCount(0);
 });
 
+test("the phone's settings change the paper and the type, and are written to the file", async ({
+  page,
+}) => {
+  await boot(page, [remote], { mobile: true });
+  await page.getByTestId("tab-settings").click();
+  await expect(page.getByTestId("settings")).toBeVisible();
+  await page.getByTestId("paper-night").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
+  await page.getByTestId("face-libre-baskerville").click();
+  await expect(page.getByTestId("face-libre-baskerville")).toHaveAttribute("aria-checked", "true");
+  const font = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--doc-font"));
+  expect(font).toContain("Libre Baskerville");
+  // The file the desktop would read has both.
+  await expect
+    .poll(async () => (await page.evaluate(() => (window as any).__fake.settingsFile?.text ?? "")) as string)
+    .toMatch(/"theme": "night"[\s\S]*"fontId": "libre-baskerville"/);
+  // Back on the Computers tab the paper holds.
+  await page.getByTestId("tab-computers").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "night");
+});
+
 test("the phone shell drills through files and keeps the document read-only", async ({
   page,
 }) => {

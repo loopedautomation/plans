@@ -15,6 +15,7 @@ import {
 } from "../settings";
 import { RemoteNeedsAttention, useRemoteBrowser } from "../remote";
 import { WorkspacesTab } from "./WorkspacesTab";
+import { SettingsTab } from "./SettingsTab";
 import SETTINGS_SCHEMA from "../settings.schema.json";
 import "../App.css";
 import "./mobile.css";
@@ -25,7 +26,7 @@ type Screen = "computers" | "files" | "document";
  * repository an agent is working in gets read over SSH. The bar is drawn
  * only at the root of each, so inside a document Back means Back.
  */
-type Tab = "workspaces" | "computers";
+type Tab = "workspaces" | "computers" | "settings";
 
 export default function MobileApp() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -179,8 +180,19 @@ export default function MobileApp() {
       <button className={tab === "computers" ? "on" : ""} onClick={() => setTab("computers")} data-testid="tab-computers">
         Computers
       </button>
+      <button className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")} data-testid="tab-settings">
+        Settings
+      </button>
     </nav>
   );
+
+  if (tab === "settings") {
+    return (
+      <div className="mobile-app">
+        <SettingsTab settings={settings} set={(patch) => setSettings((s) => ({ ...s, ...patch }))} bar={bar} />
+      </div>
+    );
+  }
 
   if (tab === "workspaces") {
     return (

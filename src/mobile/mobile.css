@@ -1,5 +1,18 @@
+/*
+ * No zooming on a phone. iOS zooms the page when a focused field's text is
+ * under 16px, and lets a double tap or a pinch scale the whole shell; the
+ * viewport tag forbids the scaling and this keeps every field at 16px, so
+ * nothing gives it a reason to try. The document's own text is the reader's
+ * size setting, which is what a phone should respect instead.
+ */
+html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+.mobile-app input, .mobile-app textarea, .mobile-app select, .mobile-app button { font-size: 16px; }
+.mobile-app input[type="range"], .mobile-app input[type="checkbox"] { font-size: inherit; }
+.mobile-tabs button, .mobile-more, .mobile-face small { font-size: 11px; }
 .mobile-app {
   height: 100%;
+  -webkit-user-select: none;
+  user-select: none;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   background: var(--paper);
@@ -131,6 +144,8 @@
 .mobile-document {
   min-height: 0;
   overflow: auto;
+  -webkit-user-select: text;
+  user-select: text;
 }
 .mobile-document .editor-host {
   min-height: 100%;
@@ -165,7 +180,7 @@
 /* The two stacks' bar, at the root of each. */
 .mobile-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   border-top: 1px solid var(--rule);
   background: var(--paper);
 }
@@ -199,3 +214,53 @@
     width: calc(100vw - 20px);
   }
 }
+
+/* Settings: sections of choices and sliders, in the ledger voice. */
+.mobile-settings section { padding: 14px 16px 6px; border-bottom: 1px solid var(--rule); }
+.mobile-settings h2 {
+  margin: 0 0 10px;
+  font: 400 11px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.mobile-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.mobile-choice {
+  padding: 14px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-family: var(--doc-font);
+  font-size: 15px;
+}
+.mobile-choice.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.mobile-sample { margin: 0 0 12px; color: var(--ink); }
+.mobile-faces { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.mobile-face {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  text-align: left;
+  font-size: 15px;
+}
+.mobile-face.on { border-color: var(--ink); }
+.mobile-face small { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-align: right; }
+.mobile-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+.mobile-setting-name { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.mobile-setting-name b { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--ink-2); }
+.mobile-setting-name small { color: var(--ink-3); font-size: 12px; }
+.mobile-slider { flex-direction: column; align-items: stretch; }
+.mobile-slider .mobile-setting-name { flex-direction: row; justify-content: space-between; }
+.mobile-slider input[type="range"] { width: 100%; accent-color: var(--ink); }
+.mobile-switch input { width: 22px; height: 22px; accent-color: var(--ink); }
