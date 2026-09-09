@@ -201,3 +201,106 @@ export function matterKeys(matter: string): string[] {
     .map((l) => l.match(/^([A-Za-z0-9_-]+)\s*:/)?.[1])
     .filter((k): k is string => !!k);
 }
+
+// --- what a file says about people, and what it asks of them -------------
+
+/**
+ * What a handle may look like: `@name`, or `@name@host.tld` — a workspace's
+ * login is an email, so the second `@` is part of the name rather than the
+ * end of it. Shared with the comment grammar in html-view.ts.
+ */
+export const HANDLE = "[A-Za-z0-9_.+-]+(?:@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)?";
+
+/** `@name suggests:`, or `suggests:` where git had no name to sign with. */
+const SUGGESTS = new RegExp(`^(?:@(${HANDLE})\\s+)?suggests:$`);
+/** The line between a suggestion's two sides. Exactly one, or it is prose. */
+const SUGGEST_SPLIT = "---";
+/** A signed turn at the head of a comment: `@name: …`. */
+const SIGNED = new RegExp(`^@(${HANDLE}):`);
+
+export type Suggestion = { who: string | null; old: string; new: string };
+
+/**
+ * A suggestion out of a comment's body, or null for anything else a comment
+ * might be.
+ *
+ * Strict on purpose, in both directions: a body missing the head, missing the
+ * separator, carrying two of them, or proposing a change to nothing at all is
+ * not a suggestion and renders as the comment it is. Better a proposal that
+ * shows up as prose than prose that shows up as a proposal with buttons. The
+ * one grammar, read here by the tree's copy and in html-view.ts by the card.
+ */
+export function parseSuggestion(body: string): Suggestion | null {
+  const lines = body.split(/\r?\n/);
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const head = lines.shift()?.trim() ?? "";
+  const m = head.match(SUGGESTS);
+  if (!m) return null;
+  const at = lines.flatMap((l, i) => (l.trim() === SUGGEST_SPLIT ? [i] : []));
+  if (at.length !== 1) return null;
+  const old = lines.slice(0, at[0]).join("\n").trim();
+  const next = lines.slice(at[0] + 1).join("\n").trim();
+  if (!old) return null;
+  return { who: m[1] ?? null, old, new: next };
+}
+
+/** Every comment body in a document, in order. */
+function commentBodies(markdown: string): string[] {
+  return [...markdown.matchAll(/<!--([\s\S]*?)-->/g)].map((m) => m[1]);
+}
+
+/** How many open suggestions a document carries. */
+export function countSuggestions(markdown: string): number {
+  return commentBodies(markdown).filter((b) => parseSuggestion(b) !== null).length;
+}
+
+/**
+ * Who has signed an open thread in the document, lowercased and deduped.
+ * A suggestion is a proposal rather than a point raised, so it does not count.
+ */
+export function threadAuthors(markdown: string): string[] {
+  const out = new Set<string>();
+  for (const body of commentBodies(markdown)) {
+    if (parseSuggestion(body) !== null) continue;
+    const first = body.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
+    const m = first.match(SIGNED);
+    if (m) out.add(m[1].toLowerCase());
+  }
+  return [...out];
+}
+
+/**
+ * The handful of frontmatter facts the app reads about people, beside the
+ * status, plus the count of open suggestions in the body. This is what a
+ * workspace's tree carries for each file, so that "who is waiting on me" can
+ * be answered across fifty files without opening fifty rooms.
+ */
+export type Head = {
+  status: string | null;
+  owner: string | null;
+  reviewers: string | null;
+  approved: string | null;
+  asks: number;
+};
+
+export function headOf(markdown: string): Head {
+  const matter = splitFrontmatter(markdown).matter ?? "";
+  return {
+    status: matterValue(matter, "status"),
+    owner: matterValue(matter, "owner") ?? matterValue(matter, "assignee"),
+    reviewers: matterValue(matter, "reviewers"),
+    approved: matterValue(matter, "approved"),
+    asks: countSuggestions(markdown),
+  };
+}
+
+export function sameHead(a: Partial<Head> | null | undefined, b: Head): boolean {
+  return (
+    (a?.status ?? null) === b.status &&
+    (a?.owner ?? null) === b.owner &&
+    (a?.reviewers ?? null) === b.reviewers &&
+    (a?.approved ?? null) === b.approved &&
+    (a?.asks ?? 0) === b.asks
+  );
+}

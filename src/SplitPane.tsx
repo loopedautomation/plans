@@ -339,8 +339,6 @@ export function SplitPane({
   }, [findRef, shown, relPath]);
 
   const status = matter !== null ? matterValue(matter, "status") : null;
-  const who =
-    matter !== null ? (matterValue(matter, "owner") ?? matterValue(matter, "assignee")) : null;
   const due = matter !== null ? matterValue(matter, "due") : null;
   const overdue = !!due && !Number.isNaN(Date.parse(due)) && Date.parse(due) < Date.now();
 
@@ -411,11 +409,6 @@ export function SplitPane({
               title="status: from this file's frontmatter"
             >
               {status}
-            </span>
-          )}
-          {who && (
-            <span className="matter-owner" title="owner: from this file's frontmatter">
-              @{who}
             </span>
           )}
           {matter !== null && <MatterPeople matter={matter} />}

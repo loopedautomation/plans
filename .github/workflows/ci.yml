@@ -45,6 +45,11 @@ jobs:
       - name: Types
         run: pnpm exec tsc --noEmit
 
+      # The pure functions — what the frontmatter says, what is waiting on
+      # whom — under Node's own runner; nothing to install.
+      - name: Units
+        run: pnpm run test:unit
+
       # The workspace server: real HTTP and a real websocket against an
       # in-memory database. Fast, and the app's own e2e leans on it.
       - name: Workspace server

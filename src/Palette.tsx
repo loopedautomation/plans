@@ -5,6 +5,7 @@
  * query opens with ">". Everything in Settings is reachable here, so the
  * palette is a second face on the same state rather than a separate feature.
  */
+import type { Need } from "./needs";
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { AgentFound, PlanFile, RepoInfo } from "./api";
 import type { HandoffKind } from "./agent";
@@ -211,6 +212,13 @@ type Props = {
   /** Review, as two gestures on a workspace document; absent elsewhere. */
   onRequestReview?: () => void;
   onApprove?: () => void;
+  /**
+   * What in the workspaces is waiting on the signed-in person: a review they
+   * were asked for, a plan of theirs everyone has approved, a suggestion on
+   * it. One row each, at the top, jumping to the file.
+   */
+  forYou: Need[];
+  onOpenNeed: (need: Need) => void;
   /** The open document's comment threads, first line each, in order. */
   threads: string[];
   onJumpThread: (index: number) => void;
@@ -239,6 +247,21 @@ function buildCommands(p: Props): Command[] {
   const { settings: s, set } = p;
   const out: Command[] = [];
   const add = (c: Command) => out.push(c);
+
+  // --- for you ----------------------------------------------------------------
+  // First, whether or not a document is open: opening the palette is opening
+  // the inbox. The rows are few, and when there are any they are what you
+  // most likely came for.
+  p.forYou.forEach((n, i) => {
+    add({
+      id: `foryou.${i}`,
+      group: "For you",
+      label: n.path,
+      hint: n.label,
+      terms: `inbox review ${n.workspace} ${n.label}`,
+      run: () => p.onOpenNeed(n),
+    });
+  });
 
   // --- doing things ---------------------------------------------------------
   /*

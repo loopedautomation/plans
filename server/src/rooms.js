@@ -36,29 +36,77 @@ export const FIRST_FILE = "plan.md";
 export const treeId = (workspaceId) => workspaceId;
 
 /**
- * `status:` from the head of a document, the way the app reads it: a `---`
- * fence at byte zero, flat `key: value` lines, no YAML library. Null when
- * there is no block or no status in it. Mirrors src/matter.ts.
+ * The head of a document, the way the app reads it: a `---` fence at byte
+ * zero, flat `key: value` lines, no YAML library. Four keys come back —
+ * `status`, and the three about people (`owner`, `reviewers`, `approved`) —
+ * plus `asks`, the count of open suggestions in the body. Mirrors
+ * src/matter.ts; the tree carries this so the app can say what is waiting on
+ * whom without opening every file.
  */
-export function headStatus(markdown) {
-  if (typeof markdown !== "string" || !/^---[ \t]*\r?\n/.test(markdown)) return null;
-  const close = markdown.slice(4).match(/\r?\n---[ \t]*(?:\r?\n|$)/);
-  const block = close ? markdown.slice(markdown.indexOf("\n") + 1, 4 + close.index) : "";
-  for (const line of block.split(/\r?\n/)) {
-    const m = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
-    if (!m || m[1].toLowerCase() !== "status") continue;
-    const v = m[2].trim().replace(/^["']|["']$/g, "");
-    return v.length ? v : null;
-  }
-  return null;
+const KEYS = ["status", "owner", "reviewers", "approved"];
+const HANDLE = "[A-Za-z0-9_.+-]+(?:@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)?";
+const SUGGESTS = new RegExp(`^(?:@(${HANDLE})\\s+)?suggests:$`);
+
+/** Whether one comment body is a suggestion: the head line, one `---`, an old side. */
+function isSuggestion(body) {
+  const lines = body.split(/\r?\n/);
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const head = (lines.shift() ?? "").trim();
+  if (!SUGGESTS.test(head)) return false;
+  const at = lines.flatMap((l, i) => (l.trim() === "---" ? [i] : []));
+  if (at.length !== 1) return false;
+  return lines.slice(0, at[0]).join("\n").trim().length > 0;
 }
+
+export function head(markdown) {
+  const out = { status: null, owner: null, reviewers: null, approved: null, asks: 0 };
+  if (typeof markdown !== "string") return out;
+  if (/^---[ \t]*\r?\n/.test(markdown)) {
+    const close = markdown.slice(4).match(/\r?\n---[ \t]*(?:\r?\n|$)/);
+    const block = close ? markdown.slice(markdown.indexOf("\n") + 1, 4 + close.index) : "";
+    let assignee = null;
+    for (const line of block.split(/\r?\n/)) {
+      const m = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+      if (!m) continue;
+      const key = m[1].toLowerCase();
+      const v = m[2].trim().replace(/^["']|["']$/g, "");
+      if (key === "assignee") assignee = v.length ? v : null;
+      if (!KEYS.includes(key) || out[key] !== null) continue;
+      out[key] = v.length ? v : null;
+    }
+    // The app reads `assignee:` where `owner:` is missing; so does the copy.
+    if (out.owner === null) out.owner = assignee;
+  }
+  for (const m of markdown.matchAll(/<!--([\s\S]*?)-->/g)) {
+    if (isSuggestion(m[1])) out.asks += 1;
+  }
+  return out;
+}
+
+/** `status:` alone, for the callers that only ever wanted that. */
+export function headStatus(markdown) {
+  return head(markdown).status;
+}
+
+const sameHead = (value, h) =>
+  KEYS.every((k) => (value[k] ?? null) === h[k]) && (value.asks ?? 0) === h.asks;
 
 /** The tree map, as the wire and the app both see it. */
 function entriesOf(doc) {
   const out = [];
   for (const [path, value] of doc.getMap("tree")) {
     if (!value || typeof value !== "object") continue;
-    out.push({ path, kind: value.kind === "folder" ? "folder" : "file", doc: value.doc ?? null, status: value.status ?? null });
+    out.push({
+      path,
+      kind: value.kind === "folder" ? "folder" : "file",
+      doc: value.doc ?? null,
+      status: value.status ?? null,
+      owner: value.owner ?? null,
+      reviewers: value.reviewers ?? null,
+      approved: value.approved ?? null,
+      asks: value.asks ?? 0,
+    });
   }
   return out.sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -163,7 +211,8 @@ export class Rooms {
   }
 
   /**
-   * The tree's `status` is a copy kept by whichever client has a file open,
+   * The tree's head — `status`, the people keys and the suggestion count —
+   * is a copy kept by whichever client has a file open,
    * and a file nobody has opened since an agent's write — or one seeded
    * before anyone opened it — can carry a stale one. The frontmatter is the
    * truth; this makes the copy agree with it, entry by entry, for every
@@ -176,9 +225,9 @@ export class Rooms {
       if (!value || typeof value !== "object" || value.kind === "folder" || !value.doc) continue;
       const markdown = await this.markdown(value.doc);
       if (!markdown) continue;
-      const status = headStatus(markdown);
-      if ((value.status ?? null) === status) continue;
-      tree.set(path, { ...value, status });
+      const h = head(markdown);
+      if (sameHead(value, h)) continue;
+      tree.set(path, { ...value, ...h });
       changed = true;
     }
     return changed;
