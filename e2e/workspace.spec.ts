@@ -69,16 +69,16 @@ async function session(login: string): Promise<string> {
 }
 
 /** Boot the app as one person: signed in, pointed at the test's server. */
-async function boot(browser: Browser, login: string): Promise<Page> {
+async function boot(browser: Browser, login: string, options: { mobile?: boolean } = {}): Promise<Page> {
   const token = await session(login);
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext(options.mobile ? { viewport: { width: 390, height: 844 }, hasTouch: true } : {});
   const page = await ctx.newPage();
   const faults: string[] = [];
   page.on("pageerror", (e) => faults.push(e.message));
   await page.addInitScript(
-    ([fn, list, tok, url]) => {
+    ([fn, list, tok, url, target]) => {
       // eslint-disable-next-line no-new-func
-      new Function(`return ${fn}`)()(list);
+      new Function(`return ${fn}`)()(list, null, null, [], target);
       (window as any).__fake.workspaceToken = tok;
       localStorage.setItem("plans.workspaceServer", url as string);
       localStorage.setItem(
@@ -87,7 +87,7 @@ async function boot(browser: Browser, login: string): Promise<Page> {
       );
       localStorage.setItem("plans.tabs.v1", "[]");
     },
-    [installFakeBackend.toString(), REPOS, token, base] as const,
+    [installFakeBackend.toString(), REPOS, token, base, options.mobile ? "mobile" : "desktop"] as const,
   );
   await page.goto("/");
   await expect(page.getByTestId("account")).toHaveText(login);
@@ -1104,6 +1104,47 @@ test("a workspace folder is shared as one page, with the files beside the text",
   await expect(reader.locator(".share-gone")).toContainText("This plan is not shared");
   expect((await fetch(`${base}/api/pages/${pid}/meals.md`)).status).toBe(404);
   expect((await fetch(`${base}/api/pages/${pid}`)).status).toBe(404);
+});
+
+test("a phone signs in, opens the workspace's file, and what it types reaches the desktop", async ({
+  browser,
+}) => {
+  const alice = await boot(browser, "alice");
+  await alice.locator(".ws-new").click();
+  await answer(alice, "Pocket", "Create");
+  await expect(editor(alice).locator("h1")).toHaveText("Pocket");
+  await editor(alice).locator("h1").click();
+  await alice.keyboard.press("End");
+  await alice.keyboard.press("Enter");
+  await alice.keyboard.type("Written at the desk.");
+  await invite(alice, "Pocket", "bob");
+
+  // Bob, on a phone: the workspaces tab is home, and the list has Pocket in it.
+  const phone = await boot(browser, "bob", { mobile: true });
+  await expect(phone.locator(".mobile-tabs")).toBeVisible();
+  await phone.locator(".mobile-row", { hasText: "Pocket" }).click();
+  await expect(phone.locator(".mobile-head")).toContainText("Pocket");
+  await phone.locator('[data-testid="folder"] .mobile-row', { hasText: "plan" }).click();
+  await expect(phone.locator(".mobile-document .ProseMirror")).toContainText("Written at the desk.", { timeout: 10_000 });
+
+  // The phone types; the desk sees it. The editor is the same one.
+  await phone.locator(".mobile-document .ProseMirror p").last().click();
+  await phone.keyboard.press("End");
+  await phone.keyboard.press("Enter");
+  await phone.keyboard.type("Read on the train.");
+  await expect(editor(alice)).toContainText("Read on the train.", { timeout: 10_000 });
+
+  // Back closes the room and lands on the folder; the other tab is the SSH shell.
+  await phone.locator(".mobile-head button", { hasText: "Back" }).click();
+  await expect(phone.getByTestId("folder")).toBeVisible();
+  await phone.locator(".mobile-head button", { hasText: "Back" }).click();
+  await phone.getByTestId("tab-computers").click();
+  await expect(phone.locator(".mobile-head")).toContainText("Computers");
+  await phone.getByTestId("tab-workspaces").click();
+  await expect(phone.locator(".mobile-row", { hasText: "Pocket" })).toBeVisible();
+
+  expect((alice as any).__faults).toEqual([]);
+  expect((phone as any).__faults).toEqual([]);
 });
 
 test("the status bar's picker names the workspace you are in, and carries its controls", async ({ browser }) => {

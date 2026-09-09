@@ -216,7 +216,8 @@ toolchain even when it is only generating the Gradle project.
 | `src-tauri/src/remote.rs`                 | SSH sessions, host-key pins and confined read-only SFTP operations |
 | `src/api.ts`                              | Typed wrapper over the Rust commands                               |
 | `src/App.tsx`                             | Layout, repo and buffer state, autosave, conflict handling         |
-| `src/mobile/MobileApp.tsx`                | Computers, Files and Document shell for iOS and Android            |
+| `src/mobile/MobileApp.tsx`                | The phone shell: two tabs, Workspaces and Computers                |
+| `src/mobile/WorkspacesTab.tsx`            | Sign in, a workspace's folder, and the live editor on a phone      |
 | `src/FileTree.tsx`                        | The tree, its git marks and its context menus                      |
 | `src/Editor.tsx`                          | Milkdown Crepe instance and its serialiser settings                |
 | `src/SourceView.tsx`                      | The raw markdown, as CodeMirror                                    |

@@ -195,6 +195,7 @@ test("the phone shell drills through files and keeps the document read-only", as
     secret: "password",
     mobile: true,
   });
+  await page.getByTestId("tab-computers").click();
   await expect(page.getByRole("heading", { name: "Computers" })).toBeVisible();
   await page
     .getByRole("button", { name: "Connection settings for Workstation" })

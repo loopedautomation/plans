@@ -14,17 +14,25 @@ import {
   type Settings,
 } from "../settings";
 import { RemoteNeedsAttention, useRemoteBrowser } from "../remote";
+import { WorkspacesTab } from "./WorkspacesTab";
 import SETTINGS_SCHEMA from "../settings.schema.json";
 import "../App.css";
 import "./mobile.css";
 
 type Screen = "computers" | "files" | "document";
+/**
+ * Two stacks: Workspaces is where the person acts, Computers is how a
+ * repository an agent is working in gets read over SSH. The bar is drawn
+ * only at the root of each, so inside a document Back means Back.
+ */
+type Tab = "workspaces" | "computers";
 
 export default function MobileApp() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [booted, setBooted] = useState(false);
   const extras = useRef<Extras>({});
   const browser = useRemoteBrowser();
+  const [tab, setTab] = useState<Tab>("workspaces");
   const [screen, setScreen] = useState<Screen>("computers");
   const [computer, setComputer] = useState<RemoteRoot | null>(null);
   const [dir, setDir] = useState("");
@@ -163,6 +171,30 @@ export default function MobileApp() {
     setScreen("computers");
   };
 
+  const bar = (
+    <nav className="mobile-tabs" aria-label="Sections">
+      <button className={tab === "workspaces" ? "on" : ""} onClick={() => setTab("workspaces")} data-testid="tab-workspaces">
+        Workspaces
+      </button>
+      <button className={tab === "computers" ? "on" : ""} onClick={() => setTab("computers")} data-testid="tab-computers">
+        Computers
+      </button>
+    </nav>
+  );
+
+  if (tab === "workspaces") {
+    return (
+      <div className="mobile-app">
+        <WorkspacesTab bar={bar} onError={setError} />
+        {error && (
+          <button className="mobile-error" onClick={() => setError(null)}>
+            {error}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="mobile-app">
       {screen === "computers" && (
@@ -210,6 +242,7 @@ export default function MobileApp() {
               Connect to a computer
             </button>
           </footer>
+          {bar}
         </>
       )}
 
