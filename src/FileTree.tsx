@@ -189,6 +189,11 @@ type Props = {
   repos: Shelf[];
   /** The paths in `repos` that are workspaces, not folders on disk. */
   workspaces: Set<string>;
+  /**
+   * "<shelf path>" -> the relPaths in it waiting on the signed-in person.
+   * A count on the workspace heading, and a heavier name on each file.
+   */
+  needs?: Record<string, Set<string>>;
   filesByRepo: Record<string, PlanFile[]>;
   /** "<repo>::<relPath>" -> mark. */
   marks: Map<string, Mark>;
@@ -829,6 +834,7 @@ export const FileTree = memo(function FileTree(p: Props) {
           });
         }}
         title={node.path}
+        data-needs-you={p.needs?.[repo.path]?.has(node.path) ? "1" : undefined}
       >
         <span className="row-name" title={mark === "clean" ? undefined : MARK_WORD[mark]}>
           {displayName(node.name, p.showExtensions)}
@@ -1267,6 +1273,15 @@ export const FileTree = memo(function FileTree(p: Props) {
                   title={`${changed} file${changed > 1 ? "s" : ""} differ from the last commit`}
                 >
                   {changed}
+                </span>
+              )}
+              {(p.needs?.[r.path]?.size ?? 0) > 0 && (
+                <span
+                  className="repo-count needs"
+                  data-testid="needs-count"
+                  title={`${p.needs![r.path].size} file${p.needs![r.path].size > 1 ? "s" : ""} waiting on you`}
+                >
+                  {p.needs![r.path].size}
                 </span>
               )}
             </button>

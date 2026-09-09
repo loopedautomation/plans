@@ -7,6 +7,7 @@
  * a workspace is the third kind of buffer, the one whose truth is on the wire.
  * See plans/hosted-workspaces.md and server/README.md.
  */
+import { sameHead, type Head } from "./matter";
 import * as Y from "yjs";
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
@@ -72,6 +73,12 @@ export type WorkspaceEntry = {
   kind: "file" | "folder";
   doc: string | null;
   status?: string | null;
+  /** The people keys, copied the same way: who wrote it, who was asked, who signed. */
+  owner?: string | null;
+  reviewers?: string | null;
+  approved?: string | null;
+  /** Open suggestions in the body, for the owner's inbox. */
+  asks?: number;
 };
 
 /**
@@ -467,7 +474,15 @@ export function openRoom(id: string, workspaceId: string, session: string, me: P
  * *within* — the merge that matters is over the map's keys, which is where
  * two people making files at once actually meet.
  */
-export type TreeValue = { kind: "file" | "folder"; doc?: string | null; status?: string | null };
+export type TreeValue = {
+  kind: "file" | "folder";
+  doc?: string | null;
+  status?: string | null;
+  owner?: string | null;
+  reviewers?: string | null;
+  approved?: string | null;
+  asks?: number;
+};
 
 /** A workspace's tree lives in the room whose id is the workspace's own. */
 export const treeRoomId = (workspaceId: string) => workspaceId;
@@ -486,6 +501,10 @@ export function treeEntries(room: Room): WorkspaceEntry[] {
       kind: v.kind === "folder" ? "folder" : "file",
       doc: v.doc ?? null,
       status: v.status ?? null,
+      owner: v.owner ?? null,
+      reviewers: v.reviewers ?? null,
+      approved: v.approved ?? null,
+      asks: v.asks ?? 0,
     });
   }
   return out.sort((a, b) => a.path.localeCompare(b.path));
@@ -567,16 +586,17 @@ export const tree = {
     });
   },
   /**
-   * Copy a file's `status:` into the tree, so the sidebar can draw its dot.
-   * Only when it changed: a set of the same value is still an update, and
-   * every client with the file open runs this.
+   * Copy a file's head into the tree: `status:` for the sidebar's dot, and the
+   * people keys and suggestion count for the inbox. Only when something
+   * changed: a set of the same value is still an update, and every client
+   * with the file open runs this.
    */
-  setStatus(room: Room, path: string, status: string | null) {
+  setHead(room: Room, path: string, head: Head) {
     const map = treeMap(room);
     const at = map.get(path);
     if (!at || at.kind !== "file") return;
-    if ((at.status ?? null) === status) return;
-    map.set(path, { ...at, status });
+    if (sameHead(at, head)) return;
+    map.set(path, { ...at, ...head });
   },
 };
 

@@ -199,6 +199,10 @@
       "type": "string",
       "description": "The instruction \"Rewrite…\" sends for a selected passage. `{file}` is the file, `{quote}` the selected text, `{ask}` what you typed, and `{lines}` a line-range hint that is empty unless the quote is unique in the file."
     },
+    "suggestPrompt": {
+      "type": "string",
+      "description": "The instruction \"Suggest a rewrite…\" sends for a selected passage. The same fields as the rewrite prompt, asking for a proposal in the file rather than the change itself — so what arrives is a card with Accept and Reject on it, not a paragraph that moved under somebody's cursor."
+    },
     "chatScope": {
       "type": "string",
       "enum": [

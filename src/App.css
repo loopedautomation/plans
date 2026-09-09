@@ -610,6 +610,12 @@ button, .rail, .bar, .tabs, .ctx {
 .row.repo.current .repo-name { color: var(--ink); }
 
 /* A count of what differs from HEAD — so it earns the git colour. */
+/* Files waiting on you: a count on the workspace heading, in the approved
+   ink so it reads as a review matter rather than a git one, and a heavier
+   name on each row. */
+.repo-count.needs { color: var(--status-approved); }
+.repo-count + .repo-count.needs { margin-left: 6px; }
+.row.file[data-needs-you] .row-name { color: var(--ink); font-weight: 600; }
 .repo-count {
   margin-left: auto;
   padding-left: 8px;
@@ -2635,6 +2641,10 @@ body.resizing.resizing-row, body.resizing.resizing-row .chat-edge { cursor: row-
 .matter-person .avatar { width: 14px; height: 14px; font-size: 8px; }
 .matter-person.approved .matter-handle { text-decoration: underline; text-decoration-color: var(--git-new); text-underline-offset: 3px; }
 .matter-check { color: var(--git-new); font-size: 10px; }
+.matter-said { color: var(--git-mod); font-size: 10px; }
+.matter-person.commented .matter-handle { text-decoration: underline; text-decoration-color: var(--git-mod); text-underline-offset: 3px; }
+.matter-person.owner .matter-handle { color: var(--ink-2); }
+.matter-sep { color: var(--ink-3); font-size: 10.5px; }
 .matter-offer { color: var(--status-approved); border-color: var(--status-approved); }
 .matter-due.overdue { color: var(--git-mod); }
 
