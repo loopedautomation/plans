@@ -62,6 +62,35 @@ export const REWRITE_PROMPT =
   "quoted text, and do not touch any other file.\n\n" +
   "> {quote}";
 
+/**
+ * What the agent is told when a passage is handed to it to be *proposed* on.
+ *
+ * The same handoff as a rewrite, one step short of it: the agent writes a
+ * proposal into the file instead of the result. Nothing about the path
+ * changes — no tool, no protocol, no new event — because the format is
+ * documented text, and the write lands through the watcher or the room the
+ * way every other agent write does. What arrives on each screen is a card
+ * with Accept and Reject on it rather than a paragraph that changed under
+ * somebody's cursor.
+ *
+ * The example is spelled out in full because the grammar is exact: one block
+ * per suggestion, the old side quoted whole so it can find itself, and no
+ * blank line inside the comment — a blank line ends the block and the halves
+ * are not a suggestion apart.
+ */
+export const SUGGEST_PROMPT =
+  "In {file}, propose a change to the passage quoted below rather than making " +
+  "it{lines}. {ask}\n" +
+  "Leave the passage exactly as it is. Under the block it sits in, write one " +
+  "HTML comment in exactly this form:\n\n" +
+  "<!--\n@you suggests:\nthe block exactly as it reads now\n---\nwhat it " +
+  "should say instead\n-->\n\n" +
+  "Sign it with your own handle in place of `@you`. Quote the whole block on " +
+  "the old side — a partial quote finds nothing. One suggestion per block, " +
+  "and no blank line anywhere inside the comment. Change nothing else in the " +
+  "file and do not touch any other file.\n\n" +
+  "> {quote}";
+
 /** Past this many lines, a selection is quoted by its ends rather than whole. */
 export const QUOTE_MAX_LINES = 50;
 /** How many lines of each end survive the elision. */

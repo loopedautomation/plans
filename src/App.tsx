@@ -33,6 +33,7 @@ import {
   lineHint,
   quoteBlock,
   REWRITE_PROMPT,
+  SUGGEST_PROMPT,
   type HandoffKind,
 } from "./agent";
 import { DiffView, prefetchHead } from "./DiffView";
@@ -130,7 +131,7 @@ import {
 import { PerfHud } from "./PerfHud";
 import { start, tick, timed, trace } from "./perf";
 import { confirmed } from "./confirm";
-import { authorSlug, htmlBridge, type HtmlEdit } from "./html-view";
+import { authorSlug, htmlBridge, suggestionBlock, type HtmlEdit } from "./html-view";
 import {
   inDoneFolder,
   isDone,
@@ -142,8 +143,12 @@ import {
   splitFrontmatter,
   statusTone,
   withHandle,
+  headOf,
+  threadAuthors,
 } from "./matter";
 import { MatterPeople } from "./MatterPeople";
+import { needKey, needsMe, type Need } from "./needs";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import {
   applySettings,
   DEFAULTS,
@@ -955,6 +960,41 @@ export default function App() {
       },
     });
   }, [author, activePath, activeProfiles, settings.commentSigner]);
+
+  /**
+   * Propose a change yourself, the same way an agent does.
+   *
+   * Nothing about the format knows whether an agent or a person wrote it, so
+   * this is the comment path with a second field: the block as it reads now,
+   * offered for editing, and what comes back is the new side. The quote is
+   * read from the editor rather than from the selection — it has to match a
+   * whole node to find its target later — so what you are shown to edit is
+   * the paragraph the selection sits in, not the words you happened to drag
+   * across.
+   */
+  const suggestHere = useCallback(() => {
+    const me = author;
+    const old = htmlBridge.block?.() ?? "";
+    if (!old.trim()) return;
+    setAsking({
+      title: "Suggest",
+      placeholder: "What should it say instead?",
+      note: me
+        ? `Lands under the paragraph as a proposal signed @${me}. Anyone reading can accept or reject it.`
+        : "Lands under the paragraph as a proposal. Anyone reading can accept or reject it.",
+      confirm: "Suggest",
+      multiline: true,
+      initial: old,
+      allowEmpty: true,
+      run: (value) => {
+        const next = value.trim();
+        // The same text back is not a proposal, and an empty one is a
+        // proposal to delete the paragraph — which is a real thing to ask.
+        if (next === old.trim()) return;
+        htmlBridge.suggest?.(suggestionBlock(me, old, next));
+      },
+    });
+  }, [author]);
 
   const notify = useCallback(
     (text: string, kind: "info" | "error" = "info") => {
@@ -2719,7 +2759,13 @@ export default function App() {
   );
 
   /**
-   * Rewrite the selected passage, by asking the agent to.
+   * Rewrite the selected passage, or propose a rewrite of it, by asking the
+   * agent to.
+   *
+   * One path, two prompts. A suggestion is not a different kind of handoff —
+   * it is the same turn asking for a proposal in the file instead of the
+   * change itself, which is why the flush, the quote and the line hint below
+   * are shared rather than copied.
    *
    * A third seed on the path handoff already walks: the turn names the file,
    * quotes the passage and carries the instruction, and the agent edits the
@@ -2735,17 +2781,20 @@ export default function App() {
    * whatever it found instead. The conflict bar is already on screen saying
    * what happened.
    */
-  const rewriteSelection = useCallback(
-    (selection: string) => {
+  const askAboutSelection = useCallback(
+    (selection: string, kind: "rewrite" | "suggest" = "rewrite") => {
       const text = selection.replace(/\s+$/, "");
       const r = activeRepoPath;
       const f = activePath;
       if (!text || !r || !f) return;
+      const proposing = kind === "suggest";
       setAsking({
-        title: "Rewrite",
+        title: proposing ? "Suggest a rewrite" : "Rewrite",
         placeholder: "What should change about it?",
-        note: "Sent to the agent, which edits the file — the page reloads when it lands.",
-        confirm: "Rewrite",
+        note: proposing
+          ? "Sent to the agent, which writes a proposal into the file — it arrives as a card you can accept or reject."
+          : "Sent to the agent, which edits the file — the page reloads when it lands.",
+        confirm: proposing ? "Suggest" : "Rewrite",
         multiline: true,
         run: (value) => {
           const ask = value.trim();
@@ -2769,7 +2818,9 @@ export default function App() {
               ask,
               quote: quoteBlock(text),
             };
-            const template = settings.rewritePrompt || REWRITE_PROMPT;
+            const template = proposing
+              ? settings.suggestPrompt || SUGGEST_PROMPT
+              : settings.rewritePrompt || REWRITE_PROMPT;
             // One pass, and through a function: the quote is someone's prose,
             // and `$&` in it must not turn into a substitution of its own.
             setChatSeed(
@@ -2783,7 +2834,15 @@ export default function App() {
         },
       });
     },
-    [activeRepoPath, activePath, flush, set, settings.rewritePrompt, source],
+    [
+      activeRepoPath,
+      activePath,
+      flush,
+      set,
+      settings.rewritePrompt,
+      settings.suggestPrompt,
+      source,
+    ],
   );
 
   const onSourceChange = useCallback(
@@ -3083,6 +3142,11 @@ export default function App() {
         const who = handleList(value);
         if (!who.length) return;
         let m = matter ?? "";
+        // Asking is the owner's move; a file that never said whose it is
+        // learns it now, so the header and the inbox both know who to tell.
+        if (!matterValue(m, "owner") && !matterValue(m, "assignee")) {
+          m = setMatterValue(m, "owner", me);
+        }
         m = setMatterValue(m, "status", "review");
         m = setMatterValue(m, "reviewers", who.join(", "));
         m = setMatterValue(m, "approved", null);
@@ -3121,6 +3185,69 @@ export default function App() {
     }
     return out;
   }, [activePath, wsSource, content]);
+  /** Reviewers with an open thread signed by them, for the header's third state. */
+  const commented = useMemo(
+    () => threadAuthors(wsIdOf(activePath) ? wsSource : content),
+    [activePath, wsSource, content],
+  );
+
+  /*
+   * The inbox. A pure function of the trees and the login: a review you were
+   * asked for, a plan of yours everyone approved, a suggestion on it. Nothing
+   * is fetched and nothing records what you have seen; the tree copy is what
+   * the file says, and opening the file is the only "read".
+   */
+  const needs = useMemo(() => needsMe(wsTrees, account?.login), [wsTrees, account]);
+  /** The same, keyed the way the tree names a workspace, for its heading. */
+  const needsByShelf = useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    for (const n of needs) (out[wsShelfPath(n.workspace)] ??= new Set()).add(n.path);
+    return out;
+  }, [needs]);
+  /*
+   * What the previous computation held, so a gained entry can be told apart
+   * from one that was always there. Null until the first computation after
+   * sign-in, which is the baseline and posts nothing: a laptop opened after
+   * a weekend shows a count, not a burst.
+   */
+  const seenNeeds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!account) {
+      seenNeeds.current = null;
+      return;
+    }
+    // The trees arrive one workspace at a time; the baseline waits for them.
+    if (Object.keys(wsTrees).length < workspaces.length) return;
+    const now = new Set(needs.map(needKey));
+    const before = seenNeeds.current;
+    seenNeeds.current = now;
+    if (!before || document.hasFocus()) return;
+    const gained = needs.filter((n) => !before.has(needKey(n)));
+    if (!gained.length) return;
+    void (async () => {
+      try {
+        let ok = await isPermissionGranted();
+        if (!ok) ok = (await requestPermission()) === "granted";
+        if (!ok) return;
+        for (const n of gained) {
+          const name = workspaces.find((w) => w.id === n.workspace)?.name ?? "";
+          const file = n.path.replace(/\.md$/, "");
+          sendNotification({
+            title:
+              n.reason === "review"
+                ? `Asked to review ${file}`
+                : n.reason === "approved"
+                  ? `Everyone approved ${file}`
+                  : `${n.label} on ${file}`,
+            body: name,
+          });
+        }
+      } catch {
+        // No notification centre here: the count in the tree is the signal.
+      }
+    })();
+  }, [needs, account, wsTrees, workspaces]);
+
   const jumpThread = useCallback((i: number) => {
     const card = document.querySelectorAll(".main-pane .md-comment")[i] as HTMLElement | undefined;
     if (!card) return;
@@ -4076,12 +4203,14 @@ export default function App() {
       rooms.current.set(docId, room);
       room.onStatus(() => setRoomTick((n) => n + 1));
       /*
-       * The file's `status:` belongs in the tree as well as in the file.
+       * The file's head belongs in the tree as well as in the file: `status:`
+       * for the dot, the people keys and the suggestion count for the inbox.
        *
-       * The tree is what draws fifty status dots without opening fifty
-       * rooms, so whoever has a file open keeps its entry honest. The path
-       * is looked up by document id rather than captured, because a rename
-       * moves the key and this must follow it.
+       * The tree is what draws fifty status dots, and answers "what is
+       * waiting on me", without opening fifty rooms, so whoever has a file
+       * open keeps its entry honest. The path is looked up by document id
+       * rather than captured, because a rename moves the key and this must
+       * follow it.
        */
       const meta = room.doc.getMap<string>("meta");
       meta.observe(() => {
@@ -4089,12 +4218,7 @@ export default function App() {
         if (!at) return;
         const here = treeEntries(at).find((e) => e.doc === docId);
         if (!here) return;
-        const split = splitFrontmatter(meta.get("markdown") ?? "");
-        wsTree.setStatus(
-          at,
-          here.path,
-          matterValue(split.matter ?? "", "status"),
-        );
+        wsTree.setHead(at, here.path, headOf(meta.get("markdown") ?? ""));
       });
       return room;
     },
@@ -7490,6 +7614,7 @@ export default function App() {
               repos={shelf}
               workspaces={wsShelfPaths}
               capabilities={shelfCapabilities}
+              needs={needsByShelf}
               filesByRepo={shelfFiles}
               marks={liveMarks}
               activeRepoPath={
@@ -7924,9 +8049,6 @@ export default function App() {
                         {matter !== null &&
                           (() => {
                             const s = matterValue(matter, "status");
-                            const who =
-                              matterValue(matter, "owner") ??
-                              matterValue(matter, "assignee");
                             const due = matterValue(matter, "due");
                             const overdue =
                               !!due &&
@@ -7942,18 +8064,15 @@ export default function App() {
                                     {s}
                                   </span>
                                 )}
-                                {who && (
-                                  <span
-                                    className="matter-owner"
-                                    title="owner: from this file's frontmatter"
-                                  >
-                                    @{who}
-                                  </span>
-                                )}
                                 <MatterPeople
                                   matter={matter}
                                   profiles={activeProfiles}
+                                  commented={commented}
+                                  me={account?.login ?? null}
                                   onSetStatus={activeRemote ? undefined : (v) => setStatus(v)}
+                                  onApprove={
+                                    account && wsIdOf(activePath) ? approve : undefined
+                                  }
                                 />
                                 {due && (
                                   <span
@@ -8409,23 +8528,50 @@ export default function App() {
           >
             New comment…
           </button>
+          {/* Proposing needs nobody but you: no agent, no chat, and it works
+              in memory too, since the proposal is only text in the file. */}
+          {pageMenu.selection.trim() !== "" && (
+            <button
+              className="ctx-item"
+              role="menuitem"
+              onClick={() => {
+                setPageMenu(null);
+                suggestHere();
+              }}
+            >
+              Suggest…
+            </button>
+          )}
           {/* Only with something selected, and only where there is an agent
               to send it to: a menu item that scolds you for not selecting
               first is worse than one that is absent. */}
           {pageMenu.selection.trim() !== "" &&
             chat !== false &&
             activeRepoPath !== MEMORY && (
-              <button
-                className="ctx-item"
-                role="menuitem"
-                onClick={() => {
-                  const selection = pageMenu.selection;
-                  setPageMenu(null);
-                  rewriteSelection(selection);
-                }}
-              >
-                Rewrite…
-              </button>
+              <>
+                <button
+                  className="ctx-item"
+                  role="menuitem"
+                  onClick={() => {
+                    const selection = pageMenu.selection;
+                    setPageMenu(null);
+                    askAboutSelection(selection);
+                  }}
+                >
+                  Rewrite…
+                </button>
+                <button
+                  className="ctx-item"
+                  role="menuitem"
+                  onClick={() => {
+                    const selection = pageMenu.selection;
+                    setPageMenu(null);
+                    askAboutSelection(selection, "suggest");
+                  }}
+                >
+                  Suggest a rewrite…
+                </button>
+              </>
             )}
         </div>
       )}
@@ -8789,6 +8935,8 @@ export default function App() {
         onScaffoldMatter={scaffoldMatter}
         onRequestReview={account && wsIdOf(activePath) ? requestReview : undefined}
         onApprove={account && wsIdOf(activePath) ? approve : undefined}
+        forYou={needs}
+        onOpenNeed={(n: Need) => void openWorkspaceFile(n.workspace, n.path)}
         threads={threads}
         onJumpThread={jumpThread}
         keymap={keymap}

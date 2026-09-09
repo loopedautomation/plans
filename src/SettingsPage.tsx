@@ -466,6 +466,13 @@ export function SettingsPage({
             onChange={(rewritePrompt) => onChange({ rewritePrompt })}
             onReset={() => onChange({ rewritePrompt: DEFAULTS.rewritePrompt })}
           />
+          <Area
+            label="Suggest prompt"
+            hint="What the agent is told by “Suggest a rewrite…”, beside Rewrite… on the same menu — propose the change in the file instead of making it, so it arrives as a card with Accept and Reject on it. Same fields as above, and the block's exact form is spelled out in the prompt: change it and the app may not recognise what comes back."
+            value={s.suggestPrompt}
+            onChange={(suggestPrompt) => onChange({ suggestPrompt })}
+            onReset={() => onChange({ suggestPrompt: DEFAULTS.suggestPrompt })}
+          />
           <Field
             label="Copyable command"
             hint="For running a plan by hand in a terminal instead: {prompt} is the instruction, {file} the plan's path."

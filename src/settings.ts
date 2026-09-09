@@ -1,6 +1,6 @@
 import { FONTS, MONO_FONTS } from "./fonts";
 import { applyTheme, DEFAULT_THEME, type ThemeId } from "./theme";
-import { HANDOFF_PROMPT, IMPLEMENT_PROMPT, REWRITE_PROMPT } from "./agent";
+import { HANDOFF_PROMPT, IMPLEMENT_PROMPT, REWRITE_PROMPT, SUGGEST_PROMPT } from "./agent";
 import type { RemoteRoot } from "./api";
 
 /** Everything the reader can change, in one place. */
@@ -136,6 +136,13 @@ export type Settings = {
    */
   rewritePrompt: string;
   /**
+   * The instruction "Suggest a rewrite…" sends for a selected passage. The
+   * same fields as the rewrite prompt, asking for a proposal in the file
+   * rather than the change itself — so what arrives is a card with Accept and
+   * Reject on it, not a paragraph that moved under somebody's cursor.
+   */
+  suggestPrompt: string;
+  /**
    * Whether `#` in the palette reaches the conversations of the repository you
    * are in, or of every repository open.
    *
@@ -270,6 +277,7 @@ export const DEFAULTS: Settings = {
   handoffPrompt: HANDOFF_PROMPT,
   implementPrompt: IMPLEMENT_PROMPT,
   rewritePrompt: REWRITE_PROMPT,
+  suggestPrompt: SUGGEST_PROMPT,
   chatScope: "repo" as const,
   searchScope: "all" as const,
   commentSigner: "account" as const,
