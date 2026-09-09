@@ -135,8 +135,12 @@ import {
   splitFrontmatter,
   statusTone,
   withHandle,
+  headOf,
+  threadAuthors,
 } from "./matter";
 import { MatterPeople } from "./MatterPeople";
+import { needKey, needsMe, type Need } from "./needs";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import {
   applySettings,
   DEFAULTS,
@@ -3099,6 +3103,11 @@ export default function App() {
         const who = handleList(value);
         if (!who.length) return;
         let m = matter ?? "";
+        // Asking is the owner's move; a file that never said whose it is
+        // learns it now, so the header and the inbox both know who to tell.
+        if (!matterValue(m, "owner") && !matterValue(m, "assignee")) {
+          m = setMatterValue(m, "owner", me);
+        }
         m = setMatterValue(m, "status", "review");
         m = setMatterValue(m, "reviewers", who.join(", "));
         m = setMatterValue(m, "approved", null);
@@ -3137,6 +3146,69 @@ export default function App() {
     }
     return out;
   }, [activePath, wsSource, content]);
+  /** Reviewers with an open thread signed by them, for the header's third state. */
+  const commented = useMemo(
+    () => threadAuthors(wsIdOf(activePath) ? wsSource : content),
+    [activePath, wsSource, content],
+  );
+
+  /*
+   * The inbox. A pure function of the trees and the login: a review you were
+   * asked for, a plan of yours everyone approved, a suggestion on it. Nothing
+   * is fetched and nothing records what you have seen; the tree copy is what
+   * the file says, and opening the file is the only "read".
+   */
+  const needs = useMemo(() => needsMe(wsTrees, account?.login), [wsTrees, account]);
+  /** The same, keyed the way the tree names a workspace, for its heading. */
+  const needsByShelf = useMemo(() => {
+    const out: Record<string, Set<string>> = {};
+    for (const n of needs) (out[wsShelfPath(n.workspace)] ??= new Set()).add(n.path);
+    return out;
+  }, [needs]);
+  /*
+   * What the previous computation held, so a gained entry can be told apart
+   * from one that was always there. Null until the first computation after
+   * sign-in, which is the baseline and posts nothing: a laptop opened after
+   * a weekend shows a count, not a burst.
+   */
+  const seenNeeds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!account) {
+      seenNeeds.current = null;
+      return;
+    }
+    // The trees arrive one workspace at a time; the baseline waits for them.
+    if (Object.keys(wsTrees).length < workspaces.length) return;
+    const now = new Set(needs.map(needKey));
+    const before = seenNeeds.current;
+    seenNeeds.current = now;
+    if (!before || document.hasFocus()) return;
+    const gained = needs.filter((n) => !before.has(needKey(n)));
+    if (!gained.length) return;
+    void (async () => {
+      try {
+        let ok = await isPermissionGranted();
+        if (!ok) ok = (await requestPermission()) === "granted";
+        if (!ok) return;
+        for (const n of gained) {
+          const name = workspaces.find((w) => w.id === n.workspace)?.name ?? "";
+          const file = n.path.replace(/\.md$/, "");
+          sendNotification({
+            title:
+              n.reason === "review"
+                ? `Asked to review ${file}`
+                : n.reason === "approved"
+                  ? `Everyone approved ${file}`
+                  : `${n.label} on ${file}`,
+            body: name,
+          });
+        }
+      } catch {
+        // No notification centre here: the count in the tree is the signal.
+      }
+    })();
+  }, [needs, account, wsTrees, workspaces]);
+
   const jumpThread = useCallback((i: number) => {
     const card = document.querySelectorAll(".main-pane .md-comment")[i] as HTMLElement | undefined;
     if (!card) return;
@@ -4043,12 +4115,14 @@ export default function App() {
       rooms.current.set(docId, room);
       room.onStatus(() => setRoomTick((n) => n + 1));
       /*
-       * The file's `status:` belongs in the tree as well as in the file.
+       * The file's head belongs in the tree as well as in the file: `status:`
+       * for the dot, the people keys and the suggestion count for the inbox.
        *
-       * The tree is what draws fifty status dots without opening fifty
-       * rooms, so whoever has a file open keeps its entry honest. The path
-       * is looked up by document id rather than captured, because a rename
-       * moves the key and this must follow it.
+       * The tree is what draws fifty status dots, and answers "what is
+       * waiting on me", without opening fifty rooms, so whoever has a file
+       * open keeps its entry honest. The path is looked up by document id
+       * rather than captured, because a rename moves the key and this must
+       * follow it.
        */
       const meta = room.doc.getMap<string>("meta");
       meta.observe(() => {
@@ -4056,12 +4130,7 @@ export default function App() {
         if (!at) return;
         const here = treeEntries(at).find((e) => e.doc === docId);
         if (!here) return;
-        const split = splitFrontmatter(meta.get("markdown") ?? "");
-        wsTree.setStatus(
-          at,
-          here.path,
-          matterValue(split.matter ?? "", "status"),
-        );
+        wsTree.setHead(at, here.path, headOf(meta.get("markdown") ?? ""));
       });
       return room;
     },
@@ -7279,6 +7348,7 @@ export default function App() {
             <FileTree
               repos={shelf}
               workspaces={wsShelfPaths}
+              needs={needsByShelf}
               filesByRepo={shelfFiles}
               marks={liveMarks}
               activeRepoPath={
@@ -7705,9 +7775,6 @@ export default function App() {
                         {matter !== null &&
                           (() => {
                             const s = matterValue(matter, "status");
-                            const who =
-                              matterValue(matter, "owner") ??
-                              matterValue(matter, "assignee");
                             const due = matterValue(matter, "due");
                             const overdue =
                               !!due &&
@@ -7723,18 +7790,15 @@ export default function App() {
                                     {s}
                                   </span>
                                 )}
-                                {who && (
-                                  <span
-                                    className="matter-owner"
-                                    title="owner: from this file's frontmatter"
-                                  >
-                                    @{who}
-                                  </span>
-                                )}
                                 <MatterPeople
                                   matter={matter}
                                   profiles={activeProfiles}
+                                  commented={commented}
+                                  me={account?.login ?? null}
                                   onSetStatus={(v) => setStatus(v)}
+                                  onApprove={
+                                    account && wsIdOf(activePath) ? approve : undefined
+                                  }
                                 />
                                 {due && (
                                   <span
@@ -8564,6 +8628,8 @@ export default function App() {
         onScaffoldMatter={scaffoldMatter}
         onRequestReview={account && wsIdOf(activePath) ? requestReview : undefined}
         onApprove={account && wsIdOf(activePath) ? approve : undefined}
+        forYou={needs}
+        onOpenNeed={(n: Need) => void openWorkspaceFile(n.workspace, n.path)}
         threads={threads}
         onJumpThread={jumpThread}
         keymap={keymap}

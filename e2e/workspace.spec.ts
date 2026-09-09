@@ -900,6 +900,9 @@ test("an agent proposes a change, both people see the card, and either may accep
         workspace: ws,
         path: "plan.md",
         content: [
+          "---",
+          "owner: alice",
+          "---",
           "# Proposals",
           "",
           "The poll picks up a teammate's edits through the existing watcher.",
@@ -919,6 +922,13 @@ test("an agent proposes a change, both people see the card, and either may accep
   // It lands as a card on both screens, and neither document has changed yet.
   await expect(alice.locator(".md-suggestion")).toHaveCount(1, { timeout: 10_000 });
   await expect(bob.locator(".md-suggestion")).toHaveCount(1, { timeout: 10_000 });
+  // The proposal is on alice's plan, so it is alice's inbox it lands in.
+  await expect(heading(alice, "Proposals").getByTestId("needs-count")).toHaveText("1");
+  await expect(heading(bob, "Proposals").getByTestId("needs-count")).toHaveCount(0);
+  await alice.keyboard.press("Meta+Shift+p");
+  await alice.locator(".palette-input").fill(">For you");
+  await expect(alice.locator(".palette-row").first()).toContainText("1 suggestion");
+  await alice.keyboard.press("Escape");
   await expect(editor(bob)).toContainText("The poll picks up a teammate's edits");
   await expect(editor(bob)).not.toContainText("The stamp poll notices");
 
@@ -930,6 +940,7 @@ test("an agent proposes a change, both people see the card, and either may accep
   });
   await expect(editor(alice)).not.toContainText("The poll picks up a teammate's edits");
   await expect(alice.locator(".md-suggestion")).toHaveCount(0);
+  await expect(heading(alice, "Proposals").getByTestId("needs-count")).toHaveCount(0);
 
   expect((alice as any).__faults).toEqual([]);
   expect((bob as any).__faults).toEqual([]);
@@ -1057,12 +1068,38 @@ test("a review is requested, seen, approved and carried into a repository, all i
   await expect(alice.locator(".md-comment")).toHaveCount(1);
   await expect(row(alice, "plan").locator(".status-dot")).toHaveClass(/tone-review/);
 
-  // Bob: the thread names him, so its mark is tinted; the palette lists it.
+  // The owner is drawn beside the reviewer, face and all, as one sentence.
+  await expect(alice.getByTestId("owner")).toHaveAttribute("data-handle", "alice");
+  await expect(alice.getByTestId("owner").locator(".avatar")).toHaveCount(1);
+
+  // Bob, before he has opened anything: the workspace heading counts the
+  // file waiting on him, the row is heavier, and the palette opens on it.
+  // The tree carries the head; nothing about the file had to be fetched.
   const bob = await boot(browser, "bob");
-  await heading(bob, "Lifecycle").click();
-  await row(bob, "plan").click();
+  await expect(heading(bob, "Lifecycle").getByTestId("needs-count")).toHaveText("1", { timeout: 10_000 });
+  await bob.keyboard.press("Meta+Shift+p");
+  await bob.locator(".palette-input").fill(">");
+  const inbox = bob.locator(".palette-row", { hasText: "plan.md" }).first();
+  await expect(inbox).toContainText("For you");
+  await expect(inbox).toContainText("asked to review");
+  await bob.keyboard.press("Enter");
+  await expect(bob.locator(".page-path")).toContainText("Lifecycle");
+  // The heading was never opened; the row inside it is heavier once it is.
+  if ((await heading(bob, "Lifecycle").getAttribute("aria-expanded")) === "false") {
+    await heading(bob, "Lifecycle").click();
+  }
+  await expect(row(bob, "plan")).toHaveAttribute("data-needs-you", "1");
+
+  // The thread names him, so its mark is tinted; the palette lists it.
   await expect(bob.locator(".md-comment-mark")).toHaveClass(/for-you/);
   await expect(bob.getByTestId("reviewer")).toHaveAttribute("data-handle", "bob");
+  // A reviewer who leaves a thread is drawn as having commented, until he approves.
+  await expect(bob.getByTestId("reviewer")).toHaveAttribute("data-commented", "0");
+  await editor(bob).locator("p").last().click();
+  await bob.keyboard.press("End");
+  await bob.keyboard.press("Enter");
+  await bob.keyboard.type("<!-- @bob: one question first -->");
+  await expect(alice.getByTestId("reviewer")).toHaveAttribute("data-commented", "1", { timeout: 10_000 });
   await bob.keyboard.press("Meta+Shift+p");
   await bob.locator(".palette-input").fill(">Thread:");
   await expect(bob.locator(".palette-row", { hasText: "ready for your eyes" })).toHaveCount(1);
@@ -1070,16 +1107,22 @@ test("a review is requested, seen, approved and carried into a repository, all i
   await expect(bob.locator(".md-comment.open")).toHaveCount(1);
   await bob.keyboard.press("Escape");
 
-  // Bob approves; alice sees the check, and is offered the transition.
-  await command(bob, "Approve");
+  // Bob approves from the header, where his eyes already are; alice sees the
+  // check, and is offered the transition — and now the inbox says so too.
+  await bob.getByTestId("offer-approve").click();
   await expect(bob.getByTestId("reviewer")).toHaveAttribute("data-approved", "1");
+  await expect(bob.getByTestId("reviewer")).toHaveAttribute("data-commented", "0");
+  await expect(bob.getByTestId("offer-approve")).toHaveCount(0);
+  await expect(heading(bob, "Lifecycle").getByTestId("needs-count")).toHaveCount(0);
   await expect(alice.getByTestId("reviewer")).toHaveAttribute("data-approved", "1", { timeout: 10_000 });
   await expect(alice.getByTestId("offer-approved")).toBeVisible();
+  await expect(heading(alice, "Lifecycle").getByTestId("needs-count")).toHaveText("1");
   // Alice's own mark is not tinted: the latest turn names bob, not her.
-  await expect(alice.locator(".md-comment-mark")).not.toHaveClass(/for-you/);
+  await expect(alice.locator(".md-comment-mark").first()).not.toHaveClass(/for-you/);
   await alice.getByTestId("offer-approved").click();
   await expect(alice.locator(".page-head .status-badge")).toHaveText("approved");
   await expect(alice.getByTestId("offer-approved")).toHaveCount(0);
+  await expect(heading(alice, "Lifecycle").getByTestId("needs-count")).toHaveCount(0);
 
   // Copied into a repository, the file carries all of it verbatim.
   await menu(alice, row(alice, "plan"), "Copy to a repo…");
@@ -1089,8 +1132,9 @@ test("a review is requested, seen, approved and carried into a repository, all i
     const repo = (window as any).__fake.repos[0];
     return Object.values(repo.files as Record<string, string>).find((f) => f.includes("reviewers: bob")) ?? "";
   });
-  expect(copied).toMatch(/^---\nstatus: approved\nreviewers: bob\napproved: bob\n---\n/);
+  expect(copied).toMatch(/^---\nowner: alice\nstatus: approved\nreviewers: bob\napproved: bob\n---\n/);
   expect(copied).toContain("<!-- @alice: @bob — ready for your eyes -->");
+  expect(copied).toContain("<!-- @bob: one question first -->");
   // In the repository the reviewers are text: there is no member list there.
   await expect(alice.getByTestId("reviewer")).toHaveAttribute("data-handle", "bob");
   await expect(alice.getByTestId("reviewer").locator(".avatar")).toHaveCount(0);

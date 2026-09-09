@@ -267,6 +267,51 @@ test("two people edit one file, and it survives the room emptying", async () => 
   c.close();
 });
 
+test("the tree's head is repaired from the file for a document nobody has open", async () => {
+  const alice = await signIn("alice");
+  const { id } = (await call("/workspaces", { method: "POST", token: alice, body: { name: "Repair" } })).value;
+  const docId = await fileIn(id, alice);
+
+  // Written the way an agent writes: into the document's room, then gone.
+  const room = connect(docId, alice, id);
+  await Promise.all([room.open, room.synced]);
+  room.doc.getMap("meta").set(
+    "markdown",
+    [
+      "---",
+      "status: review",
+      "owner: alice",
+      "reviewers: bob, sam",
+      "approved: sam",
+      "---",
+      "# Plan",
+      "",
+      "A line.",
+      "",
+      "<!--",
+      "@claude suggests:",
+      "A line.",
+      "---",
+      "A better line.",
+      "-->",
+      "",
+      "<!-- @bob: a thread is not a suggestion -->",
+      "",
+    ].join("\n"),
+  );
+  await until(() => s.rooms.rooms.get(docId)?.doc.getMap("meta").get("markdown"));
+  room.close();
+  await until(() => !s.rooms.rooms.get(docId));
+
+  // The tree, read cold, carries the head the file has: nobody set it there.
+  const entry = (await call(`/workspaces/${id}/tree`, { token: alice })).value.find((e) => e.path === "plan.md");
+  assert.equal(entry.status, "review");
+  assert.equal(entry.owner, "alice");
+  assert.equal(entry.reviewers, "bob, sam");
+  assert.equal(entry.approved, "sam");
+  assert.equal(entry.asks, 1);
+});
+
 test("a workspace is a folder: the tree is a room, and so is every file in it", async () => {
   const alice = await signIn("alice");
   const bob = await signIn("bob");

@@ -22,6 +22,7 @@ import { htmlSchema } from "@milkdown/preset-commonmark";
 import { api } from "./api";
 import { colorFor, type Profile } from "./workspace";
 import { attachMentions } from "./mentions";
+import { HANDLE, parseSuggestion, type Suggestion } from "./matter";
 
 const COMMENT = /^\s*<!--([\s\S]*?)-->\s*$/;
 
@@ -58,7 +59,6 @@ function isFolded(d: { open: boolean; summary: string }): boolean {
  * it. Read as far as the first `@` used to mean `@ratul@example.com: …`
  * matched nothing as a turn, and the card showed the raw line, unsigned.
  */
-const HANDLE = "[A-Za-z0-9_.+-]+(?:@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+)?";
 const AUTHOR = new RegExp(`@(${HANDLE})`);
 const TURN = new RegExp(`^@(${HANDLE}):\\s*(.*)$`);
 
@@ -164,37 +164,16 @@ export function withReply(value: string, author: string, text: string): string {
    the card says so rather than being silently wrong.
    =========================================================================== */
 
-/** `@name suggests:`, or `suggests:` where git had no name to sign with. */
-const SUGGESTS = new RegExp(`^(?:@(${HANDLE})\\s+)?suggests:$`);
-
-/** The line between the two sides. Exactly one, or this is not a suggestion. */
+/** The line between the two sides; the grammar itself lives in matter.ts. */
 const SPLIT = "---";
 
-export type Suggestion = { who: string | null; old: string; new: string };
+export type { Suggestion };
 
-/**
- * A suggestion, or null for anything else a comment might be.
- *
- * Strict on purpose, in both directions: a body missing the head, missing the
- * separator, carrying two of them, or proposing a change to nothing at all is
- * not a suggestion and renders as the comment it is. Better a proposal that
- * shows up as prose than prose that shows up as a proposal with buttons.
- */
+/** A suggestion, or null for anything else a comment might be. */
 export function suggestion(value: string): Suggestion | null {
   const body = value.match(COMMENT)?.[1];
   if (body == null) return null;
-  const lines = body.split(/\r?\n/);
-  while (lines.length && !lines[0].trim()) lines.shift();
-  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-  const head = lines.shift()?.trim() ?? "";
-  const m = head.match(SUGGESTS);
-  if (!m) return null;
-  const at = lines.flatMap((l, i) => (l.trim() === SPLIT ? [i] : []));
-  if (at.length !== 1) return null;
-  const old = lines.slice(0, at[0]).join("\n").trim();
-  const next = lines.slice(at[0] + 1).join("\n").trim();
-  if (!old) return null;
-  return { who: m[1] ?? null, old, new: next };
+  return parseSuggestion(body);
 }
 
 /** The block a suggestion is written as — the parser's inverse. */

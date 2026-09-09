@@ -1,5 +1,5 @@
 ---
-status: busy
+status: done
 ---
 # Improve the request review flow
 
@@ -252,36 +252,81 @@ owner accepting is the card's Accept, nothing new.
   `src/FileTree.tsx`). The status bar is a second home if the tree is
   hidden often enough to want one.
 
-## Next
+## Implementation guide
 
-- [ ] Widen the tree copy: `TreeValue` and `WorkspaceEntry` carry `owner`,
+- [x] Widen the tree copy: `TreeValue` and `WorkspaceEntry` carry `owner`,
       `reviewers`, `approved` beside `status` (`src/workspace.ts:70-75`,
       `:470`); `wsTree.setStatus` becomes `setHead` (`workspace.ts:574-580`);
       the room observer writes all four (`src/App.tsx:3998-4008`)
-- [ ] Server: `headStatus` becomes `head(markdown)` and `repairStatus`
+- [x] Server: `headStatus` becomes `head(markdown)` and `repairStatus`
       compares the object (`server/src/rooms.js:43-54`, `:172-186`);
       `entriesOf` passes the new fields through (`rooms.js:58-64`)
-- [ ] `needsMe(trees, login)` as a pure function in `src/matter.ts` or a
+- [x] `needsMe(trees, login)` as a pure function in `src/matter.ts` or a
       sibling, with unit tests over the three reasons and the handle
       spellings `handleList` accepts (`matter.ts:143-151`)
-- [ ] Palette *For you* group, one row per file with its reason, jumping to
+- [x] Palette *For you* group, one row per file with its reason, jumping to
       the file (`src/Palette.tsx:448-457` is the pattern); a count on the
       workspace heading in the tree and a heavier row for the files
-- [ ] OS notification on a gained *needs you* entry, baseline on sign-in,
+- [x] OS notification on a gained *needs you* entry, baseline on sign-in,
       only while the window is unfocused: add `tauri-plugin-notification`
       to `src-tauri/Cargo.toml` and its capability
-- [ ] Fold the owner into `MatterPeople` with a face and colour
+- [x] Fold the owner into `MatterPeople` with a face and colour
       (`src/MatterPeople.tsx:32-82`, replacing `App.tsx:7671-7678`);
       derive the *commented* state from signed open threads
       (`html-view.ts:98-110`)
-- [ ] *Approve* in the header for a reviewer who has not, wired to the
+- [x] *Approve* in the header for a reviewer who has not, wired to the
       existing callback (`App.tsx:3057-3063`); thread it into
       `SplitPane` (`src/SplitPane.tsx:421`)
-- [ ] After the diffs plan lands its grammar: count open suggestions into
+- [x] After the diffs plan lands its grammar: count open suggestions into
       the tree entry as `asks` from the client observer and the server
       repair, and add the owner's third reason to `needsMe`
-- [ ] Tests: extend the review e2e (`e2e/workspace.spec.ts:963-1021`) so
+- [x] Tests: extend the review e2e (`e2e/workspace.spec.ts:963-1021`) so
       Bob's palette lists the plan under *For you* before he opens it and
       the workspace heading shows the count; a server test that
       `repairStatus` fills `reviewers` for a doc nobody has open; run with
       the batched suite at the end
+
+## What landed
+
+The design went through as written, with three things decided on the way.
+
+**Approve lives in the main header only.** The plan wanted the split pane to
+offer it too. The split holds repository files by construction (its author is
+git's name, `SplitPane.tsx` "the split holds a repository file"), and Approve
+needs a signed-in login and a workspace, so there was nothing for the button
+to do there. The split gets the folded-in owner face and the reviewer states,
+which is what it can honestly draw.
+
+**Requesting a review writes `owner:` when the file has none.** A file made
+by ⌘N in a workspace carries no frontmatter, so the first cut drew a header
+with reviewers and nobody who asked. Asking is the owner's move; the gesture
+now names them, the same way the status scaffold does.
+
+**One grammar, in one place.** The suggestion parser moved from
+`html-view.ts` into `matter.ts`, beside the head reader, so the tree copy,
+the server's mirror and the card all read the same thing. `matter.ts` has no
+imports, which is also what let `needs.ts` and its tests run under
+`node --test` with nothing added: Node 24 strips types itself, and
+`pnpm test:unit` is the whole of the runner.
+
+- `headOf`, `countSuggestions`, `threadAuthors`, `parseSuggestion` in
+  `src/matter.ts`; `needsOf` / `needsMe` in `src/needs.ts`, tested in
+  `src/needs.test.ts` over the three reasons and every handle spelling.
+- The tree entry carries `owner`, `reviewers`, `approved` and `asks` beside
+  `status` (`workspace.ts`, `wsTree.setHead`); the room observer writes the
+  whole head; the server's `head(markdown)` mirrors it and `repairStatus`
+  compares the object, with a test that a document nobody has open comes
+  back with its head and its suggestion count filled in.
+- *For you* is the first group in the palette, whether or not a document is
+  open, one row per file with its reason; the workspace heading carries a
+  count in the approved ink beside the git count, and a file waiting on you
+  is drawn heavier.
+- `MatterPeople` draws the owner with a face first, then the reviewers in
+  three states, then Approve for a reviewer who has not and Mark approved
+  once everyone has. `data-commented` is derived from the signed open
+  threads and drawn as a speech mark.
+- `tauri-plugin-notification` is registered and permitted; a gained *needs
+  you* entry posts a banner only while the window is unfocused, and the
+  first computation after sign-in, once every workspace's tree has arrived,
+  is the baseline and posts nothing. The web build calls the same functions
+  and simply gets no permission, so the e2e never see a banner.
