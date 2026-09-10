@@ -1,5 +1,122 @@
 # looped-plans
 
+## 0.14.0
+
+### Minor Changes
+
+- 76b0311: The workspaces now tell you what is waiting on you. A review you were asked
+  for, a plan of yours that everyone has approved, a suggestion someone left on
+  it: each is a row at the top of the palette under _For you_, a count on the
+  workspace's heading in the tree, and a heavier name on the file. All of it is
+  read from the tree's copy of each file's head, which now carries `owner:`,
+  `reviewers:`, `approved:` and the count of open suggestions beside `status:`,
+  kept by whoever has the file open and repaired by the server for the files
+  nobody has. Nothing records what you have seen; opening the file is the read.
+
+  When the window is not in front, a gained entry posts a system notification
+  naming the file and the reason. The first look after signing in is the
+  baseline and posts nothing, so a laptop opened after a weekend shows a count
+  rather than a burst.
+
+  The page head reads as one sentence now: the owner with their face, then the
+  reviewers, each asked, commented or approved. A reviewer who has left an open
+  thread is drawn with a speech mark until they approve. Approve sits in the
+  header beside the handles for a reviewer who has not yet, the twin of Mark
+  approved. Requesting a review writes `owner:` into a file that never said
+  whose it was.
+
+- cfd5c0a: The phone's shell has two corners instead of a settings tab: your face at
+  the top left opens a drawer with the account and Sign out, or the way in;
+  Aa at the top right opens a sheet from the bottom with the paper, the type
+  and the file toggles. A swipe in from the left edge goes back, as it does
+  everywhere else on the phone. Two fingers zoom a diagram, and a zoomed
+  diagram pans under one; at 1:1 a finger scrolls the page as before.
+- 170fa38: The phone gets its settings: the paper, the reading face with its size,
+  measure and leading, the code face and its size, and the file toggles. They
+  are the same keys the desktop writes, applied the same way, so each device
+  keeps its own settings file and a paper chosen on the phone is the phone's.
+  The shell no longer zooms: the viewport forbids scaling and every field is
+  set at the size iOS stops zooming for.
+- d354896: The phone works in workspaces. The iOS and Android shell has two tabs now:
+  Workspaces, where you sign in, open a workspace, browse its folder and edit
+  a file live in the same editor as the desk, with comments, suggestion
+  cards and everyone's cursors; and Computers, the SSH reader, which is how a
+  repository an agent is working in gets read from a phone. The editor lets
+  go of a workspace's room before it is destroyed, which closes a gap where
+  a remote edit arriving during teardown threw from inside the collab plugin.
+- 4051952: Browse a saved remote root over SSH from the desktop shelf or the new mobile
+  shell. Connections pin the server host key, keep passwords and imported keys
+  in the OS credential store, load folders lazily over SFTP, and render documents
+  read-only.
+- 015e2b9: Suggested changes, written into the file as a comment with a diff in it. An
+  agent asked to "Suggest a rewrite…" writes a proposal under the passage rather
+  than rewriting it, and it arrives on every screen as a card with the word diff
+  and Accept / Reject on it — which matters most in a workspace, where the room
+  is the truth and there is no "mine" to keep. People propose the same way, from
+  "Suggest…" on the page menu. A proposal whose quote no longer matches anything
+  says so and offers to insert itself instead. Accepting or rejecting is an
+  ordinary edit, so it merges with everyone else's typing and leaves no trace in
+  the file.
+- cfd5c0a: A fourth paper, System, follows the device: night when it is in dark mode,
+  day otherwise, and it switches when the device does. It is a setting like
+  the other three, on the phone and on the desktop, and everything that reads
+  the paper still sees day, sepia or night.
+
+### Patch Changes
+
+- 31f5e51: The design system has a page of its own at `/design/` on the site: the
+  three papers switchable, every token with its value read from the live
+  stylesheet and the rule that made it, the five reading faces and the mono
+  voice, the ledger's parts drawn by the app's own components, and the
+  editor rendering a document with a bit of everything in it. It is built
+  from the same code as the app, so it cannot describe a button the app no
+  longer has.
+- b3ceb7e: An entity-relationship diagram's attribute rows no longer band white across
+  the paper. Mermaid lightens the box colour by 75 for its odd rows when no
+  row colour is given, which is white on every theme and glaring on night; the
+  rows now alternate paper and shade, as the editor's tables do.
+- 10c8ab3: The iOS app builds and installs on a phone. The deployment target rises to
+  iOS 15, which is the floor current Xcode accepts; the mobile entry point sits
+  on `run()` rather than on the dev-icon helper it had drifted onto; the three
+  desktop-only commands that open Finder, the settings file or a terminal say
+  so on a phone instead of failing to compile; and the iOS configuration names
+  the signing team so automatic signing works.
+- 96d2dce: The iOS app no longer aborts at launch when built with a current Xcode. UIKit
+  now requires an app to adopt the scene lifecycle, and tao has a scene
+  delegate ready for it; the app's Info.plist declares that delegate, which is
+  what was missing.
+- 0f623b4: The phone feels quicker and reads as one thing. Both tabs stay mounted, so
+  switching keeps every room, list and scroll position; the workspace list
+  paints from what was last seen before the server answers again; every
+  workspace's folder is opened in the background as soon as the list arrives;
+  and a document's room stays open behind Back, so the same file again costs
+  nothing. The shell sets one type scale, a title, a body, a secondary line and
+  the ledger's caps, and Sign out wears the app's own button.
+- b3ceb7e: A person's colour — the face beside a file, the handle on a comment, the
+  cursor in a shared document — is now one of the paper's six chart inks
+  rather than a hue hashed from their login. The app's rule is that nothing
+  chromatic is invented, and presence was the one place it was; the same
+  person is the printer's blue on day and the lifted blue on night, and the
+  letter in an avatar is drawn in the paper so it reads on both.
+- 96d2dce: Five small things. A permission card whose title is a long command or path
+  wraps instead of running out of the card. Accepting or rejecting a
+  suggestion no longer scrolls the page to wherever the caret last was. The
+  reply box on a comment shows its caret. A comment's marker wears the amber
+  of a modified file, carries the faces of the people in the thread, and
+  one that names you is filled with it. And a
+  `suggest` skill spells out the suggestion form for an agent, in the
+  palette, on install, and as `/suggest` in the chat; "Suggest a rewrite…"
+  sends it along with the ask.
+- dc5238b: A computer can be reached over Tailscale SSH. The connection sheet has a
+  third authentication choice, None, for a server that accepts you on
+  identity alone: nothing is typed and nothing is stored. A server in
+  Tailscale's check mode answers with a link to confirm in a browser, and the
+  sheet shows that link instead of calling the connection rejected.
+
+  The connection sheet asks for a repository rather than a "remote root": the
+  path of one git repository on that computer, which the app opens the way it
+  opens a local one.
+
 ## 0.13.0
 
 ### Minor Changes
